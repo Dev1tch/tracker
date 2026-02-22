@@ -1,5 +1,5 @@
 .habitTrackerContainer {
-  padding: 30px 15px 0 15px; /* Minimal padding, fill screen */
+  padding: 30px 15px 0 0px; /* Minimal padding, fill screen */
   position: relative;
   z-index: 10;
   width: 100%;
@@ -37,8 +37,8 @@
   overflow-y: auto;
   flex: 1;
   position: relative;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  /* border-top: 1px solid rgba(255, 255, 255, 0.1); */
+  /* border-bottom: 1px solid rgba(255, 255, 255, 0.1); */
 }
 
 .timetableHeaderRow {
@@ -136,10 +136,13 @@
   padding: 0;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   transition: background 0.2s;
+  position: relative;
+  z-index: 1;
 }
 
 .timetableRow:hover {
   background: rgba(255,255,255,0.02);
+  z-index: 11;
 }
 
 .timetableRow:last-child {
@@ -157,6 +160,15 @@
   gap: 8px;
   position: relative;
   box-sizing: border-box;
+}
+
+.clickableText {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.clickableText:hover {
+  opacity: 0.7;
 }
 
 .deleteHabitBtn {
@@ -282,7 +294,7 @@
 .dayCube:hover {
   border-color: var(--text-secondary);
   box-shadow: 0 -1px 0 0 var(--text-secondary), 0 1px 0 0 var(--text-secondary);
-  z-index: 2;
+  z-index: 10;
   transform: translateY(-2px);
 }
 
@@ -300,11 +312,58 @@
 /* Default styling for empty state is handled by base .dayCube class */
 
 .dayCube.today {
-  border-bottom: 1px solid var(--text-primary);
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dayCube.today:hover {
+  transform: none;
+  z-index: 10;
+  border-color: rgba(255, 255, 255, 0.05); /* Reset border */
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff;
+}
+
+.dayCube.today.success {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, 0 0 10px var(--glow-color);
+}
+
+.dayCube.today.fail {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff;
+}
+
+.timetableRow:first-child .dayCube.today {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff;
+}
+
+.timetableRow:first-child .dayCube.today:hover {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff;
+}
+
+.timetableRow:first-child .dayCube.today.success {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, 0 0 10px var(--glow-color);
+}
+
+.timetableRow:last-child .dayCube.today {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 -2px 0 0 #fff;
+}
+
+.timetableRow:last-child .dayCube.today:hover {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff;
+}
+
+.timetableRow:last-child .dayCube.today.success {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 -2px 0 0 #fff, 0 0 10px var(--glow-color);
 }
 
 .dayCube.weekStart {
   border-left: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+.dayCube.weekStart:hover,
+.dayCube.weekStart.today:hover,
+.timetableRow:first-child .dayCube.weekStart.today:hover,
+.timetableRow:last-child .dayCube.weekStart.today:hover {
+  border-left-color: rgba(255, 255, 255, 0.4);
 }
 
 .dayCube.future {

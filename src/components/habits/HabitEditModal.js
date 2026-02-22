@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { categoriesApi, habitsApi } from '@/lib/api';
 import CustomSelect from '../ui/CustomSelect';
 
-export default function HabitEditModal({ habit, categories, onClose, onSuccess }) {
+export default function HabitEditModal({ habit, categories, onClose, onSuccess, onDelete }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -201,13 +201,26 @@ export default function HabitEditModal({ habit, categories, onClose, onSuccess }
             />
           </div>
 
-          <div className="modalActions" style={{ marginTop: '30px' }}>
-            <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={isSubmitting || !name}>
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
-            </button>
+          <div className="modalActions" style={{ marginTop: '30px', display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+            {onDelete ? (
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={onDelete} 
+                disabled={isSubmitting}
+                style={{ color: '#ff4d4d', borderColor: 'rgba(255, 77, 77, 0.3)' }}
+              >
+                Delete Habit
+              </button>
+            ) : <div />}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={isSubmitting || !name}>
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
 
         </form>

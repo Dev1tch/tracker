@@ -13,6 +13,7 @@ import CustomSelect from '../ui/CustomSelect';
 import useIsMobile from '@/hooks/useIsMobile';
 import ConfirmModal from '../ui/ConfirmModal';
 import HabitEditModal from './HabitEditModal';
+import CategoryEditModal from './CategoryEditModal';
 
 export default function HabitTracker() {
   const isMobile = useIsMobile(768);
@@ -35,6 +36,8 @@ export default function HabitTracker() {
   const [isCreationModalOpen, setIsCreationModalOpen] = useState(false);
   const [habitToDelete, setHabitToDelete] = useState(null);
   const [habitToEdit, setHabitToEdit] = useState(null);
+  const [categoryToEdit, setCategoryToEdit] = useState(null);
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -208,6 +211,17 @@ export default function HabitTracker() {
     }
   };
 
+  const handleDeleteCategory = async (categoryId) => {
+    try {
+      await categoriesApi.deleteCategory(categoryId);
+      setCategoryToDelete(null);
+      fetchData();
+    } catch (err) {
+      console.error('Failed to delete category', err);
+      alert('Failed to delete category.');
+    }
+  };
+
   if (isLoading && habits.length === 0) {
     return <div className="habitTrackerContainer" style={{ justifyContent: 'center', alignItems: 'center' }}><p style={{ color: 'var(--text-tertiary)' }}>Loading habits...</p></div>;
   }
@@ -341,6 +355,7 @@ export default function HabitTracker() {
           onOpenDay={handleOpenDay}
           onDelete={setHabitToDelete}
           onEdit={setHabitToEdit}
+          onEditCategory={setCategoryToEdit}
         />
       ) : (
         <HabitList 
@@ -354,6 +369,7 @@ export default function HabitTracker() {
           onNextPeriod={handleNextPeriod}
           onDelete={setHabitToDelete}
           onEdit={setHabitToEdit}
+          onEditCategory={setCategoryToEdit}
         />
       )}
 
@@ -377,6 +393,16 @@ export default function HabitTracker() {
         onCancel={() => setHabitToDelete(null)}
       />
 
+      <ConfirmModal
+        isOpen={!!categoryToDelete}
+        title="Delete Category"
+        message={`Are you sure you want to delete the category "${categoryToDelete?.name}"? Assigned habits will become uncategorized.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={() => handleDeleteCategory(categoryToDelete.id)}
+        onCancel={() => setCategoryToDelete(null)}
+      />
+
       {isCreationModalOpen && (
         <HabitCreationModal 
           categories={categories}
@@ -395,6 +421,23 @@ export default function HabitTracker() {
         onSuccess={() => {
           setHabitToEdit(null);
           fetchData();
+        }}
+        onDelete={() => {
+          setHabitToDelete(habitToEdit);
+          setHabitToEdit(null);
+        }}
+      />
+
+      <CategoryEditModal
+        category={categoryToEdit}
+        onClose={() => setCategoryToEdit(null)}
+        onSuccess={() => {
+          setCategoryToEdit(null);
+          fetchData();
+        }}
+        onDelete={() => {
+          setCategoryToDelete(categoryToEdit);
+          setCategoryToEdit(null);
         }}
       />
     </div>

@@ -2,7 +2,7 @@ import React from 'react';
 import { Check, X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import './HabitListMobile.css';
 
-export default function HabitListMobile({ habits, categories, logs, days, onToggleToday, onOpenDay, onDelete, onEdit }) {
+export default function HabitListMobile({ habits, categories, logs, days, onToggleToday, onOpenDay, onDelete, onEdit, onEditCategory }) {
   if (!days || days.length === 0) return null;
 
   const getLocalYYYYMMDD = (date) => {
@@ -36,22 +36,35 @@ export default function HabitListMobile({ habits, categories, logs, days, onTogg
             <div key={habit.id} className="habitCard" style={{ borderLeftColor: categoryColor }}>
               
               <div className="habitCardHeader">
-                <div 
-                  className="habitCardInfo clickableInfo"
-                  onClick={() => onEdit(habit)}
-                >
-                  <h3 className="habitCardName">{habit.name}</h3>
+                <div className="habitCardInfo">
+                  <h3 
+                    className="habitCardName clickableText"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(habit);
+                    }}
+                    title="Edit Habit"
+                  >
+                    {habit.name}
+                  </h3>
                   <div className="habitCardMeta">
-                     <span className="habitCardCategory" style={{ color: categoryColor }}>{categoryName}</span>
+                     <span 
+                       className={`habitCardCategory ${category ? 'clickableText' : ''}`}
+                       style={{ color: categoryColor }}
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         if (category) onEditCategory(category);
+                       }}
+                       title={category ? "Edit Category" : ""}
+                     >
+                       {categoryName}
+                     </span>
                      <span className={`priorityBadge ${habit.priority.toLowerCase()}`}>{habit.priority}</span>
                   </div>
                 </div>
                 <button 
                   className="mobileNavBtn" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(habit);
-                  }}
+                  onClick={() => onDelete(habit)}
                   title="Delete Habit"
                   style={{ padding: '8px', color: 'var(--text-tertiary)' }}
                 >

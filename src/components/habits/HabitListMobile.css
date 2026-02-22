@@ -77,14 +77,14 @@
   gap: 8px;
   flex: 1;
   flex-wrap: wrap;
+}
+
+.clickableText {
+  cursor: pointer;
   transition: opacity 0.2s;
 }
 
-.habitCardInfo.clickableInfo {
-  cursor: pointer;
-}
-
-.habitCardInfo.clickableInfo:hover {
+.clickableText:hover {
   opacity: 0.7;
 }
 

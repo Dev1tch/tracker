@@ -25,6 +25,15 @@ export class CategoriesApi {
   }
 
   /**
+   * Update an existing habit category
+   * @param {string} categoryId (UUID)
+   * @param {Object} categoryData { name, color, icon }
+   */
+  updateCategory(categoryId, categoryData) {
+    return apiClient.put(`/habit-categories/${categoryId}`, categoryData);
+  }
+
+  /**
    * Delete a habit category
    * @param {string} categoryId (UUID)
    */
