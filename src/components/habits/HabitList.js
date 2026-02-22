@@ -1,10 +1,26 @@
 import React from 'react';
-import { Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 
-export default function HabitList({ habits, categories, logs, days, onToggleToday, onOpenDay, onPrevMonth, onNextMonth }) {
+export default function HabitList({ habits, categories, logs, days, onToggleToday, onOpenDay, onPrevPeriod, onNextPeriod, onDelete }) {
   if (days.length === 0) return null;
   
-  const monthName = days[0].toLocaleString('default', { month: 'long', year: 'numeric' });
+  const getHeaderLabel = () => {
+    const firstDay = days[0];
+    const lastDay = days[days.length - 1];
+    if (days.length <= 7) {
+      const startMonth = firstDay.toLocaleString('default', { month: 'short' });
+      const endMonth = lastDay.toLocaleString('default', { month: 'short' });
+      if (startMonth === endMonth) {
+          return `${startMonth} ${firstDay.getDate()} - ${lastDay.getDate()}, ${firstDay.getFullYear()}`;
+      } else {
+          const endYearStr = firstDay.getFullYear() !== lastDay.getFullYear() ? ` ${lastDay.getFullYear()}` : '';
+          return `${startMonth} ${firstDay.getDate()} - ${endMonth} ${lastDay.getDate()}${endYearStr}, ${firstDay.getFullYear()}`;
+      }
+    }
+    return firstDay.toLocaleString('default', { month: 'long', year: 'numeric' });
+  };
+
+  const headerLabel = getHeaderLabel();
   const getLocalYYYYMMDD = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -20,11 +36,11 @@ export default function HabitList({ habits, categories, logs, days, onToggleToda
     <div className="habitTimetable">
       <div className="timetableHeaderRow">
         <div className="timetableMonthHeader">
-          <button className="monthNavBtn" onClick={onPrevMonth} title="Previous Month">
+          <button className="monthNavBtn" onClick={onPrevPeriod} title="Previous">
             <ChevronLeft size={16} />
           </button>
-          <span>{monthName}</span>
-          <button className="monthNavBtn" onClick={onNextMonth} title="Next Month">
+          <span>{headerLabel}</span>
+          <button className="monthNavBtn" onClick={onNextPeriod} title="Next">
             <ChevronRight size={16} />
           </button>
         </div>
@@ -42,7 +58,6 @@ export default function HabitList({ habits, categories, logs, days, onToggleToda
             );
           })}
         </div>
-        <div className="timetableActionHeader">Today</div>
       </div>
 
       <div className="timetableBody">
@@ -60,6 +75,13 @@ export default function HabitList({ habits, categories, logs, days, onToggleToda
                 <span className="habitName" style={{ fontSize: '14px' }}>{habit.name}</span>
                 <span className="habitCategory" style={{ color: categoryColor, fontSize: '9px' }}>{categoryName}</span>
                 <span className={`priorityBadge ${habit.priority.toLowerCase()}`}>{habit.priority}</span>
+                <button 
+                  className="deleteHabitBtn" 
+                  onClick={() => onDelete(habit)}
+                  title="Delete Habit"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
 
               <div className="timetableGrid">
@@ -80,31 +102,29 @@ export default function HabitList({ habits, categories, logs, days, onToggleToda
                    if (isFuture) cubeClass += ' future';
 
                    // Can only open historical (past) days that are not today and not in future
-                   const canOpen = !isToday && !isFuture;
+                   const canOpen = !isFuture;
+
+                   const handleCubeClick = () => {
+                       if (!canOpen) return;
+                       if (isToday) {
+                           onToggleToday(habit.id, status === 'completed');
+                       } else {
+                           onOpenDay(habit, date);
+                       }
+                   };
 
                    return (
                      <div 
                        key={dateStr}
                        className={cubeClass}
                        title={`${date.toDateString()} - ${status}`}
-                       onClick={() => {
-                          if (canOpen) onOpenDay(habit, date);
-                       }}
+                       onClick={handleCubeClick}
                      >
-                       {status === 'completed' && <Check size={12} color="#FFF" strokeWidth={3} />}
-                       {status === 'failed' && <X size={12} color="#ff4d4d" strokeWidth={3} />}
+                       {status === 'completed' && <Check size={14} color="#FFF" strokeWidth={3} />}
+                       {status === 'failed' && <X size={14} color="#ff4d4d" strokeWidth={3} />}
                      </div>
                    );
                 })}
-              </div>
-
-              <div className="timetableActionCell">
-                <button 
-                  className={`checkboxBtn ${isTodayCompleted ? 'completed' : ''}`}
-                  onClick={() => onToggleToday(habit.id, isTodayCompleted)}
-                  title="Mark today as completed"
-                  style={{ width: '28px', height: '28px' }}
-                />
               </div>
             </div>
           );

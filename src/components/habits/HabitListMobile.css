@@ -1,0 +1,181 @@
+.habitListMobileContainer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.mobileHeaderStrip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 5px;
+}
+
+.mobileNavTitle {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.mobileNavBtn {
+  background: transparent;
+  border: 1px solid var(--border-color-dim);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.mobileNavBtn:active {
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(0.9);
+}
+
+.habitListMobileCards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.habitCard {
+  background: rgba(15, 15, 15, 0.9);
+  border: 1px solid var(--border-color-dim);
+  border-left-width: 4px;
+  border-left-style: solid;
+  border-radius: 8px;
+  padding: 10px 8px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.habitCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+}
+
+.habitCardInfo {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.habitCardName {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1;
+}
+
+.habitCardMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.habitCardCategory {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.habitCardDaysStrip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2px;
+}
+
+.mobileDayCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 2px;
+  border-radius: 6px;
+  transition: var(--transition-fast);
+  flex: 1;
+}
+
+.mobileDayCol:not(.futureCol):active {
+  background: rgba(255, 255, 255, 0.05);
+  transform: scale(0.95);
+}
+
+.mobileDayColInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.mobileDayColName {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.mobileDayColDate {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.mobileDayCol.todayCol {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mobileDayCol.futureCol {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.statusIndicator {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusIndicator.success {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+}
+
+.statusIndicator.fail {
+  background: transparent;
+  border: 1px solid #ff4d4d;
+}
+
+.statusIndicator.empty {
+  border: 2px solid var(--border-color-dim);
+  background: transparent;
+}
+
+.statusIndicator.future {
+  border: 2px dashed rgba(255, 255, 255, 0.1);
+  background: transparent;
+}
+
+

@@ -14,6 +14,8 @@
   flex: 1;
   overflow-y: auto;
   position: relative;
+  display: flex;
+  flex-direction: column;
   /* Add padding bottom to ensure content isn't hidden behind the bottom nav */
   padding-bottom: 80px; 
 }
@@ -154,7 +156,8 @@
   }
   
   .logoutFab {
-    bottom: 20px;
+    top: 20px;
+    bottom: auto;
     right: 20px;
     width: 36px;
     height: 36px;
