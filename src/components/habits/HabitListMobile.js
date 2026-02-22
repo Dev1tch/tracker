@@ -2,7 +2,7 @@ import React from 'react';
 import { Check, X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import './HabitListMobile.css';
 
-export default function HabitListMobile({ habits, categories, logs, days, onToggleToday, onOpenDay, onDelete }) {
+export default function HabitListMobile({ habits, categories, logs, days, onToggleToday, onOpenDay, onDelete, onEdit }) {
   if (!days || days.length === 0) return null;
 
   const getLocalYYYYMMDD = (date) => {
@@ -36,7 +36,10 @@ export default function HabitListMobile({ habits, categories, logs, days, onTogg
             <div key={habit.id} className="habitCard" style={{ borderLeftColor: categoryColor }}>
               
               <div className="habitCardHeader">
-                <div className="habitCardInfo">
+                <div 
+                  className="habitCardInfo clickableInfo"
+                  onClick={() => onEdit(habit)}
+                >
                   <h3 className="habitCardName">{habit.name}</h3>
                   <div className="habitCardMeta">
                      <span className="habitCardCategory" style={{ color: categoryColor }}>{categoryName}</span>
@@ -45,10 +48,9 @@ export default function HabitListMobile({ habits, categories, logs, days, onTogg
                 </div>
                 <button 
                   className="mobileNavBtn" 
-                  onClick={() => {
-                    if (window.confirm(`Are you sure you want to delete the habit "${habit.name}"?`)) {
-                      onDelete(habit.id);
-                    }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(habit);
                   }}
                   title="Delete Habit"
                   style={{ padding: '8px', color: 'var(--text-tertiary)' }}

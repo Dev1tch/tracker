@@ -12,6 +12,7 @@ import { categoriesApi } from '@/lib/api';
 import CustomSelect from '../ui/CustomSelect';
 import useIsMobile from '@/hooks/useIsMobile';
 import ConfirmModal from '../ui/ConfirmModal';
+import HabitEditModal from './HabitEditModal';
 
 export default function HabitTracker() {
   const isMobile = useIsMobile(768);
@@ -33,6 +34,7 @@ export default function HabitTracker() {
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isCreationModalOpen, setIsCreationModalOpen] = useState(false);
   const [habitToDelete, setHabitToDelete] = useState(null);
+  const [habitToEdit, setHabitToEdit] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -338,6 +340,7 @@ export default function HabitTracker() {
           onToggleToday={handleToggleToday}
           onOpenDay={handleOpenDay}
           onDelete={setHabitToDelete}
+          onEdit={setHabitToEdit}
         />
       ) : (
         <HabitList 
@@ -350,6 +353,7 @@ export default function HabitTracker() {
           onPrevPeriod={handlePrevPeriod}
           onNextPeriod={handleNextPeriod}
           onDelete={setHabitToDelete}
+          onEdit={setHabitToEdit}
         />
       )}
 
@@ -383,6 +387,16 @@ export default function HabitTracker() {
           }}
         />
       )}
+
+      <HabitEditModal
+        habit={habitToEdit}
+        categories={categories}
+        onClose={() => setHabitToEdit(null)}
+        onSuccess={() => {
+          setHabitToEdit(null);
+          fetchData();
+        }}
+      />
     </div>
   );
 }

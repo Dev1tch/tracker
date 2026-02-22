@@ -1,7 +1,7 @@
 import React from 'react';
 import { Check, X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 
-export default function HabitList({ habits, categories, logs, days, onToggleToday, onOpenDay, onPrevPeriod, onNextPeriod, onDelete }) {
+export default function HabitList({ habits, categories, logs, days, onToggleToday, onOpenDay, onPrevPeriod, onNextPeriod, onDelete, onEdit }) {
   if (days.length === 0) return null;
   
   const getHeaderLabel = () => {
@@ -73,13 +73,20 @@ export default function HabitList({ habits, categories, logs, days, onToggleToda
 
           return (
             <div key={habit.id} className="timetableRow">
-              <div className="timetableHabitInfo" style={{ borderLeft: `4px solid ${categoryColor}` }}>
+              <div 
+                className="timetableHabitInfo clickableInfo" 
+                style={{ borderLeft: `4px solid ${categoryColor}` }}
+                onClick={() => onEdit(habit)}
+              >
                 <span className="habitName" style={{ fontSize: '14px' }}>{habit.name}</span>
                 <span className="habitCategory" style={{ color: categoryColor, fontSize: '9px' }}>{categoryName}</span>
                 <span className={`priorityBadge ${habit.priority.toLowerCase()}`}>{habit.priority}</span>
                 <button 
                   className="deleteHabitBtn" 
-                  onClick={() => onDelete(habit)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(habit);
+                  }}
                   title="Delete Habit"
                 >
                   <Trash2 size={14} />
