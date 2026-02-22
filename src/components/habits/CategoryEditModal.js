@@ -21,11 +21,11 @@ export default function CategoryEditModal({ category, onClose, onSuccess, onDele
     setIsSubmitting(true);
 
     try {
-      await categoriesApi.updateCategory(category.id, {
+      const updated = await categoriesApi.updateCategory(category.id, {
         name,
         color
       });
-      onSuccess();
+      onSuccess(updated);
     } catch (err) {
       console.error('Failed to update category', err);
       setError('Failed to update category. Please try again.');

@@ -33,14 +33,14 @@ export default function HabitEditModal({ habit, categories, onClose, onSuccess, 
     setIsSubmitting(true);
 
     try {
-      await habitsApi.updateHabit(habit.id, {
+      const updated = await habitsApi.updateHabit(habit.id, {
         name,
         description,
         priority,
         category_id: categoryId || null
       });
 
-      onSuccess(); // Close modal and refresh
+      onSuccess(updated); // Pass back the updated object
     } catch (err) {
       console.error('Failed to update habit', err);
       setError('Failed to update habit. Please try again.');

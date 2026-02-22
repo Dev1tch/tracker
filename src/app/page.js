@@ -5,6 +5,7 @@ import AuthForm from '@/components/ui/AuthForm';
 import { authApi } from '@/lib/api';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import HabitTracker from '@/components/habits/HabitTracker';
+import { ToastProvider } from '@/components/ui/ToastProvider';
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -33,7 +34,11 @@ export default function Home() {
   }
 
   if (!isAuthenticated) {
-    return <AuthForm onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <ToastProvider>
+        <AuthForm onLoginSuccess={handleLoginSuccess} />
+      </ToastProvider>
+    );
   }
 
   const renderContent = () => {
@@ -43,14 +48,14 @@ export default function Home() {
       case 'tasks':
         return (
           <div style={{ padding: '40px 60px', color: 'var(--text-primary)', position: 'relative', zIndex: 1 }}>
-            <h1 className="pageTitle">Tasks</h1>
+            {/* <h1 className="pageTitle">Tasks</h1> */}
             <p style={{ marginTop: '20px', color: 'var(--text-secondary)' }}>Task management coming soon.</p>
           </div>
         );
       case 'finance':
         return (
           <div style={{ padding: '40px 60px', color: 'var(--text-primary)', position: 'relative', zIndex: 1 }}>
-            <h1 className="pageTitle">Finance</h1>
+            {/* <h1 className="pageTitle">Finance</h1> */}
             <p style={{ marginTop: '20px', color: 'var(--text-secondary)' }}>Finance tracking coming soon.</p>
           </div>
         );
@@ -60,12 +65,14 @@ export default function Home() {
   };
 
   return (
-    <DashboardLayout 
-      activeTab={activeTab} 
-      onTabChange={setActiveTab}
-      onLogout={handleLogout}
-    >
-      {renderContent()}
-    </DashboardLayout>
+    <ToastProvider>
+      <DashboardLayout 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+        onLogout={handleLogout}
+      >
+        {renderContent()}
+      </DashboardLayout>
+    </ToastProvider>
   );
 }

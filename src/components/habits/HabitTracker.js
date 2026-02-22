@@ -14,9 +14,11 @@ import useIsMobile from '@/hooks/useIsMobile';
 import ConfirmModal from '../ui/ConfirmModal';
 import HabitEditModal from './HabitEditModal';
 import CategoryEditModal from './CategoryEditModal';
+import { useToast } from '../ui/ToastProvider';
 
 export default function HabitTracker() {
   const isMobile = useIsMobile(768);
+  const addToast = useToast();
   const [habits, setHabits] = useState([]);
   const [categories, setCategories] = useState([]);
   const [logs, setLogs] = useState({}); // Indexed by habitId -> date -> log
@@ -120,27 +122,64 @@ export default function HabitTracker() {
   const handleToggleToday = async (habitId, isCurrentlyCompleted) => {
     const today = new Date();
     const todayStr = getLocalYYYYMMDD(today);
-    const log = logs[habitId]?.[todayStr];
+    const existingLog = logs[habitId]?.[todayStr];
+    const newIsSuccessful = !isCurrentlyCompleted;
+
+    // Optimistic UI update
+    setLogs(prev => {
+      const nextLogs = { ...prev };
+      if (!nextLogs[habitId]) nextLogs[habitId] = {};
+      nextLogs[habitId] = {
+        ...nextLogs[habitId],
+        [todayStr]: {
+           ...existingLog, // if it exists
+           id: existingLog?.id || 'temp',
+           habit_id: habitId,
+           date: todayStr,
+           is_successful: newIsSuccessful,
+           comment: existingLog?.comment || ''
+        }
+      };
+      return nextLogs;
+    });
 
     try {
-      if (log) {
-        // Update existing log
-        const newIsSuccessful = !isCurrentlyCompleted;
-        await logsApi.updateLog(log.id, { is_successful: newIsSuccessful });
+      let updatedLog;
+      if (existingLog) {
+        updatedLog = await logsApi.updateLog(existingLog.id, { is_successful: newIsSuccessful });
       } else {
-        // Create new log
-        await logsApi.createLog({
+        updatedLog = await logsApi.createLog({
           habit_id: habitId,
           date: todayStr,
           is_successful: true,
           comment: ''
         });
       }
-      // Refresh data to ensure UI is in sync
-      fetchData();
+      
+      // Update with exact data from server (especially the new ID if it was created)
+      setLogs(prev => {
+        const nextLogs = { ...prev };
+        if (!nextLogs[habitId]) nextLogs[habitId] = {};
+        nextLogs[habitId] = {
+           ...nextLogs[habitId],
+           [todayStr]: updatedLog
+        };
+        return nextLogs;
+      });
+      
     } catch (err) {
       console.error('Failed to toggle habit', err);
-      alert('Failed to update habit status.');
+      // Revert optimistic update on failure
+      setLogs(prev => {
+         const nextLogs = { ...prev };
+         if (existingLog) {
+           nextLogs[habitId][todayStr] = existingLog;
+         } else {
+           delete nextLogs[habitId][todayStr];
+         }
+         return nextLogs;
+      });
+      addToast('Failed to update habit status.', 'error');
     }
   };
 
@@ -179,46 +218,61 @@ export default function HabitTracker() {
     const existingLog = logs[selectedHabit.id]?.[dateStr];
 
     try {
+      let updatedLog;
       if (existingLog) {
-        await logsApi.updateLog(existingLog.id, {
+        updatedLog = await logsApi.updateLog(existingLog.id, {
           is_successful: logData.is_successful,
           comment: logData.comment
         });
       } else {
-        await logsApi.createLog({
+        updatedLog = await logsApi.createLog({
           habit_id: selectedHabit.id,
           date: dateStr,
           is_successful: logData.is_successful,
           comment: logData.comment
         });
       }
+      
+      setLogs(prev => {
+        const nextLogs = { ...prev };
+        if (!nextLogs[selectedHabit.id]) nextLogs[selectedHabit.id] = {};
+        nextLogs[selectedHabit.id] = {
+           ...nextLogs[selectedHabit.id],
+           [dateStr]: updatedLog
+        };
+        return nextLogs;
+      });
+      
       setIsLogModalOpen(false);
-      fetchData();
+      addToast('Log saved!', 'success');
     } catch (err) {
       console.error('Failed to save log', err);
-      alert('Failed to save log.');
+      addToast('Failed to save log.', 'error');
     }
   };
 
   const handleDeleteHabit = async (habitId) => {
     try {
       await habitsApi.updateHabit(habitId, { is_active: false });
+      setHabits(prev => prev.filter(h => h.id !== habitId));
       setHabitToDelete(null);
-      fetchData();
+      addToast('Habit deleted', 'success');
     } catch (err) {
       console.error('Failed to delete habit', err);
-      alert('Failed to delete habit.');
+      addToast('Failed to delete habit.', 'error');
     }
   };
 
   const handleDeleteCategory = async (categoryId) => {
     try {
       await categoriesApi.deleteCategory(categoryId);
+      setCategories(prev => prev.filter(c => c.id !== categoryId));
+      setHabits(prev => prev.map(h => h.category_id === categoryId ? { ...h, category_id: null } : h));
       setCategoryToDelete(null);
-      fetchData();
+      addToast('Category deleted', 'success');
     } catch (err) {
       console.error('Failed to delete category', err);
-      alert('Failed to delete category.');
+      addToast('Failed to delete category.', 'error');
     }
   };
 
@@ -410,6 +464,7 @@ export default function HabitTracker() {
           onSuccess={() => {
             setIsCreationModalOpen(false);
             fetchData();
+            addToast('Habit created!', 'success');
           }}
         />
       )}
@@ -418,9 +473,14 @@ export default function HabitTracker() {
         habit={habitToEdit}
         categories={categories}
         onClose={() => setHabitToEdit(null)}
-        onSuccess={() => {
+        onSuccess={(updatedHabit) => {
+          if (updatedHabit) {
+            setHabits(prev => prev.map(h => h.id === updatedHabit.id ? updatedHabit : h));
+          } else {
+            fetchData(); // Fallback if no data provided
+          }
           setHabitToEdit(null);
-          fetchData();
+          addToast('Habit details saved!', 'success');
         }}
         onDelete={() => {
           setHabitToDelete(habitToEdit);
@@ -431,9 +491,14 @@ export default function HabitTracker() {
       <CategoryEditModal
         category={categoryToEdit}
         onClose={() => setCategoryToEdit(null)}
-        onSuccess={() => {
+        onSuccess={(updatedCategory) => {
+          if (updatedCategory) {
+            setCategories(prev => prev.map(c => c.id === updatedCategory.id ? updatedCategory : c));
+          } else {
+            fetchData(); // Fallback if no data provided
+          }
           setCategoryToEdit(null);
-          fetchData();
+          addToast('Category saved!', 'success');
         }}
         onDelete={() => {
           setCategoryToDelete(categoryToEdit);

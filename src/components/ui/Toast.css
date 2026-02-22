@@ -1,0 +1,118 @@
+.toastContainer {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+  pointer-events: none; /* Let clicks pass through the container void */
+}
+
+.toastItem {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  color: white;
+  min-width: 250px;
+  max-width: 350px;
+  background: transparent;
+  backdrop-filter: blur(10px);
+  /* The mounting animation */
+  animation: slideInRight 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* When the closing class is added, smoothly collapse */
+.toastItem.closing {
+  animation: collapseOut 0.3s ease-in forwards;
+}
+
+.toastItem.success {
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+  color: var(--text-primary);
+}
+
+.toastItem.success .toastIcon {
+  color: #2ecc71;
+}
+
+.toastItem.error {
+  border: 1px dashed #ff4d4d;
+  border-radius: 5px;
+  color: #ff4d4d;
+}
+
+.toastItem.error .toastIcon {
+  color: #ff4d4d;
+}
+
+.toastIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toastMessage {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.toastClose {
+  background: none;
+  border: none;
+  color: #ff4d4d;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.toastClose:hover {
+  color: #ff0000;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes collapseOut {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 100px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 10px; /* Gap fallback */
+  }
+  50% {
+    opacity: 0;
+    transform: translateX(20px);
+    max-height: 100px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(20px);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border-width: 0;
+    overflow: hidden;
+  }
+}
