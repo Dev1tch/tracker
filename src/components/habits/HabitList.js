@@ -48,12 +48,14 @@ export default function HabitList({ habits, categories, logs, days, onToggleToda
           {days.map((date) => {
             const isMonday = date.getDay() === 1;
             const isToday = getLocalYYYYMMDD(date) === todayStr;
+            const dayShort = date.toLocaleString('default', { weekday: 'short' });
             return (
               <div 
                 key={date.toISOString()} 
                 className={`timetableDayLabel ${isMonday ? 'weekStart' : ''} ${isToday ? 'todayLabel' : ''}`}
               >
-                {date.getDate()}
+                <span className="dayNameShort">{dayShort}</span>
+                <span className="dayNum">{date.getDate()}</span>
               </div>
             );
           })}
