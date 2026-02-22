@@ -2,6 +2,14 @@ import { apiClient } from './client.js';
 
 export class LogsApi {
   /**
+   * Get habit logs for a specific timeframe (and optionally specific habits)
+   * @param {Object} data { start_date, end_date, habit_ids }
+   */
+  getTimeframeLogs(data) {
+    return apiClient.post('/habit-logs/timeframe', data);
+  }
+
+  /**
    * Get habit logs
    * @param {Object} filters { habit_id, day }
    */

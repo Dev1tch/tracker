@@ -3,10 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import AuthForm from '@/components/ui/AuthForm';
 import { authApi } from '@/lib/api';
+import DashboardLayout from '@/components/layout/DashboardLayout';
+import HabitTracker from '@/components/habits/HabitTracker';
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('habits');
 
   useEffect(() => {
     const token = authApi.getCurrentToken();
@@ -33,23 +36,36 @@ export default function Home() {
     return <AuthForm onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'habits':
+        return <HabitTracker />;
+      case 'tasks':
+        return (
+          <div style={{ padding: '40px 60px', color: 'var(--text-primary)', position: 'relative', zIndex: 1 }}>
+            <h1 className="pageTitle">Tasks</h1>
+            <p style={{ marginTop: '20px', color: 'var(--text-secondary)' }}>Task management coming soon.</p>
+          </div>
+        );
+      case 'finance':
+        return (
+          <div style={{ padding: '40px 60px', color: 'var(--text-primary)', position: 'relative', zIndex: 1 }}>
+            <h1 className="pageTitle">Finance</h1>
+            <p style={{ marginTop: '20px', color: 'var(--text-secondary)' }}>Finance tracking coming soon.</p>
+          </div>
+        );
+      default:
+        return <HabitTracker />;
+    }
+  };
+
   return (
-    <main style={{ padding: '40px', background: '#000', minHeight: '100vh', color: '#fff' }}>
-      <h1>Welcome to Life tracker</h1>
-      <p>Hello! You are now authenticated.</p>
-      <button 
-        onClick={handleLogout}
-        style={{ 
-          background: 'transparent', 
-          border: '1px solid rgba(255,255,255,0.2)', 
-          color: '#fff', 
-          padding: '10px 20px', 
-          cursor: 'pointer',
-          marginTop: '20px'
-        }}
-      >
-        Sign out
-      </button>
-    </main>
+    <DashboardLayout 
+      activeTab={activeTab} 
+      onTabChange={setActiveTab}
+      onLogout={handleLogout}
+    >
+      {renderContent()}
+    </DashboardLayout>
   );
 }

@@ -1,0 +1,462 @@
+/* Habit Tracker Container */
+.habitTrackerContainer {
+  padding: 40px 60px;
+  position: relative;
+  z-index: 10;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.habitHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.habitToolbar {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 40px;
+  align-items: center;
+}
+
+.searchInput {
+  flex: 1;
+  max-width: 300px;
+}
+
+/* Timetable View */
+.habitTimetable {
+  display: flex;
+  flex-direction: column;
+  background: rgba(20, 20, 20, 0.6);
+  border: 1px solid var(--border-color-dim);
+  border-radius: 8px;
+  overflow-x: auto;
+  backdrop-filter: blur(5px);
+}
+
+.timetableHeaderRow {
+  display: flex;
+  align-items: center;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--border-color-dim);
+}
+
+.timetableMonthHeader {
+  width: 250px;
+  min-width: 250px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.monthNavBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: var(--transition-fast);
+}
+
+.monthNavBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.timetableDaysHeader {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  padding: 0 10px;
+}
+
+.timetableDayLabel {
+  flex: 1;
+  max-width: 20px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.timetableDayLabel.weekStart {
+  margin-left: 8px;
+}
+
+.timetableDayLabel.todayLabel {
+  color: var(--text-primary);
+  font-weight: bold;
+}
+
+.timetableActionHeader {
+  width: 80px;
+  min-width: 80px;
+  text-align: center;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.timetableRow {
+  display: flex;
+  align-items: center;
+  padding: 15px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+  transition: background 0.2s;
+}
+
+.timetableRow:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+.timetableRow:last-child {
+  border-bottom: none;
+}
+
+.timetableHabitInfo {
+  width: 250px;
+  min-width: 250px;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.habitName {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
+.habitCategory {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.priorityBadge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: bold;
+  margin-top: 4px;
+  width: fit-content;
+}
+
+.priorityBadge.high {
+  background: rgba(255, 77, 77, 0.2);
+  color: #ff4d4d;
+}
+
+.priorityBadge.medium {
+  background: rgba(255, 165, 0, 0.2);
+  color: orange;
+}
+
+.priorityBadge.normal {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+
+.timetableGrid {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  padding: 0 10px;
+}
+
+.timetableActionCell {
+  width: 80px;
+  min-width: 80px;
+  display: flex;
+  justify-content: center;
+  margin-left: auto;
+}
+
+/* Checkbox Button */
+.checkboxBtn {
+  background: transparent;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--text-tertiary);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-smooth);
+}
+
+.checkboxBtn.completed {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--text-primary);
+  box-shadow: 0 0 15px var(--glow-color);
+}
+
+.checkboxBtn.completed::after {
+  content: '✓';
+  color: var(--text-primary);
+  font-size: 16px;
+  text-shadow: 0 0 5px var(--text-primary);
+}
+
+.checkboxBtn:not(.completed):hover {
+  border-color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Day Cubes Grid */
+.dayCube {
+  flex: 1;
+  aspect-ratio: 1 / 1;
+  max-width: 20px;
+  max-height: 20px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color-dim);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dayCube:hover {
+  border-color: var(--text-secondary);
+  transform: translateY(-2px);
+}
+
+.dayCube.success {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: #fff;
+  box-shadow: 0 0 10px var(--glow-color);
+}
+
+.dayCube.fail {
+  background: rgba(255, 77, 77, 0.3);
+  border-color: rgba(255, 77, 77, 0.6);
+}
+
+/* Default styling for empty state is handled by base .dayCube class */
+
+.dayCube.today {
+  border-color: var(--text-primary);
+}
+
+.dayCube.weekStart {
+  margin-left: 8px; /* Visual separation for new week */
+}
+
+.dayCube.future {
+  opacity: 0.3;
+  cursor: not-allowed;
+  border-color: transparent;
+}
+
+.dayCube.future:hover {
+  transform: none;
+  border-color: transparent;
+}
+
+/* Modal Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(5px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: authFadeIn 0.3s ease;
+}
+
+.modalContent {
+  background: #111;
+  border: 1px solid var(--border-color);
+  padding: 40px;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 450px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+
+.modalHeader {
+  margin-bottom: 30px;
+}
+
+.modalTitle {
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+}
+
+.modalDate {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.statusToggle {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+}
+
+.statusBtn {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid var(--border-color-dim);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: var(--transition-fast);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.statusBtn.success {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.statusBtn.success.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: #fff;
+  box-shadow: 0 0 15px var(--glow-color);
+}
+
+.statusBtn.fail {
+  border-color: rgba(255, 77, 77, 0.3);
+}
+
+.statusBtn.fail.active {
+  background: rgba(255, 77, 77, 0.1);
+  color: #ff4d4d;
+  border-color: #ff4d4d;
+}
+
+.commentInput {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color-dim);
+  color: var(--text-primary);
+  padding: 15px;
+  border-radius: 4px;
+  min-height: 100px;
+  resize: vertical;
+  font-family: var(--font-main);
+  margin-bottom: 30px;
+}
+
+.commentInput:focus {
+  outline: none;
+  border-color: var(--text-secondary);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 10px 15px;
+}
+
+.btn-secondary:hover {
+  color: var(--text-primary);
+}
+
+/* Creation Form Overrides */
+.formGroup {
+  margin-bottom: 20px;
+}
+
+.formGroup label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.inlineCategoryCreation {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-color-dim);
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+.inlineCategoryCreation .formGroup:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .habitTrackerContainer {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .habitTrackerContainer {
+    padding: 20px 10px;
+  }
+
+  .habitHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .habitToolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .searchInput {
+    max-width: 100%;
+  }
+
+  .habitToolbar > div {
+    width: 100% !important; /* Override inline styles from JS for mobile */
+  }
+
+  /* Force the timetable to enforce minimum widths on mobile to keep cubes tappable */
+  .timetableHeaderRow,
+  .timetableRow {
+    min-width: 700px;
+  }
+}

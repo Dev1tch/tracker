@@ -44,6 +44,12 @@ export class ApiClient {
       const data = await this.parseResponse(response);
 
       if (!response.ok) {
+        // Handle Unauthorized / Token Expiry globally
+        if (response.status === 401 && typeof window !== 'undefined') {
+          this.setToken(null);
+          window.location.reload();
+        }
+
         const error = new Error(data.detail || response.statusText || 'API Request Failed');
         error.status = response.status;
         error.data = data;

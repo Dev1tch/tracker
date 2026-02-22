@@ -1,0 +1,166 @@
+.dashboardContainer {
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Main Content Area */
+.mainContent {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  /* Add padding bottom to ensure content isn't hidden behind the bottom nav */
+  padding-bottom: 80px; 
+}
+
+/* Optional Particle Background for Dashboard */
+.dashboardParticles {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  opacity: 0.2; 
+  pointer-events: none;
+}
+
+/* Top Header (Optional Minimal Branding) */
+.topHeader {
+  position: absolute;
+  top: 30px;
+  left: 40px;
+  z-index: 20;
+}
+
+.brand {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0.6;
+}
+
+.brand::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--text-tertiary);
+  transform: rotate(45deg);
+  box-shadow: 0 0 10px var(--glow-color);
+}
+
+/* Bottom Navigation */
+.bottomNav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 100%);
+  border-top: 1px solid var(--border-color-dim);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  padding: 15px 0;
+}
+
+.navContainer {
+  display: flex;
+  gap: 40px;
+}
+
+.navItem {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.navItem:hover {
+  color: var(--text-secondary);
+}
+
+.navItem.active {
+  color: var(--text-primary);
+  text-shadow: 0 0 10px var(--glow-color);
+}
+
+.navItem svg {
+  transition: transform 0.3s ease;
+}
+
+.navItem.active svg {
+  transform: translateY(-3px);
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
+}
+
+.navLabel {
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* Floating Logout Button */
+.logoutFab {
+  position: fixed;
+  bottom: 15px; /* (70px nav - 40px button) / 2 = 15px */
+  right: 30px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(20, 20, 20, 0.6);
+  border: 1px solid var(--border-color-dim);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 101; /* Above the bottom nav */
+  transition: var(--transition-fast);
+  backdrop-filter: blur(5px);
+}
+
+.logoutFab:hover {
+  color: #ff4d4d;
+  border-color: rgba(255, 77, 77, 0.3);
+  background: rgba(40, 10, 10, 0.6);
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(255, 77, 77, 0.2);
+}
+
+/* Responsive Overrides */
+@media (max-width: 768px) {
+  .topHeader {
+    top: 20px;
+    left: 20px;
+  }
+  
+  .navContainer {
+    gap: 30px;
+  }
+  
+  .logoutFab {
+    bottom: 20px;
+    right: 20px;
+    width: 36px;
+    height: 36px;
+  }
+  
+  .mainContent {
+    padding-bottom: 70px;
+  }
+}

@@ -3,6 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './AuthForm.css';
 import { authApi } from '@/lib/api';
+import zxcvbn from 'zxcvbn';
+
+// Standard RFC 5322 Email Regex Approximation
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 export default function AuthForm({ onLoginSuccess }) {
   const [activeTab, setActiveTab] = useState('login');
@@ -14,6 +18,7 @@ export default function AuthForm({ onLoginSuccess }) {
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [passwordScore, setPasswordScore] = useState(0);
   
   const canvasRef = useRef(null);
 
@@ -133,12 +138,22 @@ export default function AuthForm({ onLoginSuccess }) {
   }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
     setError('');
+
+    if (name === 'password' && activeTab === 'signup') {
+      const evaluation = zxcvbn(value);
+      setPasswordScore(evaluation.score); // 0-4
+    }
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!EMAIL_REGEX.test(formData.email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
@@ -153,6 +168,27 @@ export default function AuthForm({ onLoginSuccess }) {
 
   const handleSignup = async (e) => {
     e.preventDefault();
+    
+    if (!EMAIL_REGEX.test(formData.email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (formData.password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+
+    if (formData.password.length > 128) {
+      setError('Password cannot exceed 128 characters.');
+      return;
+    }
+
+    const evaluation = zxcvbn(formData.password);
+    if (evaluation.score < 2) {
+      setError(`Password is too weak. ${evaluation.feedback.warning || 'Please choose a less common password.'}`);
+      return;
+    }
     setIsLoading(true);
     setError('');
     
@@ -198,7 +234,7 @@ export default function AuthForm({ onLoginSuccess }) {
 
           <div className="authFormFade">
             {activeTab === 'login' ? (
-              <form onSubmit={handleLogin}>
+              <form onSubmit={handleLogin} noValidate>
                 <div className="authInputGroup">
                   <input 
                     type="email" 
@@ -227,7 +263,7 @@ export default function AuthForm({ onLoginSuccess }) {
                 </button>
               </form>
             ) : (
-              <form onSubmit={handleSignup}>
+              <form onSubmit={handleSignup} noValidate>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <div className="authInputGroup" style={{ flex: 1 }}>
                     <input 
