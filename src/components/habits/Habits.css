@@ -396,7 +396,7 @@
   top: 0;
   left: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100%;
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(5px);
   z-index: 1000;
@@ -405,6 +405,8 @@
   justify-content: center;
   padding: 40px 20px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* Crucial for iOS momentum scroll */
+  overscroll-behavior: contain; /* Prevents scroll chaining to body */
   animation: authFadeIn 0.3s ease;
 }
 
