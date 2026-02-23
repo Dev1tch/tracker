@@ -152,7 +152,8 @@
 .timetableHabitInfo {
   width: 250px;
   min-width: 250px;
-  padding: 5px 20px;
+  max-width: 250px;
+  padding: 5px 35px 5px 20px;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -173,7 +174,7 @@
 
 .deleteHabitBtn {
   position: absolute;
-  right: 15px;
+  right: 8px;
   background: transparent;
   border: none;
   color: #ff4d4d;
@@ -201,6 +202,12 @@
   letter-spacing: 0.05em;
   color: var(--text-primary);
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: inline-block;
+  box-sizing: border-box;
 }
 
 .habitCategory {
@@ -208,6 +215,12 @@
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+  display: inline-block;
+  box-sizing: border-box;
 }
 
 .priorityBadge {
