@@ -1,5 +1,5 @@
 .habitTrackerContainer {
-  padding: 30px 15px 0 0px; /* Minimal padding, fill screen */
+  padding: 0 20px 0 20px; /* Centered with breathing room on desktop */
   position: relative;
   width: 100%;
   flex: 1;
