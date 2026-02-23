@@ -147,8 +147,14 @@
 /* Responsive Overrides */
 @media (max-width: 768px) {
   .topHeader {
-    top: 20px;
-    left: 20px;
+    position: relative;
+    top: 0;
+    left: 0;
+    padding: 15px 20px;
+    width: 100%;
+    z-index: 20;
+    background: var(--bg-color);
+    border-bottom: 1px solid var(--border-color-dim);
   }
   
   .navContainer {

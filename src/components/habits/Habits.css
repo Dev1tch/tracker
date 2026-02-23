@@ -550,7 +550,14 @@
 
 @media (max-width: 768px) {
   .habitTrackerContainer {
-    padding: 0 10px 20px 10px; /* Reduced padding, top padding moved to sticky header */
+    padding-top: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-bottom: 20px; /* Reduced padding, top padding moved to sticky header */
+  }
+  
+  .mobileHeaderStrip {
+    margin-bottom: 10px;
   }
 
   .habitStickyHeader.mobileSticky {
