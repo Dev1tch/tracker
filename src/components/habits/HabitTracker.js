@@ -45,6 +45,20 @@ export default function HabitTracker() {
     fetchData();
   }, [currentDisplayDate]);
 
+  // Handle body scroll locking and z-index overrides when any modal is open
+  useEffect(() => {
+    const isAnyModalOpen = isLogModalOpen || !!habitToEdit || !!categoryToEdit || 
+                          !!habitToDelete || !!categoryToDelete || isCreationModalOpen;
+    
+    if (isAnyModalOpen) {
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.classList.remove('modal-open');
+    }
+
+    return () => document.body.classList.remove('modal-open');
+  }, [isLogModalOpen, habitToEdit, categoryToEdit, habitToDelete, categoryToDelete, isCreationModalOpen]);
+
   const getLocalYYYYMMDD = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');

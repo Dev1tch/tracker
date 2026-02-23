@@ -167,3 +167,13 @@
     padding-bottom: 70px;
   }
 }
+
+/* Ensure modals are on top of everything including nav */
+body.modal-open .bottomNav,
+body.modal-open .logoutFab {
+  z-index: 50; /* Lower than modalOverlay's 9999 */
+}
+
+body.modal-open {
+  overflow: hidden; /* Prevent background scroll */
+}
