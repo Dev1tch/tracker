@@ -501,9 +501,9 @@
   align-self: stretch;
   width: 100%;
   height: 30px;
-  border: 1px solid var(--border-color-dim);
+  border: none;
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
   color: var(--text-tertiary);
   display: inline-flex;
   align-items: center;
@@ -522,7 +522,7 @@
 
 .tasksColumnAddBtn:hover {
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.35);
+  background: transparent;
 }
 
 .tasksColumn.isDropTarget {
