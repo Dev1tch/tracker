@@ -1,36 +1,30 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useSyncExternalStore } from 'react';
 import AuthForm from '@/components/ui/AuthForm';
 import { authApi } from '@/lib/api';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import HabitTracker from '@/components/habits/HabitTracker';
+import TasksBoard from '@/features/tasks';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 
 export default function Home() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [, setAuthTick] = useState(0);
   const [activeTab, setActiveTab] = useState('habits');
-
-  useEffect(() => {
-    const token = authApi.getCurrentToken();
-    if (token) {
-      setIsAuthenticated(true);
-    }
-    setLoading(false);
-  }, []);
+  const subscribeAuth = useCallback(() => () => {}, []);
+  const isAuthenticated = useSyncExternalStore(
+    subscribeAuth,
+    () => Boolean(authApi.getCurrentToken()),
+    () => false
+  );
 
   const handleLoginSuccess = () => {
-    setIsAuthenticated(true);
+    setAuthTick((value) => value + 1);
   };
 
   const handleLogout = () => {
     authApi.logout();
-    setIsAuthenticated(false);
-  };
-
-  if (loading) {
-    return <div style={{ background: '#000', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>Initializing...</div>;
+    setAuthTick((value) => value + 1);
   }
 
   if (!isAuthenticated) {
@@ -46,12 +40,7 @@ export default function Home() {
       case 'habits':
         return <HabitTracker />;
       case 'tasks':
-        return (
-          <div style={{ padding: '40px 60px', color: 'var(--text-primary)', position: 'relative', zIndex: 1 }}>
-            {/* <h1 className="pageTitle">Tasks</h1> */}
-            <p style={{ marginTop: '20px', color: 'var(--text-secondary)' }}>Task management coming soon.</p>
-          </div>
-        );
+        return <TasksBoard />;
       case 'finance':
         return (
           <div style={{ padding: '40px 60px', color: 'var(--text-primary)', position: 'relative', zIndex: 1 }}>

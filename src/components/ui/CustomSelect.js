@@ -7,7 +7,8 @@ export default function CustomSelect({
   onChange, 
   placeholder = "Select an option",
   onCreateNew,
-  createNewText = "+ Create New"
+  createNewText = "+ Create New",
+  multiple = false
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -23,7 +24,38 @@ export default function CustomSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const selectedValues = multiple
+    ? (Array.isArray(value) ? value : [])
+    : [];
+  const selectedOptions = multiple
+    ? options.filter((opt) => selectedValues.includes(opt.value))
+    : [];
   const selectedOption = options.find(opt => opt.value === value);
+  const displayLabel = multiple
+    ? (
+      selectedOptions.length === 0
+        ? placeholder
+        : selectedOptions.length <= 2
+          ? selectedOptions.map((opt) => opt.label).join(', ')
+          : `${selectedOptions.length} selected`
+    )
+    : (selectedOption ? selectedOption.label : placeholder);
+  const hasValue = multiple
+    ? selectedOptions.length > 0
+    : Boolean(selectedOption);
+
+  const handleOptionSelect = (optionValue) => {
+    if (multiple) {
+      const next = selectedValues.includes(optionValue)
+        ? selectedValues.filter((item) => item !== optionValue)
+        : [...selectedValues, optionValue];
+      onChange(next);
+      return;
+    }
+
+    onChange(optionValue);
+    setIsOpen(false);
+  };
 
   return (
     <div className="customSelectContainer" ref={containerRef}>
@@ -31,8 +63,8 @@ export default function CustomSelect({
         className={`customSelectHeader ${isOpen ? 'open' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <span style={{ color: selectedOption ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-          {selectedOption ? selectedOption.label : placeholder}
+        <span style={{ color: hasValue ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+          {displayLabel}
         </span>
         <ChevronDown 
           size={16} 
@@ -46,11 +78,12 @@ export default function CustomSelect({
           {options.map((option) => (
             <div 
               key={option.value}
-              className={`customSelectOption ${option.value === value ? 'selected' : ''}`}
-              onClick={() => {
-                onChange(option.value);
-                setIsOpen(false);
-              }}
+              className={`customSelectOption ${
+                (multiple ? selectedValues.includes(option.value) : option.value === value)
+                  ? 'selected'
+                  : ''
+              }`}
+              onClick={() => handleOptionSelect(option.value)}
             >
               {option.color && (
                 <span 
@@ -64,6 +97,7 @@ export default function CustomSelect({
                   }} 
                 />
               )}
+              {multiple && selectedValues.includes(option.value) ? '✓ ' : ''}
               {option.label}
             </div>
           ))}

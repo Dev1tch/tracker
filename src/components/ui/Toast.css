@@ -49,6 +49,16 @@
   color: #ff4d4d;
 }
 
+.toastItem.warning {
+  border: 1px dashed #facc15;
+  border-radius: 5px;
+  color: #facc15;
+}
+
+.toastItem.warning .toastIcon {
+  color: #facc15;
+}
+
 .toastIcon {
   display: flex;
   align-items: center;
@@ -64,7 +74,7 @@
 .toastClose {
   background: none;
   border: none;
-  color: #ff4d4d;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
   display: flex;
@@ -73,8 +83,28 @@
   transition: color 0.2s;
 }
 
-.toastClose:hover {
+.toastItem.success .toastClose {
+  color: #ffffff;
+}
+
+.toastItem.success .toastClose:hover {
+  color: #e5e7eb;
+}
+
+.toastItem.error .toastClose {
+  color: #ff4d4d;
+}
+
+.toastItem.error .toastClose:hover {
   color: #ff0000;
+}
+
+.toastItem.warning .toastClose {
+  color: #facc15;
+}
+
+.toastItem.warning .toastClose:hover {
+  color: #f59e0b;
 }
 
 @keyframes slideInRight {

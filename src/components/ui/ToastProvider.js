@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { CheckCircle, XCircle, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, X } from 'lucide-react';
 import './Toast.css';
 
 const ToastContext = createContext(null);
@@ -36,7 +36,13 @@ export function ToastProvider({ children }) {
         {toasts.map((toast) => (
           <div key={toast.id} className={`toastItem ${toast.type} ${toast.isClosing ? 'closing' : ''}`}>
             <div className="toastIcon">
-              {toast.type === 'success' ? <CheckCircle size={18} /> : <XCircle size={18} />}
+              {toast.type === 'success' ? (
+                <CheckCircle size={18} />
+              ) : toast.type === 'warning' ? (
+                <AlertTriangle size={18} />
+              ) : (
+                <XCircle size={18} />
+              )}
             </div>
             <div className="toastMessage">{toast.message}</div>
             <button className="toastClose" onClick={() => removeToast(toast.id)}>
