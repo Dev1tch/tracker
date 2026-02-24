@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { categoriesApi, habitsApi } from '@/lib/api';
-import CustomSelect from '../ui/CustomSelect';
+import CustomSelect from '@/components/ui/CustomSelect';
 
-export default function HabitEditModal({ habit, categories, onClose, onSuccess, onDelete }) {
+export default function HabitCreationModal({ categories, onClose, onSuccess }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -18,32 +18,25 @@ export default function HabitEditModal({ habit, categories, onClose, onSuccess, 
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
 
-  useEffect(() => {
-    if (habit) {
-      setName(habit.name || '');
-      setDescription(habit.description || '');
-      setPriority(habit.priority || 'Normal');
-      setCategoryId(habit.category_id || '');
-    }
-  }, [habit]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
 
     try {
-      const updated = await habitsApi.updateHabit(habit.id, {
+      // Create the Habit
+      await habitsApi.createHabit({
         name,
         description,
         priority,
-        category_id: categoryId || null
+        category_id: categoryId || null,
+        is_active: true
       });
 
-      onSuccess(updated); // Pass back the updated object
+      onSuccess(); // Close modal and refresh
     } catch (err) {
-      console.error('Failed to update habit', err);
-      setError('Failed to update habit. Please try again.');
+      console.error('Failed to create habit', err);
+      setError('Failed to create habit. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -65,7 +58,7 @@ export default function HabitEditModal({ habit, categories, onClose, onSuccess, 
         icon: 'circle'
       });
       
-      // Update local categories list optimistically
+      // Update local categories list optimistically (or rely on parent refresh)
       categories.push(newCat);
       setCategoryId(newCat.id);
       setIsCreatingCategory(false);
@@ -90,13 +83,11 @@ export default function HabitEditModal({ habit, categories, onClose, onSuccess, 
     ...categories.map(c => ({ value: c.id, label: c.name, color: c.color }))
   ];
 
-  if (!habit) return null;
-
   return (
     <div className="modalOverlay" onClick={onClose}>
       <div className="modalContent" onClick={(e) => e.stopPropagation()}>
         <div className="modalHeader">
-          <h2 className="modalTitle">Edit Habit</h2>
+          <h2 className="modalTitle">Create New Habit</h2>
         </div>
 
         {error && <div className="authError" style={{ marginBottom: '20px', padding: '10px' }}>{error}</div>}
@@ -201,26 +192,13 @@ export default function HabitEditModal({ habit, categories, onClose, onSuccess, 
             />
           </div>
 
-          <div className="modalActions" style={{ marginTop: '30px', display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-            {onDelete ? (
-              <button 
-                type="button" 
-                className="btn-secondary" 
-                onClick={onDelete} 
-                disabled={isSubmitting}
-                style={{ color: '#ff4d4d', borderColor: 'rgba(255, 77, 77, 0.3)' }}
-              >
-                Delete Habit
-              </button>
-            ) : <div />}
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary" disabled={isSubmitting || !name}>
-                {isSubmitting ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
+          <div className="modalActions" style={{ marginTop: '30px' }}>
+            <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={isSubmitting || !name}>
+              {isSubmitting ? 'Creating...' : 'Create Habit'}
+            </button>
           </div>
 
         </form>

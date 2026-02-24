@@ -6,15 +6,15 @@ import './Habits.css';
 import { habitsApi, logsApi } from '@/lib/api';
 import HabitList from './HabitList';
 import HabitListMobile from './HabitListMobile';
-import HabitLogModal from './HabitLogModal';
-import HabitCreationModal from './HabitCreationModal';
+import HabitLogModal from './components/HabitLogModal';
+import HabitCreationModal from './components/HabitCreationModal';
 import { categoriesApi } from '@/lib/api';
-import CustomSelect from '../ui/CustomSelect';
+import CustomSelect from '@/components/ui/CustomSelect';
 import useIsMobile from '@/hooks/useIsMobile';
-import ConfirmModal from '../ui/ConfirmModal';
-import HabitEditModal from './HabitEditModal';
-import CategoryEditModal from './CategoryEditModal';
-import { useToast } from '../ui/ToastProvider';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import HabitEditModal from './components/HabitEditModal';
+import CategoryEditModal from './components/CategoryEditModal';
+import { useToast } from '@/components/ui/ToastProvider';
 
 export default function HabitTracker() {
   const isMobile = useIsMobile(768);
@@ -412,7 +412,7 @@ export default function HabitTracker() {
       {error && <div className="authError" style={{ marginBottom: '20px' }}>{error}</div>}
 
       {habits.length === 0 && !error && !isLoading ? (
-        <p style={{ color: 'var(--text-secondary)' }}>You don't have any active habits. Create one to get started!</p>
+        <p style={{ color: 'var(--text-secondary)' }}>You do not have any active habits. Create one to get started!</p>
       ) : isMobile ? (
         <HabitListMobile 
           habits={filteredAndSortedHabits} 

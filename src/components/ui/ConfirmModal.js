@@ -1,5 +1,5 @@
 import React from 'react';
-import '../habits/Habits.css';
+import '../../features/habits/Habits.css';
 
 export default function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, confirmText = "Confirm", cancelText = "Cancel" }) {
   if (!isOpen) return null;

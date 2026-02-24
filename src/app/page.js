@@ -4,7 +4,7 @@ import React, { useCallback, useState, useSyncExternalStore } from 'react';
 import AuthForm from '@/components/ui/AuthForm';
 import { authApi } from '@/lib/api';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import HabitTracker from '@/components/habits/HabitTracker';
+import HabitTracker from '@/features/habits/HabitTracker';
 import TasksBoard from '@/features/tasks';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 

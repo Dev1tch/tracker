@@ -1001,6 +1001,13 @@ export default function TasksBoard() {
     setDragTaskId(null);
     setDragOverStatus('');
   };
+  const handleOpenCreateForStatus = (status) => {
+    setCreateForm({
+      ...DEFAULT_CREATE_FORM,
+      status,
+    });
+    setIsCreateOpen(true);
+  };
   const handleColumnDragEnd = () => {
     setDragColumnStatus(null);
     setDragOverColumnStatus('');
@@ -1504,6 +1511,19 @@ export default function TasksBoard() {
                         </div>
                       );
                     })}
+                    {!selectionMode ? (
+                      <button
+                        type="button"
+                        className="tasksColumnAddBtn"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenCreateForStatus(status);
+                        }}
+                        title={`Add task in ${statusMeta.label}`}
+                      >
+                        <Plus size={14} />
+                      </button>
+                    ) : null}
                   </div>
                 </article>
               );

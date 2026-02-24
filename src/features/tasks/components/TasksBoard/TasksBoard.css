@@ -496,6 +496,35 @@
   padding: 10px;
 }
 
+.tasksColumnAddBtn {
+  margin-top: 2px;
+  align-self: stretch;
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--border-color-dim);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: var(--transition-fast);
+}
+
+.tasksColumn:hover .tasksColumnAddBtn,
+.tasksColumn:focus-within .tasksColumnAddBtn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tasksColumnAddBtn:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
 .tasksColumn.isDropTarget {
   box-shadow: inset 0 0 0 2px rgba(147, 197, 253, 0.45);
 }
