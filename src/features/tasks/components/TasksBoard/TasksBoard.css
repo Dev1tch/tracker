@@ -1072,9 +1072,11 @@
   position: relative;
   cursor: crosshair;
   border: 1px solid var(--border-color-dim);
+  box-sizing: border-box;
+  overflow: hidden;
   background:
-    radial-gradient(circle at center, #ffffff 0%, rgba(255, 255, 255, 0) 62%),
-    conic-gradient(
+    radial-gradient(circle at center, #ffffff 0%, rgba(255, 255, 255, 0) 100%),
+    conic-gradient(from 90deg,
       #ff0000 0deg,
       #ffff00 60deg,
       #00ff00 120deg,
