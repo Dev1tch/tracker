@@ -45,6 +45,7 @@ export default function TasksDatePicker({
   className = '',
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [openUp, setOpenUp] = useState(false);
   const containerRef = useRef(null);
   const isRangeMode = typeof onRangeChange === 'function';
 
@@ -69,6 +70,28 @@ export default function TasksDatePicker({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen || !containerRef.current) return undefined;
+
+    const estimatePopoverHeight = 310;
+
+    function handleViewportChange() {
+      const nextRect = containerRef.current?.getBoundingClientRect();
+      if (!nextRect) return;
+      const nextBelow = window.innerHeight - nextRect.bottom;
+      const nextAbove = nextRect.top;
+      setOpenUp(nextBelow < estimatePopoverHeight && nextAbove > nextBelow);
+    }
+
+    handleViewportChange();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [isOpen]);
 
   const today = useMemo(() => normalize(new Date()), []);
 
@@ -149,7 +172,7 @@ export default function TasksDatePicker({
       </button>
 
       {isOpen ? (
-        <div className="tasksDatePopover">
+        <div className={`tasksDatePopover ${openUp ? 'openUp' : ''}`}>
           <div className="tasksDateHeader">
             <button
               type="button"

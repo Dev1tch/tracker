@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlignJustify,
   ArrowLeft,
@@ -8,10 +8,8 @@ import {
   Loader2,
   MoveRight,
   Pause,
-  Pencil,
   Play,
   Plus,
-  Save,
   Tag,
   Trash2,
   X,
@@ -33,16 +31,29 @@ import {
   getTaskFormFromTask,
 } from '@/features/tasks/utils/task-form.utils';
 import {
-  formatDateTime,
   formatShortDate,
   toIsoOrNull,
 } from '@/features/tasks/utils/task-date.utils';
+import TasksDatePicker from './TasksDatePicker';
 
 function getDescriptionPreview(text, maxLength = 110) {
   if (!text) return '';
   const compact = text.replace(/\s+/g, ' ').trim();
   if (compact.length <= maxLength) return compact;
   return `${compact.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function getNormalizedPayload(form) {
+  return {
+    title: form.title.trim(),
+    description: form.description || null,
+    task_type_id: form.task_type_id || null,
+    parent_task_id: form.parent_task_id || null,
+    status: form.status,
+    priority: form.priority,
+    start_date: toIsoOrNull(form.start_date),
+    due_date: toIsoOrNull(form.due_date),
+  };
 }
 
 export default function TaskDetailModal({
@@ -60,10 +71,49 @@ export default function TaskDetailModal({
   cardViewSettings,
   isSaving,
 }) {
-  const [isEditing, setIsEditing] = useState(false);
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [subtaskForm, setSubtaskForm] = useState(() => getDefaultSubtaskForm());
   const [form, setForm] = useState(() => getTaskFormFromTask(task));
+  const normalizedPayload = useMemo(() => getNormalizedPayload(form), [form]);
+  const payloadFingerprint = useMemo(() => JSON.stringify(normalizedPayload), [normalizedPayload]);
+  const lastSavedFingerprintRef = useRef(payloadFingerprint);
+  const autoSaveTimerRef = useRef(null);
+  const autoSaveRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    lastSavedFingerprintRef.current = payloadFingerprint;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!task?.id) return undefined;
+    if (payloadFingerprint === lastSavedFingerprintRef.current) return undefined;
+    if (!normalizedPayload.title) return undefined;
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const requestId = autoSaveRequestIdRef.current + 1;
+      autoSaveRequestIdRef.current = requestId;
+
+      try {
+        await onSave(task.id, normalizedPayload, { showSuccessToast: false });
+        if (autoSaveRequestIdRef.current === requestId) {
+          lastSavedFingerprintRef.current = payloadFingerprint;
+        }
+      } catch {
+        // onSave already handles toast feedback
+      }
+    }, 450);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [normalizedPayload, onSave, payloadFingerprint, task?.id]);
 
   if (!task) return null;
 
@@ -72,15 +122,6 @@ export default function TaskDetailModal({
   const parentTask = isSubtask
     ? allTasks.find((item) => item.id === task.parent_task_id)
     : null;
-
-  const statusMeta = STATUS_META[task.status] || {
-    label: formatStatus(task.status),
-    className: 'todo',
-  };
-  const priorityMeta = PRIORITY_META[task.priority] || {
-    label: formatPriority(task.priority),
-    className: 'normal',
-  };
 
   const canStart = task.status === TASK_STATUS.TO_DO;
   const canPause =
@@ -108,7 +149,7 @@ export default function TaskDetailModal({
       .filter((item) => item.id !== task.id && !item.parent_task_id)
       .map((item) => ({ value: item.id, label: item.title })),
   ];
-
+  const taskTypeById = new Map(taskTypes.map((type) => [String(type.id), type]));
   return (
     <div className="tasksModalOverlay" onClick={onClose}>
       <div className="tasksModal tasksDetailModal" onClick={(e) => e.stopPropagation()}>
@@ -125,105 +166,73 @@ export default function TaskDetailModal({
                 {parentTask.title}
               </button>
             ) : null}
-            <h3>{isEditing ? 'Edit Task' : task.title}</h3>
           </div>
 
           <div className="tasksModalHeaderActions">
-            {!isEditing ? (
-              <>
-                {canStart ? (
-                  <button
-                    type="button"
-                    className="tasksIconBtn"
-                    onClick={() => onUpdateStatus(task.id, TASK_STATUS.IN_PROGRESS)}
-                    title="Start task"
-                  >
-                    <Play size={14} />
-                  </button>
-                ) : null}
-                {canPause ? (
-                  <button
-                    type="button"
-                    className="tasksIconBtn"
-                    onClick={() => onUpdateStatus(task.id, TASK_STATUS.PAUSED)}
-                    title="Pause task"
-                  >
-                    <Pause size={14} />
-                  </button>
-                ) : null}
-                {canResume ? (
-                  <button
-                    type="button"
-                    className="tasksIconBtn"
-                    onClick={() => onUpdateStatus(task.id, TASK_STATUS.IN_PROGRESS)}
-                    title="Resume task"
-                  >
-                    <MoveRight size={14} />
-                  </button>
-                ) : null}
-                {canFinish ? (
-                  <button
-                    type="button"
-                    className="tasksIconBtn"
-                    onClick={() => onUpdateStatus(task.id, TASK_STATUS.COMPLETED)}
-                    title="Complete task"
-                  >
-                    <Check size={14} />
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="tasksIconBtn"
-                  onClick={() => setIsEditing(true)}
-                  title="Edit"
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="tasksIconBtn danger"
-                  onClick={() => onDelete(task.id)}
-                  title="Delete task"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="tasksIconBtn"
-                  onClick={() => {
-                    setForm(getTaskFormFromTask(task));
-                    setIsEditing(false);
-                  }}
-                  title="Cancel edit"
-                >
-                  <X size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="tasksIconBtn"
-                  onClick={async () => {
-                    await onSave(task.id, {
-                      title: form.title.trim(),
-                      description: form.description || null,
-                      task_type_id: form.task_type_id || null,
-                      parent_task_id: form.parent_task_id || null,
-                      status: form.status,
-                      priority: form.priority,
-                      start_date: toIsoOrNull(form.start_date),
-                      due_date: toIsoOrNull(form.due_date),
-                    });
-                    setIsEditing(false);
-                  }}
-                  disabled={isSaving}
-                  title="Save"
-                >
-                  {isSaving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
-                </button>
-              </>
-            )}
+            {canStart ? (
+              <button
+                type="button"
+                className="tasksIconBtn"
+                onClick={() => onUpdateStatus(task.id, TASK_STATUS.IN_PROGRESS)}
+                title="Start task"
+              >
+                <Play size={14} />
+              </button>
+            ) : null}
+            {canPause ? (
+              <button
+                type="button"
+                className="tasksIconBtn"
+                onClick={() => onUpdateStatus(task.id, TASK_STATUS.PAUSED)}
+                title="Pause task"
+              >
+                <Pause size={14} />
+              </button>
+            ) : null}
+            {canResume ? (
+              <button
+                type="button"
+                className="tasksIconBtn"
+                onClick={() => onUpdateStatus(task.id, TASK_STATUS.IN_PROGRESS)}
+                title="Resume task"
+              >
+                <MoveRight size={14} />
+              </button>
+            ) : null}
+            {canFinish ? (
+              <button
+                type="button"
+                className="tasksIconBtn"
+                onClick={() => onUpdateStatus(task.id, TASK_STATUS.COMPLETED)}
+                title="Complete task"
+              >
+                <Check size={14} />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="tasksIconBtn"
+              onClick={() => {
+                setForm(getTaskFormFromTask(task));
+                lastSavedFingerprintRef.current = JSON.stringify(getNormalizedPayload(getTaskFormFromTask(task)));
+              }}
+              title="Reset changes"
+            >
+              <X size={14} />
+            </button>
+            {isSaving ? (
+              <span className="tasksAutoSaveState" title="Autosaving">
+                <Loader2 size={14} className="spin" />
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="tasksIconBtn danger"
+              onClick={() => onDelete(task.id)}
+              title="Delete task"
+            >
+              <Trash2 size={14} />
+            </button>
             <button type="button" className="tasksIconBtn" onClick={onClose}>
               <X size={16} />
             </button>
@@ -232,8 +241,7 @@ export default function TaskDetailModal({
 
         <div className={`tasksDetailBody ${isSubtask ? 'subtaskView' : ''}`.trim()}>
           <div className="tasksDetailMain">
-            {isEditing ? (
-              <div className="tasksFormGrid">
+            <div className="tasksFormGrid">
                 <div className="tasksField tasksFieldFull">
                   <label>Title *</label>
                   <input
@@ -310,84 +318,28 @@ export default function TaskDetailModal({
 
                 <div className="tasksField">
                   <label>Start Date</label>
-                  <input
-                    type="date"
+                  <TasksDatePicker
                     value={form.start_date}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, start_date: e.target.value }))
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, start_date: value }))
                     }
+                    placeholder="Select start date"
+                    className="tasksDateFieldInput"
                   />
                 </div>
 
                 <div className="tasksField">
                   <label>Due Date</label>
-                  <input
-                    type="date"
+                  <TasksDatePicker
                     value={form.due_date}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, due_date: e.target.value }))
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, due_date: value }))
                     }
+                    placeholder="Select due date"
+                    className="tasksDateFieldInput"
                   />
                 </div>
-              </div>
-            ) : (
-              <>
-                <div className="tasksMetaStrip">
-                  <span className={`statusChip status-${statusMeta.className}`}>{statusMeta.label}</span>
-                  <span className={`priorityBadge ${priorityMeta.className}`}>
-                    {priorityMeta.label}
-                  </span>
-                </div>
-
-                <div className="tasksDetailDescription">
-                  {task.description || <span className="tasksMutedText">No description</span>}
-                </div>
-
-                <div className="tasksDetailInfoGrid">
-                  <div>
-                    <label>
-                      <Calendar size={13} /> Start Date
-                    </label>
-                    <p>{formatDateTime(task.start_date)}</p>
-                  </div>
-                  <div>
-                    <label>
-                      <Calendar size={13} /> Due Date
-                    </label>
-                    <p>{formatDateTime(task.due_date)}</p>
-                  </div>
-                  <div>
-                    <label>
-                      <Tag size={13} /> Task Type
-                    </label>
-                    <p>
-                      {taskTypes.find((item) => item.id === task.task_type_id)?.name ||
-                        'Not assigned'}
-                    </p>
-                  </div>
-                  <div>
-                    <label>Created At</label>
-                    <p>{formatDateTime(task.created_at)}</p>
-                  </div>
-                  <div>
-                    <label>Updated At</label>
-                    <p>{formatDateTime(task.updated_at)}</p>
-                  </div>
-                  <div>
-                    <label>Total Pause (minutes)</label>
-                    <p>{task.total_pause_time_minutes ?? 0}</p>
-                  </div>
-                  <div>
-                    <label>Total Spent (minutes)</label>
-                    <p>{task.total_spent_time_minutes ?? 0}</p>
-                  </div>
-                  <div>
-                    <label>Task ID</label>
-                    <p className="mono">{task.id}</p>
-                  </div>
-                </div>
-              </>
-            )}
+            </div>
           </div>
 
           {!isSubtask ? (
@@ -449,12 +401,13 @@ export default function TaskDetailModal({
                   </div>
                   <div className="tasksField">
                     <label>Due Date</label>
-                    <input
-                      type="date"
+                    <TasksDatePicker
                       value={subtaskForm.due_date}
-                      onChange={(e) =>
-                        setSubtaskForm((prev) => ({ ...prev, due_date: e.target.value }))
+                      onChange={(value) =>
+                        setSubtaskForm((prev) => ({ ...prev, due_date: value }))
                       }
+                      placeholder="Select due date"
+                      className="tasksDateFieldInput"
                     />
                   </div>
 
@@ -494,6 +447,15 @@ export default function TaskDetailModal({
                       label: formatPriority(subtask.priority),
                       className: 'normal',
                     };
+                    const subtaskType =
+                      (subtask.task_type_id !== null && subtask.task_type_id !== undefined
+                        ? taskTypeById.get(String(subtask.task_type_id))
+                        : null) ||
+                      (task.task_type_id !== null && task.task_type_id !== undefined
+                        ? taskTypeById.get(String(task.task_type_id))
+                        : null) ||
+                      null;
+                    const subtaskTypeColor = subtaskType?.color || '#6ea8fe';
                     const subtaskStatusMeta = STATUS_META[subtask.status] || {
                       label: formatStatus(subtask.status),
                       className: 'todo',
@@ -507,7 +469,14 @@ export default function TaskDetailModal({
                     return (
                       <div
                         key={subtask.id}
-                        className="tasksSubtaskItem"
+                        className={`tasksSubtaskItem ${
+                          cardViewSettings?.task_type && subtaskType ? 'hasTypeAccent' : ''
+                        }`}
+                        style={
+                          cardViewSettings?.task_type && subtaskType
+                            ? { '--task-type-color': subtaskTypeColor }
+                            : undefined
+                        }
                         onClick={() => onOpenTask(subtask.id)}
                       >
                         <div className="tasksSubtaskTop">
@@ -542,16 +511,21 @@ export default function TaskDetailModal({
                         </div>
 
                         <div className="tasksCardMeta">
-                          {cardViewSettings?.description && subtask.description ? (
-                            <div className="tasksDescriptionHint">
-                              <AlignJustify size={12} />
-                              <div className="tasksDescriptionPreview">{subtaskDescriptionPreview}</div>
-                            </div>
+                          {cardViewSettings?.task_type && subtaskType ? (
+                            <span className="taskTypeMeta" style={{ color: subtaskTypeColor }}>
+                              {subtaskType.name}
+                            </span>
                           ) : null}
                           {cardViewSettings?.priority ? (
                             <span className={`priorityBadge ${subtaskPriorityMeta.className}`}>
                               {subtaskPriorityMeta.label}
                             </span>
+                          ) : null}
+                          {cardViewSettings?.description && subtask.description ? (
+                            <div className="tasksDescriptionHint">
+                              <AlignJustify size={12} />
+                              <div className="tasksDescriptionPreview">{subtaskDescriptionPreview}</div>
+                            </div>
                           ) : null}
                           {cardViewSettings?.start_date && subtaskStartDate ? (
                             <span className="taskDateBadge">

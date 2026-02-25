@@ -60,6 +60,7 @@ const DEFAULT_CARD_VIEW_SETTINGS = {
   title: true,
   description: true,
   status: true,
+  task_type: true,
   priority: true,
   start_date: false,
   due_date: true,
@@ -70,6 +71,7 @@ const CARD_VIEW_SETTING_OPTIONS = [
   { key: 'title', label: 'Title' },
   { key: 'description', label: 'Description' },
   { key: 'status', label: 'Status' },
+  { key: 'task_type', label: 'Task Type' },
   { key: 'priority', label: 'Priority' },
   { key: 'start_date', label: 'Start Date' },
   { key: 'due_date', label: 'Due Date' },
@@ -529,6 +531,10 @@ export default function TasksBoard() {
       })),
     [taskTypes]
   );
+  const taskTypeById = useMemo(
+    () => new Map(taskTypes.map((type) => [String(type.id), type])),
+    [taskTypes]
+  );
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (filters.search.trim()) count += 1;
@@ -815,7 +821,8 @@ export default function TasksBoard() {
     }
   }, [addToast, collectCascadeDeleteIds, detailTaskId]);
 
-  const handleUpdateTask = useCallback(async (taskId, patch) => {
+  const handleUpdateTask = useCallback(async (taskId, patch, options = {}) => {
+    const { showSuccessToast = true } = options;
     const current = tasks.find((task) => task.id === taskId);
     if (!current) return;
 
@@ -825,7 +832,9 @@ export default function TasksBoard() {
       const payload = buildUpdatePayload(current, patch);
       const updated = await tasksApi.updateTask(taskId, payload);
       setTasks((prev) => prev.map((task) => (task.id === taskId ? updated : task)));
-      addToast('Task updated', 'success');
+      if (showSuccessToast) {
+        addToast('Task updated', 'success');
+      }
     } catch (error) {
       console.error('Update task failed:', error);
       addToast(error?.message || 'Failed to update task', 'error');
@@ -1412,6 +1421,11 @@ export default function TasksBoard() {
                       const createdDate = formatShortDate(task.created_at);
                       const spentMinutes = task.total_spent_time_minutes ?? 0;
                       const descriptionPreview = getDescriptionPreview(task.description);
+                      const taskType =
+                        task.task_type_id !== null && task.task_type_id !== undefined
+                          ? (taskTypeById.get(String(task.task_type_id)) || null)
+                          : null;
+                      const taskTypeColor = taskType?.color || '#6ea8fe';
                       const priorityMeta = PRIORITY_META[task.priority] || {
                         label: formatPriority(task.priority),
                         className: 'normal',
@@ -1424,7 +1438,14 @@ export default function TasksBoard() {
                       return (
                         <div
                           key={task.id}
-                          className={`tasksCard ${selectedTaskIds.has(task.id) ? 'selected' : ''}`}
+                          className={`tasksCard ${
+                            cardViewSettings.task_type && taskType ? 'hasTypeAccent' : ''
+                          } ${selectedTaskIds.has(task.id) ? 'selected' : ''}`}
+                          style={
+                            cardViewSettings.task_type && taskType
+                              ? { '--task-type-color': taskTypeColor }
+                              : undefined
+                          }
                           draggable={!selectionMode}
                           onDragStart={(event) => handleDragStart(event, task.id)}
                           onDragEnd={handleDragEnd}
@@ -1472,16 +1493,21 @@ export default function TasksBoard() {
                           </div>
 
                           <div className="tasksCardMeta">
-                            {cardViewSettings.description && task.description ? (
-                              <div className="tasksDescriptionHint">
-                                <AlignJustify size={12} />
-                                <div className="tasksDescriptionPreview">{descriptionPreview}</div>
-                              </div>
+                            {cardViewSettings.task_type && taskType ? (
+                              <span className="taskTypeMeta" style={{ color: taskTypeColor }}>
+                                {taskType.name}
+                              </span>
                             ) : null}
                             {cardViewSettings.priority ? (
                               <span className={`priorityBadge ${priorityMeta.className}`}>
                                 {priorityMeta.label}
                               </span>
+                            ) : null}
+                            {cardViewSettings.description && task.description ? (
+                              <div className="tasksDescriptionHint">
+                                <AlignJustify size={12} />
+                                <div className="tasksDescriptionPreview">{descriptionPreview}</div>
+                              </div>
                             ) : null}
                             {cardViewSettings.start_date && startDate ? (
                               <span className="taskDateBadge">
