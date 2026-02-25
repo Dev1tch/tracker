@@ -377,6 +377,58 @@
   cursor: not-allowed;
 }
 
+.tasksDateTimeRow {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tasksDateTimeRow span {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  min-width: 32px;
+}
+
+.tasksDateTimeRow input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--border-color-dim);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 0 7px;
+  font-family: inherit;
+}
+
+.tasksDateTimeRow input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.tasksDateDoneBtn {
+  height: 30px;
+  border-radius: 0;
+  border: 1px solid var(--border-color-dim);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 8px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.tasksDateDoneBtn:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--text-primary);
+}
+
 .tasksFilterClearAllBtn {
   height: 34px;
   border-radius: 0;
@@ -1305,6 +1357,24 @@
   resize: vertical;
 }
 
+.tasksReadonlyField {
+  width: 100%;
+  min-height: 49px;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 16px 0;
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tasksFieldFull {
   grid-column: 1 / -1;
 }
@@ -1367,6 +1437,20 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.tasksTypeColorField {
+  width: fit-content;
+}
+
+.tasksTypeColorField .tasksStatusConfigColorBtn {
+  width: 24px;
+  height: 24px;
+}
+
+.tasksTypeColorField .tasksStatusConfigColorPopover {
+  left: 0;
+  right: auto;
 }
 
 .tasksTypeList {

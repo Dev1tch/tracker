@@ -3,20 +3,46 @@ import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
 function parseDateValue(value) {
   if (!value) return null;
-  const [year, month, day] = value.split('-').map(Number);
-  if (!year || !month || !day) return null;
-  const date = new Date(year, month - 1, day);
+  const normalizedValue = String(value).trim();
+  if (!normalizedValue) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+    const [year, month, day] = normalizedValue.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalizedValue)) {
+    const [datePart, timePart] = normalizedValue.split('T');
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hour, minute] = timePart.split(':').map(Number);
+    const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+  }
+
+  const date = new Date(normalizedValue);
   if (Number.isNaN(date.getTime())) return null;
   return date;
 }
 
-function toDateValue(date) {
+function toDateValue(date, { includeTime = false } = {}) {
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+
+  if (!includeTime) return `${year}-${month}-${day}`;
+
+  const hour = pad2(date.getHours());
+  const minute = pad2(date.getMinutes());
+  return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
 function isSameDay(a, b) {
@@ -42,12 +68,14 @@ export default function TasksDatePicker({
   placeholder,
   min,
   max,
+  showTime = false,
   className = '',
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [openUp, setOpenUp] = useState(false);
   const containerRef = useRef(null);
   const isRangeMode = typeof onRangeChange === 'function';
+  const isTimeMode = showTime && !isRangeMode;
 
   const selectedDate = useMemo(() => parseDateValue(value), [value]);
   const selectedRangeStart = useMemo(() => parseDateValue(rangeStart), [rangeStart]);
@@ -58,6 +86,13 @@ export default function TasksDatePicker({
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const base = selectedRangeEnd || selectedRangeStart || selectedDate || new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
+  });
+  const [selectedTime, setSelectedTime] = useState(() => {
+    const base = selectedDate || new Date();
+    return {
+      hour: base.getHours(),
+      minute: base.getMinutes(),
+    };
   });
 
   useEffect(() => {
@@ -74,7 +109,7 @@ export default function TasksDatePicker({
   useEffect(() => {
     if (!isOpen || !containerRef.current) return undefined;
 
-    const estimatePopoverHeight = 310;
+    const estimatePopoverHeight = isTimeMode ? 360 : 310;
 
     function handleViewportChange() {
       const nextRect = containerRef.current?.getBoundingClientRect();
@@ -91,7 +126,7 @@ export default function TasksDatePicker({
       window.removeEventListener('resize', handleViewportChange);
       window.removeEventListener('scroll', handleViewportChange, true);
     };
-  }, [isOpen]);
+  }, [isOpen, isTimeMode]);
 
   const today = useMemo(() => normalize(new Date()), []);
 
@@ -104,12 +139,23 @@ export default function TasksDatePicker({
   const firstDayOfMonth = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const formatForDisplay = (date) =>
-    date.toLocaleDateString(undefined, {
+  const formatForDisplay = (date) => {
+    if (isTimeMode) {
+      return date.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+
+    return date.toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     });
+  };
   const displayValue = isRangeMode
     ? (
       selectedRangeStart && selectedRangeEnd
@@ -130,8 +176,45 @@ export default function TasksDatePicker({
   };
 
   const handleSingleDateChange = (date) => {
-    onChange(toDateValue(date));
-    setIsOpen(false);
+    const next = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      isTimeMode ? selectedTime.hour : 0,
+      isTimeMode ? selectedTime.minute : 0,
+      0,
+      0
+    );
+    onChange(toDateValue(next, { includeTime: isTimeMode }));
+    if (!isTimeMode) {
+      setIsOpen(false);
+    }
+  };
+
+  const handleTimeChange = (nextValue) => {
+    const [nextHourRaw, nextMinuteRaw] = nextValue.split(':');
+    const nextHour = Number(nextHourRaw);
+    const nextMinute = Number(nextMinuteRaw);
+
+    if (
+      Number.isNaN(nextHour) ||
+      Number.isNaN(nextMinute) ||
+      nextHour < 0 ||
+      nextHour > 23 ||
+      nextMinute < 0 ||
+      nextMinute > 59
+    ) {
+      return;
+    }
+
+    const nextTime = { hour: nextHour, minute: nextMinute };
+    setSelectedTime(nextTime);
+
+    if (!selectedDate) return;
+
+    const nextDate = new Date(selectedDate);
+    nextDate.setHours(nextTime.hour, nextTime.minute, 0, 0);
+    onChange(toDateValue(nextDate, { includeTime: true }));
   };
 
   const handleRangeDateChange = (date) => {
@@ -163,6 +246,12 @@ export default function TasksDatePicker({
           if (!isOpen) {
             const base = selectedRangeEnd || selectedRangeStart || selectedDate || new Date();
             setVisibleMonth(new Date(base.getFullYear(), base.getMonth(), 1));
+            if (isTimeMode) {
+              setSelectedTime({
+                hour: base.getHours(),
+                minute: base.getMinutes(),
+              });
+            }
           }
           setIsOpen((prev) => !prev);
         }}
@@ -234,6 +323,25 @@ export default function TasksDatePicker({
               );
             })}
           </div>
+
+          {isTimeMode ? (
+            <div className="tasksDateTimeRow">
+              <span>Time</span>
+              <input
+                type="time"
+                step={60}
+                value={`${pad2(selectedTime.hour)}:${pad2(selectedTime.minute)}`}
+                onChange={(event) => handleTimeChange(event.target.value)}
+              />
+              <button
+                type="button"
+                className="tasksDateDoneBtn"
+                onClick={() => setIsOpen(false)}
+              >
+                Done
+              </button>
+            </div>
+          ) : null}
 
           {(isRangeMode ? selectedRangeStart || selectedRangeEnd : selectedDate) ? (
             <button

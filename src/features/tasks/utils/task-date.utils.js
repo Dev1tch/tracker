@@ -1,13 +1,34 @@
-export function toDateInputValue(isoString) {
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+export function toDateInputValue(isoString, { includeTime = false } = {}) {
   if (!isoString) return '';
   const date = new Date(isoString);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toISOString().slice(0, 10);
+
+  if (!includeTime) {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  }
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
 export function toIsoOrNull(dateInputValue) {
   if (!dateInputValue) return null;
-  const date = new Date(`${dateInputValue}T00:00:00`);
+
+  const value = String(dateInputValue).trim();
+  if (!value) return null;
+
+  let date;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    date = new Date(`${value}T00:00:00`);
+  } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
+    date = new Date(`${value}:00`);
+  } else {
+    date = new Date(value);
+  }
+
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }

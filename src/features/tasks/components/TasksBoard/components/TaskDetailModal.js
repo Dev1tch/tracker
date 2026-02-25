@@ -31,6 +31,7 @@ import {
   getTaskFormFromTask,
 } from '@/features/tasks/utils/task-form.utils';
 import {
+  formatDateTime,
   formatShortDate,
   toIsoOrNull,
 } from '@/features/tasks/utils/task-date.utils';
@@ -160,6 +161,7 @@ export default function TaskDetailModal({
       .map((item) => ({ value: item.id, label: item.title })),
   ];
   const taskTypeById = new Map(taskTypes.map((type) => [String(type.id), type]));
+  const startDateDisplay = formatDateTime(task.start_date);
   return (
     <div className="tasksModalOverlay" onClick={onClose}>
       <div className="tasksModal tasksDetailModal" onClick={(e) => e.stopPropagation()}>
@@ -331,14 +333,7 @@ export default function TaskDetailModal({
 
                 <div className="tasksField">
                   <label>Start Date</label>
-                  <TasksDatePicker
-                    value={form.start_date}
-                    onChange={(value) =>
-                      setForm((prev) => ({ ...prev, start_date: value }))
-                    }
-                    placeholder="Select start date"
-                    className="tasksDateFieldInput"
-                  />
+                  <div className="tasksReadonlyField">{startDateDisplay}</div>
                 </div>
 
                 <div className="tasksField">
@@ -349,6 +344,7 @@ export default function TaskDetailModal({
                       setForm((prev) => ({ ...prev, due_date: value }))
                     }
                     placeholder="Select due date"
+                    showTime
                     className="tasksDateFieldInput"
                   />
                 </div>
@@ -420,6 +416,7 @@ export default function TaskDetailModal({
                         setSubtaskForm((prev) => ({ ...prev, due_date: value }))
                       }
                       placeholder="Select due date"
+                      showTime
                       className="tasksDateFieldInput"
                     />
                   </div>

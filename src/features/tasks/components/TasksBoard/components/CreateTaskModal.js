@@ -140,14 +140,7 @@ export default function CreateTaskModal({
 
           <div className="tasksField">
             <label>Start Date</label>
-            <TasksDatePicker
-              value={form.start_date}
-              onChange={(value) =>
-                setForm((prev) => ({ ...prev, start_date: value }))
-              }
-              placeholder="Select start date"
-              className="tasksDateFieldInput"
-            />
+            <div className="tasksReadonlyField">Auto on task start</div>
           </div>
 
           <div className="tasksField">
@@ -158,6 +151,7 @@ export default function CreateTaskModal({
                 setForm((prev) => ({ ...prev, due_date: value }))
               }
               placeholder="Select due date"
+              showTime
               className="tasksDateFieldInput"
             />
           </div>

@@ -9,8 +9,8 @@ export function getTaskFormFromTask(task) {
     parent_task_id: task?.parent_task_id || '',
     status: task?.status || TASK_STATUS.TO_DO,
     priority: task?.priority || TASK_PRIORITY.NORMAL,
-    start_date: toDateInputValue(task?.start_date),
-    due_date: toDateInputValue(task?.due_date),
+    start_date: toDateInputValue(task?.start_date, { includeTime: true }),
+    due_date: toDateInputValue(task?.due_date, { includeTime: true }),
   };
 }
 
