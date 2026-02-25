@@ -296,7 +296,10 @@ export default function TaskDetailModal({
                     <button
                       type="button"
                       className="tasksIconBtn"
-                      onClick={onOpenTypeManager}
+                      onClick={() => {
+                        onClose();
+                        onOpenTypeManager();
+                      }}
                       title="Manage task types"
                     >
                       <Tag size={14} />
