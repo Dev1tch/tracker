@@ -56,6 +56,13 @@ function getNormalizedPayload(form) {
   };
 }
 
+const PRIORITY_OPTION_COLORS = {
+  URGENT: '#f87171',
+  HIGH: '#fbbf24',
+  NORMAL: '#60a5fa',
+  LOW: '#9ca3af',
+};
+
 export default function TaskDetailModal({
   task,
   allTasks,
@@ -69,6 +76,7 @@ export default function TaskDetailModal({
   onOpenTask,
   onOpenTypeManager,
   cardViewSettings,
+  statusColors,
   isSaving,
 }) {
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
@@ -134,14 +142,16 @@ export default function TaskDetailModal({
   const statusOptions = STATUS_ORDER.map((status) => ({
     value: status,
     label: formatStatus(status),
+    color: statusColors?.[status],
   }));
   const priorityOptions = PRIORITY_ORDER.map((priority) => ({
     value: priority,
     label: formatPriority(priority),
+    color: PRIORITY_OPTION_COLORS[priority],
   }));
   const taskTypeOptions = [
     { value: '', label: 'None' },
-    ...taskTypes.map((type) => ({ value: type.id, label: type.name })),
+    ...taskTypes.map((type) => ({ value: type.id, label: type.name, color: type.color || undefined })),
   ];
   const parentTaskOptions = [
     { value: '', label: 'None' },

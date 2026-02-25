@@ -8,6 +8,13 @@ import {
 import { formatPriority, formatStatus } from '@/features/tasks/utils/task-formatters';
 import TasksDatePicker from './TasksDatePicker';
 
+const PRIORITY_OPTION_COLORS = {
+  URGENT: '#f87171',
+  HIGH: '#fbbf24',
+  NORMAL: '#60a5fa',
+  LOW: '#9ca3af',
+};
+
 export default function CreateTaskModal({
   isOpen,
   onClose,
@@ -16,6 +23,7 @@ export default function CreateTaskModal({
   onSubmit,
   isSubmitting,
   taskTypes,
+  statusColors,
   parentTasks,
   onOpenTypeManager,
 }) {
@@ -24,14 +32,16 @@ export default function CreateTaskModal({
   const statusOptions = STATUS_ORDER.map((status) => ({
     value: status,
     label: formatStatus(status),
+    color: statusColors?.[status],
   }));
   const priorityOptions = PRIORITY_ORDER.map((priority) => ({
     value: priority,
     label: formatPriority(priority),
+    color: PRIORITY_OPTION_COLORS[priority],
   }));
   const taskTypeOptions = [
     { value: '', label: 'None' },
-    ...taskTypes.map((type) => ({ value: type.id, label: type.name })),
+    ...taskTypes.map((type) => ({ value: type.id, label: type.name, color: type.color || undefined })),
   ];
   const parentTaskOptions = [
     { value: '', label: 'None' },

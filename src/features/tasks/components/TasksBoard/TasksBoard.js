@@ -108,6 +108,12 @@ const STATUS_COLOR_PRESETS = [
   '#4ade80',
   '#f97316',
 ];
+const PRIORITY_OPTION_COLORS = {
+  [TASK_PRIORITY.URGENT]: '#f87171',
+  [TASK_PRIORITY.HIGH]: '#fbbf24',
+  [TASK_PRIORITY.NORMAL]: '#60a5fa',
+  [TASK_PRIORITY.LOW]: '#9ca3af',
+};
 
 function hexToRgba(hex, alpha) {
   const raw = hex.replace('#', '');
@@ -448,8 +454,12 @@ export default function TasksBoard() {
       STATUS_ORDER.map((status) => ({
         value: status,
         label: formatStatus(status),
+        color:
+          statusConfig[status]?.color ||
+          DEFAULT_STATUS_COLORS[status] ||
+          DEFAULT_STATUS_COLORS[TASK_STATUS.TO_DO],
       })),
-    []
+    [statusConfig]
   );
   const currentStatusConfig = useMemo(
     () => statusConfig[statusConfigTarget] || DEFAULT_STATUS_CONFIG[statusConfigTarget],
@@ -504,22 +514,31 @@ export default function TasksBoard() {
       STATUS_ORDER.map((status) => ({
         value: status,
         label: formatStatus(status),
+        color:
+          statusConfig[status]?.color ||
+          DEFAULT_STATUS_COLORS[status] ||
+          DEFAULT_STATUS_COLORS[TASK_STATUS.TO_DO],
       })),
-    []
+    [statusConfig]
   );
   const filterStatusOptions = useMemo(
     () =>
       allStatuses.map((status) => ({
         value: status,
         label: formatStatus(status),
+        color:
+          statusConfig[status]?.color ||
+          DEFAULT_STATUS_COLORS[status] ||
+          DEFAULT_STATUS_COLORS[TASK_STATUS.TO_DO],
       })),
-    [allStatuses]
+    [allStatuses, statusConfig]
   );
   const filterPriorityOptions = useMemo(
     () =>
       PRIORITY_ORDER.map((priority) => ({
         value: priority,
         label: formatPriority(priority),
+        color: PRIORITY_OPTION_COLORS[priority],
       })),
     []
   );
@@ -528,8 +547,20 @@ export default function TasksBoard() {
       taskTypes.map((type) => ({
         value: type.id,
         label: type.name,
+        color: type.color || undefined,
       })),
     [taskTypes]
+  );
+  const statusOptionColors = useMemo(
+    () =>
+      allStatuses.reduce((acc, status) => {
+        acc[status] =
+          statusConfig[status]?.color ||
+          DEFAULT_STATUS_COLORS[status] ||
+          DEFAULT_STATUS_COLORS[TASK_STATUS.TO_DO];
+        return acc;
+      }, {}),
+    [allStatuses, statusConfig]
   );
   const taskTypeById = useMemo(
     () => new Map(taskTypes.map((type) => [String(type.id), type])),
@@ -1566,6 +1597,7 @@ export default function TasksBoard() {
         onSubmit={handleCreateTask}
         isSubmitting={isSubmitting}
         taskTypes={taskTypes}
+        statusColors={statusOptionColors}
         parentTasks={parentTasks}
         onOpenTypeManager={() => setIsTypeManagerOpen(true)}
       />
@@ -1595,6 +1627,7 @@ export default function TasksBoard() {
         onOpenTask={setDetailTaskId}
         onOpenTypeManager={() => setIsTypeManagerOpen(true)}
         cardViewSettings={cardViewSettings}
+        statusColors={statusOptionColors}
         isSaving={isSavingTask}
       />
 
