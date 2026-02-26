@@ -228,7 +228,7 @@ export default function TypeManagerModal({
     <div className="tasksModalOverlay" onClick={onClose}>
       <div className="tasksModal tasksTypeModal" onClick={(e) => e.stopPropagation()}>
         <div className="tasksModalHeader">
-          <h3>Task Categories</h3>
+          <h3>Task Types</h3>
           <div className="tasksModalHeaderActions">
             <button
               type="button"
@@ -263,8 +263,8 @@ export default function TypeManagerModal({
                 className="tasksStatusConfigColorBtn"
                 style={{ backgroundColor: currentColor }}
                 onClick={() => setIsColorPickerOpen((prev) => !prev)}
-                title="Choose task Category color"
-                aria-label="Choose task Category color"
+                title="Choose task type color"
+                aria-label="Choose task type color"
               />
 
               {isColorPickerOpen ? (
@@ -335,7 +335,7 @@ export default function TypeManagerModal({
 
         <div className="tasksTypeList">
           {taskTypes.length === 0 ? (
-            <p className="tasksMutedText">No task Categories yet.</p>
+            <p className="tasksMutedText">No task types yet.</p>
           ) : (
             taskTypes.map((type) => (
               <div key={type.id} className="tasksTypeItem">
@@ -353,7 +353,7 @@ export default function TypeManagerModal({
                   type="button"
                   className="tasksIconBtn danger tasksTypeDeleteBtn"
                   onClick={() => onDelete(type.id)}
-                  title="Delete task category"
+                  title="Delete task type"
                 >
                   <Trash2 size={14} />
                 </button>

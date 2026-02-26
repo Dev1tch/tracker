@@ -57,7 +57,7 @@ import { apiClient } from './client.js';
  */
 
 /**
- * Interface: task type API response.
+ * Interface: task category API response.
  * @typedef {Object} TaskTypeResponseData
  * @property {string} id
  * @property {string} user_id

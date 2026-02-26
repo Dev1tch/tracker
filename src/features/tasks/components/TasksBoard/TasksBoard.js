@@ -83,7 +83,7 @@ const CARD_VIEW_SETTING_OPTIONS = [
   { key: 'title', label: 'Title' },
   { key: 'description', label: 'Description' },
   { key: 'status', label: 'Status' },
-  { key: 'task_type', label: 'Task Type' },
+  { key: 'task_type', label: 'Task Category' },
   { key: 'priority', label: 'Priority' },
   { key: 'start_date', label: 'Start Date' },
   { key: 'due_date', label: 'Due Date' },
@@ -992,7 +992,7 @@ export default function TasksBoard() {
   const handleCreateTaskType = async () => {
     const name = typeForm.name.trim();
     if (!name) {
-      addToast('Task type name is required', 'error');
+      addToast('Task Category name is required', 'error');
       return;
     }
 
@@ -1008,10 +1008,10 @@ export default function TasksBoard() {
 
       setTaskTypes((prev) => [created, ...prev]);
       setTypeForm(DEFAULT_TYPE_FORM);
-      addToast('Task type created', 'success');
+      addToast('Task Category created', 'success');
     } catch (error) {
-      console.error('Create task type failed:', error);
-      addToast(error?.message || 'Failed to create task type', 'error');
+      console.error('Create task Category failed:', error);
+      addToast(error?.message || 'Failed to create task Category', 'error');
     } finally {
       setIsCreatingType(false);
     }
@@ -1026,10 +1026,10 @@ export default function TasksBoard() {
           task.task_type_id === taskTypeId ? { ...task, task_type_id: null } : task
         )
       );
-      addToast('Task type deleted', 'success');
+      addToast('Task Category deleted', 'success');
     } catch (error) {
-      console.error('Delete task type failed:', error);
-      addToast(error?.message || 'Failed to delete task type', 'error');
+      console.error('Delete task Category failed:', error);
+      addToast(error?.message || 'Failed to delete task Category', 'error');
     }
   };
 
@@ -1149,7 +1149,7 @@ export default function TasksBoard() {
                 onClick={() => setIsTypeManagerOpen(true)}
               >
                 <Tag size={14} />
-                Types
+                Categories
               </button>
               <button
                 type="button"
@@ -1369,7 +1369,7 @@ export default function TasksBoard() {
               options={filterTaskTypeOptions}
               value={filters.task_type_id}
               onChange={(value) => setFilters((prev) => ({ ...prev, task_type_id: value }))}
-              placeholder="All Task Types"
+              placeholder="All Task Categories"
               multiple
             />
           </div>

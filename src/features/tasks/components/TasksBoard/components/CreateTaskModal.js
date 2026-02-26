@@ -109,19 +109,19 @@ export default function CreateTaskModal({
           </div>
 
           <div className="tasksField">
-            <label>Task Type</label>
+            <label>Task Category</label>
             <div className="tasksInlineField">
               <CustomSelect
                 options={taskTypeOptions}
                 value={form.task_type_id}
                 onChange={(value) => setForm((prev) => ({ ...prev, task_type_id: value }))}
-                placeholder="Select task type"
+                placeholder="Select task Category"
               />
               <button
                 type="button"
                 className="tasksIconBtn"
                 onClick={onOpenTypeManager}
-                title="Manage task types"
+                title="Manage task Categories"
               >
                 <Tag size={14} />
               </button>
