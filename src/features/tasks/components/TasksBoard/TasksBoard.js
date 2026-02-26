@@ -373,6 +373,7 @@ export default function TasksBoard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCreatingSubtask, setIsCreatingSubtask] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [isCreatingType, setIsCreatingType] = useState(false);
 
@@ -381,7 +382,6 @@ export default function TasksBoard() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
   const [bulkTargetStatus, setBulkTargetStatus] = useState(TASK_STATUS.IN_PROGRESS);
-
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(DEFAULT_CREATE_FORM);
 
@@ -935,6 +935,7 @@ export default function TasksBoard() {
   }, [addToast, checkAndCompleteParents, loadData, tasks]);
 
   const handleCreateTask = async () => {
+    if (isSubmitting) return;
     const title = createForm.title.trim();
     if (!title) {
       addToast('Task title is required', 'error');
@@ -968,11 +969,14 @@ export default function TasksBoard() {
   };
 
   const handleCreateSubtask = async (parentTaskId, form) => {
+    if (isCreatingSubtask) return;
     const title = form.title.trim();
     if (!title) {
       addToast('Subtask title is required', 'error');
       return;
     }
+
+    setIsCreatingSubtask(true);
 
     try {
       const parent = tasks.find((task) => task.id === parentTaskId);
@@ -991,10 +995,13 @@ export default function TasksBoard() {
     } catch (error) {
       console.error('Create subtask failed:', error);
       addToast(error?.message || 'Failed to create subtask', 'error');
+    } finally {
+      setIsCreatingSubtask(false);
     }
   };
 
   const handleCreateTaskType = async () => {
+    if (isCreatingType) return;
     const name = typeForm.name.trim();
     if (!name) {
       addToast('Task Category name is required', 'error');
