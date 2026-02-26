@@ -572,11 +572,11 @@
     position: sticky;
     top: 0;
     z-index: 50;
-    background: rgba(10, 10, 10, 0.95); /* Deep dark background */
-    backdrop-filter: blur(10px);
-    padding: 60px 10px 10px 10px; /* 60px clears the top logo */
-    margin: 0 -10px; /* Stretch background to edges */
-    border-bottom: 1px solid var(--border-color-dim);
+    background: transparent;
+    backdrop-filter: none;
+    padding: 0px 10px 10px 10px;
+    margin: 0 -10px;
+    border-bottom: none;
     margin-bottom: 15px;
   }
 
@@ -595,6 +595,9 @@
   .customNewHabitBtn {
     padding: 8px 12px;
     font-size: 10px;
+    background: transparent !important;
+    border: 1px solid var(--border-color-dim) !important;
+    border-radius: 0;
   }
 
   .habitToolbar {
@@ -609,8 +612,12 @@
     flex: 1 1 100%;
     max-width: 100%;
     margin-bottom: 0px;
-    padding: 10px 12px;
+    padding: 10px 0px;
     font-size: 12px;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid var(--border-color-dim) !important;
+    border-radius: 0;
   }
 
   .filterSelectWrapper, .sortSelectWrapper {
@@ -618,10 +625,15 @@
     width: auto !important;
   }
 
-  .filterSelectWrapper .customSelectValue,
-  .sortSelectWrapper .customSelectValue {
+  .filterSelectWrapper .customSelectHeader,
+  .sortSelectWrapper .customSelectHeader {
     font-size: 10px;
-    padding: 8px 12px;
+    padding: 8px 0px;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid var(--border-color-dim) !important;
+    border-radius: 0;
+    box-shadow: none !important;
   }
 
   /* Force the timetable to let the 7 squares naturally shrink-to-fit mobile screens */

@@ -1,0 +1,218 @@
+.tasksMobileList {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-bottom: 12px;
+}
+
+/* ── Status Group ── */
+.tasksMobileGroup {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tasksMobileGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tasksMobileGroupHeader:active {
+  opacity: 0.7;
+}
+
+.tasksMobileGroupAccent {
+  width: 3px;
+  height: 14px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.tasksMobileGroupLabel {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.tasksMobileGroupCount {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.tasksMobileGroupChevron {
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.tasksMobileGroup.expanded .tasksMobileGroupChevron {
+  transform: rotate(90deg);
+}
+
+/* ── Collapsible Body ── */
+.tasksMobileGroupBody {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+
+.tasksMobileGroup.expanded .tasksMobileGroupBody {
+  grid-template-rows: 1fr;
+}
+
+.tasksMobileGroupInner {
+  overflow: hidden;
+}
+
+/* ── Task Row ── */
+.tasksMobileRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px 8px 15px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s ease;
+  min-height: 36px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.tasksMobileRow:last-of-type {
+  border-bottom: none;
+}
+
+.tasksMobileRow:active {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tasksMobileRow.selected {
+  background: rgba(147, 197, 253, 0.06);
+}
+
+.tasksMobileRowDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tasksMobileRowCheck {
+  width: 20px;
+  height: 20px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.4;
+}
+
+.tasksMobileRowCheck.checked {
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.tasksMobileRowTitle {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.tasksMobileRowMeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.tasksMobileRowMeta .priorityBadge {
+  font-size: 7px;
+  padding: 1px 5px;
+  letter-spacing: 0.08em;
+}
+
+.tasksMobileRowMeta .taskDueDate {
+  font-size: 7px;
+  padding: 1px 5px;
+  letter-spacing: 0.06em;
+  gap: 3px;
+}
+
+.tasksMobileRowMeta .taskTypeMeta {
+  font-size: 7px;
+  letter-spacing: 0.06em;
+}
+
+.tasksMobileRowMeta .taskSpentBadge {
+  font-size: 7px;
+  padding: 1px 5px;
+  gap: 3px;
+}
+
+.tasksMobileRowChevron {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  opacity: 0.35;
+}
+
+/* ── Add Task Row ── */
+.tasksMobileAddRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 4px;
+  color: var(--text-tertiary);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.tasksMobileAddRow:active {
+  opacity: 1;
+}
+
+/* ── Empty State ── */
+.tasksMobileEmpty {
+  padding: 12px 15px;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+

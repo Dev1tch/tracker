@@ -76,6 +76,13 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
           <span style={{ opacity: 0.3, margin: '0 4px', textTransform: 'none' }}>/</span> 
           <span style={{ color: 'var(--text-secondary)' }}>{activeTab}</span>
         </div>
+        <button 
+          className="logoutFab" 
+          onClick={onLogout}
+          title="Sign Out"
+        >
+          <LogOut size={16} strokeWidth={1.5} />
+        </button>
       </header>
 
       {/* Main Content Area */}
@@ -110,14 +117,7 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
         </div>
       </nav>
 
-      {/* Floating Action Logout Button */}
-      <button 
-        className="logoutFab" 
-        onClick={onLogout}
-        title="Sign Out"
-      >
-        <LogOut size={16} strokeWidth={1.5} />
-      </button>
+
 
     </div>
   );

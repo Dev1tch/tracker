@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Calendar,
   Check,
+  ChevronRight,
   Clock3,
   Loader2,
   MoveRight,
@@ -91,6 +92,7 @@ export default function TaskDetailModal({
   cardViewSettings,
   statusColors,
   isSaving,
+  isMobile,
 }) {
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [subtaskForm, setSubtaskForm] = useState(() => getDefaultSubtaskForm());
@@ -487,6 +489,8 @@ export default function TaskDetailModal({
                       <div
                         key={subtask.id}
                         className={`tasksSubtaskItem ${
+                          isMobile ? 'mobileSubtaskRow' : ''
+                        } ${
                           cardViewSettings?.task_type && subtaskType ? 'hasTypeAccent' : ''
                         }`}
                         style={
@@ -581,6 +585,9 @@ export default function TaskDetailModal({
                           </div>
                         </div>
 
+                        {isMobile ? (
+                          <ChevronRight size={12} className="mobileSubtaskChevron" />
+                        ) : null}
                       </div>
                     );
                   })

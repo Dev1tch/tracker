@@ -63,10 +63,9 @@ export default function HabitListMobile({ habits, categories, logs, days, onTogg
                   </div>
                 </div>
                 <button 
-                  className="mobileNavBtn" 
+                  className="mobileNavBtn mobileDeleteBtn" 
                   onClick={() => onDelete(habit)}
                   title="Delete Habit"
-                  style={{ padding: '8px', color: 'var(--text-tertiary)' }}
                 >
                   <Trash2 size={16} />
                 </button>

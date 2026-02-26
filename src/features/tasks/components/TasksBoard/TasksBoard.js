@@ -8,6 +8,8 @@ import {
   Clock3,
   Eye,
   EyeOff,
+  LayoutGrid,
+  List,
   Loader2,
   MoveRight,
   Plus,
@@ -25,6 +27,7 @@ import {
   tasksApi,
 } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
+import useIsMobile from '@/hooks/useIsMobile';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import CustomSelect from '@/components/ui/CustomSelect';
 import {
@@ -50,6 +53,7 @@ import CreateTaskModal from './components/CreateTaskModal';
 import TasksDatePicker from './components/TasksDatePicker';
 import TaskDetailModal from './components/TaskDetailModal';
 import TypeManagerModal from './components/TypeManagerModal';
+import TasksListMobile from './components/TasksListMobile';
 import './TasksBoard.css';
 
 function formatSpentTime(totalMinutes) {
@@ -77,7 +81,7 @@ const DEFAULT_CARD_VIEW_SETTINGS = {
   start_date: false,
   due_date: true,
   created_at: false,
-  total_spent_time_minutes: false,
+  viewMode: 'board', // 'board' or 'list'
 };
 const CARD_VIEW_SETTING_OPTIONS = [
   { key: 'title', label: 'Title' },
@@ -283,7 +287,14 @@ function loadCardViewSettings() {
 
     const parsed = JSON.parse(raw);
     return Object.keys(DEFAULT_CARD_VIEW_SETTINGS).reduce((acc, key) => {
-      acc[key] = typeof parsed?.[key] === 'boolean' ? parsed[key] : DEFAULT_CARD_VIEW_SETTINGS[key];
+      const defaultValue = DEFAULT_CARD_VIEW_SETTINGS[key];
+      const savedValue = parsed?.[key];
+      
+      if (typeof defaultValue === 'string') {
+        acc[key] = typeof savedValue === 'string' ? savedValue : defaultValue;
+      } else {
+        acc[key] = typeof savedValue === 'boolean' ? savedValue : defaultValue;
+      }
       return acc;
     }, {});
   } catch {
@@ -366,6 +377,7 @@ function saveStatusColumnOrder(statusColumnOrder) {
 
 export default function TasksBoard() {
   const addToast = useToast();
+  const isMobile = useIsMobile();
 
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
@@ -1215,6 +1227,44 @@ export default function TasksBoard() {
                       ))}
                     </div>
 
+                    {!isMobile && (
+                      <>
+                        <div className="tasksCardSettingsHead tasksCardSettingsSubhead">
+                          <h4>View Mode</h4>
+                        </div>
+                        <div className="tasksViewModeToggle">
+                          <button
+                            type="button"
+                            className={`tasksViewModeBtn ${cardViewSettings.viewMode === 'board' ? 'active' : ''}`}
+                            onClick={() =>
+                              setCardViewSettings((prev) => ({
+                                ...prev,
+                                viewMode: 'board',
+                              }))
+                            }
+                            title="Board View"
+                          >
+                            <LayoutGrid size={14} />
+                            <span>Board</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`tasksViewModeBtn ${cardViewSettings.viewMode === 'list' ? 'active' : ''}`}
+                            onClick={() =>
+                              setCardViewSettings((prev) => ({
+                                ...prev,
+                                viewMode: 'list',
+                              }))
+                            }
+                            title="List View"
+                          >
+                            <List size={14} />
+                            <span>List</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
+
                     <div className="tasksCardSettingsHead tasksCardSettingsSubhead">
                       <h4>Status Config</h4>
                     </div>
@@ -1423,6 +1473,35 @@ export default function TasksBoard() {
           Loading tasks...
         </div>
       ) : (
+        isMobile ? (
+          <TasksListMobile
+            visibleStatuses={visibleStatuses}
+            boardByStatus={boardByStatus}
+            statusConfig={statusConfig}
+            taskTypeById={taskTypeById}
+            cardViewSettings={cardViewSettings}
+            selectionMode={selectionMode}
+            selectedTaskIds={selectedTaskIds}
+            onToggleSelect={toggleSelectTask}
+            onOpenTask={setDetailTaskId}
+            onOpenCreateForStatus={handleOpenCreateForStatus}
+            onDeleteTask={(taskId) => setPendingDeleteTaskId(taskId)}
+          />
+        ) : cardViewSettings.viewMode === 'list' ? (
+          <TasksListMobile
+            visibleStatuses={visibleStatuses}
+            boardByStatus={boardByStatus}
+            statusConfig={statusConfig}
+            taskTypeById={taskTypeById}
+            cardViewSettings={cardViewSettings}
+            selectionMode={selectionMode}
+            selectedTaskIds={selectedTaskIds}
+            onToggleSelect={toggleSelectTask}
+            onOpenTask={setDetailTaskId}
+            onOpenCreateForStatus={handleOpenCreateForStatus}
+            onDeleteTask={(taskId) => setPendingDeleteTaskId(taskId)}
+          />
+        ) : (
         <div className="tasksBoardScroller">
           <div className="tasksBoardGrid">
             {visibleStatuses.map((status) => {
@@ -1621,6 +1700,7 @@ export default function TasksBoard() {
             })}
           </div>
         </div>
+        )
       )}
 
       <CreateTaskModal
@@ -1663,6 +1743,7 @@ export default function TasksBoard() {
         cardViewSettings={cardViewSettings}
         statusColors={statusOptionColors}
         isSaving={isSavingTask}
+        isMobile={isMobile}
       />
 
       <ConfirmModal
