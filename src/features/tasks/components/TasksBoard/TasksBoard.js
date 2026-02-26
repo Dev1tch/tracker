@@ -846,23 +846,28 @@ export default function TasksBoard() {
     if (!taskIds || taskIds.length === 0) return;
 
     const allIds = collectCascadeDeleteIds(taskIds);
+    const previousTasks = tasks;
+    const previousSelected = selectedTaskIds;
+
+    // Optimistic remove
+    removeTasksLocally(allIds);
+    if (detailTaskId && allIds.includes(detailTaskId)) {
+      setDetailTaskId(null);
+    }
 
     try {
       await tasksApi.deleteTasksBulk({ task_ids: allIds });
-      removeTasksLocally(allIds);
-
       if (notify) {
         addToast(`Deleted ${allIds.length} task${allIds.length > 1 ? 's' : ''}`, 'success');
       }
-
-      if (detailTaskId && allIds.includes(detailTaskId)) {
-        setDetailTaskId(null);
-      }
     } catch (error) {
+      // Rollback
+      setTasks(previousTasks);
+      setSelectedTaskIds(previousSelected);
       console.error('Delete tasks failed:', error);
       addToast(error?.message || 'Failed to delete tasks', 'error');
     }
-  }, [addToast, collectCascadeDeleteIds, detailTaskId]);
+  }, [addToast, collectCascadeDeleteIds, detailTaskId, selectedTaskIds, tasks]);
 
   const handleUpdateTask = useCallback(async (taskId, patch, options = {}) => {
     const { showSuccessToast = true } = options;
@@ -1018,16 +1023,24 @@ export default function TasksBoard() {
   };
 
   const handleDeleteTaskType = async (taskTypeId) => {
+    const previousTaskTypes = taskTypes;
+    const previousTasks = tasks;
+
+    // Optimistic update
+    setTaskTypes((prev) => prev.filter((type) => type.id !== taskTypeId));
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.task_type_id === taskTypeId ? { ...task, task_type_id: null } : task
+      )
+    );
+
     try {
       await tasksApi.deleteTaskType(taskTypeId);
-      setTaskTypes((prev) => prev.filter((type) => type.id !== taskTypeId));
-      setTasks((prev) =>
-        prev.map((task) =>
-          task.task_type_id === taskTypeId ? { ...task, task_type_id: null } : task
-        )
-      );
       addToast('Task Category deleted', 'success');
     } catch (error) {
+      // Rollback
+      setTaskTypes(previousTaskTypes);
+      setTasks(previousTasks);
       console.error('Delete task Category failed:', error);
       addToast(error?.message || 'Failed to delete task Category', 'error');
     }
