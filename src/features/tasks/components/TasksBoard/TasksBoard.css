@@ -1879,6 +1879,7 @@
 
   .tasksTypeCreateGrid {
     grid-template-columns: 1fr;
+    padding: 16px;
   }
 
   .tasksModal {
@@ -1976,6 +1977,7 @@
     border: none;
     min-height: 100vh;
     margin: 0;
+    background: transparent;
   }
 
   .tasksDetailModal {
@@ -1983,7 +1985,9 @@
   }
 
   .tasksModalHeader {
-    padding: 10px 12px;
+    padding: 12px 16px;
+    background: transparent;
+    border-bottom: none;
   }
 
   .tasksModalHeader h3 {
@@ -1997,13 +2001,24 @@
   }
 
   .tasksDetailMain {
-    padding: 10px;
+    padding: 16px;
   }
 
   .tasksFormGrid {
     padding: 0;
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: 12px;
+  }
+
+  /* Standardize padding for top-level modal contents */
+  .tasksModal > .tasksFormGrid,
+  .tasksModal > .tasksTypeList,
+  .tasksModal > .tasksTypeCreateGrid {
+    padding: 16px;
+  }
+
+  .tasksTypeList {
+    padding: 0 16px 16px;
   }
 
   .tasksField label {
@@ -2030,9 +2045,10 @@
   /* ── Subtask panel: stacked below main ── */
   .tasksSubtasksPanel {
     border-left: none;
-    border-top: 1px solid var(--border-color-dim);
-    padding: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 16px;
     gap: 8px;
+    background: transparent;
   }
 
   .tasksSubtasksHeader h4 {
