@@ -229,9 +229,20 @@ export default function TypeManagerModal({
       <div className="tasksModal tasksTypeModal" onClick={(e) => e.stopPropagation()}>
         <div className="tasksModalHeader">
           <h3>Task Types</h3>
-          <button type="button" className="tasksIconBtn" onClick={onClose}>
-            <X size={16} />
-          </button>
+          <div className="tasksModalHeaderActions">
+            <button
+              type="button"
+              className="tasksBtn tasksBtnPrimary tasksBtnCompact"
+              onClick={onCreate}
+              disabled={isCreating}
+            >
+              {isCreating ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}
+              Create
+            </button>
+            <button type="button" className="tasksIconBtn" onClick={onClose}>
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         <div className="tasksTypeCreateGrid">
@@ -319,17 +330,6 @@ export default function TypeManagerModal({
               }
               placeholder="Optional description"
             />
-          </div>
-          <div className="tasksField tasksFieldInline">
-            <button
-              type="button"
-              className="tasksBtn tasksBtnPrimary"
-              onClick={onCreate}
-              disabled={isCreating}
-            >
-              {isCreating ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}
-              Create
-            </button>
           </div>
         </div>
 

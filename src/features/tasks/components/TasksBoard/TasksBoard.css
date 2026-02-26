@@ -86,6 +86,14 @@
   transition: var(--transition-fast);
 }
 
+.tasksBtnCompact {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  gap: 4px;
+}
+
 .tasksBtn:hover:not(:disabled) {
   color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.35);
@@ -490,7 +498,26 @@
   flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.tasksBoardScroller::-webkit-scrollbar {
+  height: 3px;
+}
+
+.tasksBoardScroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tasksBoardScroller::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+}
+
+.tasksBoardScroller::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .tasksBoardGrid {
@@ -547,6 +574,7 @@
 .tasksColumnBody {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -1283,7 +1311,7 @@
 .tasksModalHeaderActions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .tasksAutoSaveState {
@@ -1432,11 +1460,11 @@
 }
 
 .tasksTypeCreateGrid {
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-color-dim);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .tasksTypeColorField {
