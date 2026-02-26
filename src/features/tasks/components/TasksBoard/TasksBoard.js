@@ -52,6 +52,18 @@ import TaskDetailModal from './components/TaskDetailModal';
 import TypeManagerModal from './components/TypeManagerModal';
 import './TasksBoard.css';
 
+function formatSpentTime(totalMinutes) {
+  if (!totalMinutes || totalMinutes <= 0) return '0m';
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(' ');
+}
+
 const CARD_VIEW_SETTINGS_STORAGE_PREFIX = 'tasks.cardViewSettings';
 const STATUS_CONFIG_STORAGE_PREFIX = 'tasks.statusConfig';
 const STATUS_COLUMN_ORDER_STORAGE_PREFIX = 'tasks.statusColumnOrder';
@@ -907,13 +919,15 @@ export default function TasksBoard() {
         `Updated ${ids.length} task${ids.length > 1 ? 's' : ''} to ${formatStatus(newStatus)}`,
         'success'
       );
+      // Silently refresh to pick up server-computed fields (e.g. total_spent_time_minutes)
+      loadData({ silent: true });
     } catch (error) {
       setTasks(previous);
       console.error('Update status failed:', error);
       addToast(error?.message || 'Failed to update status', 'error');
       throw error;
     }
-  }, [addToast, checkAndCompleteParents, tasks]);
+  }, [addToast, checkAndCompleteParents, loadData, tasks]);
 
   const handleCreateTask = async () => {
     const title = createForm.title.trim();
@@ -1558,10 +1572,10 @@ export default function TasksBoard() {
                                 {createdDate}
                               </span>
                             ) : null}
-                            {cardViewSettings.total_spent_time_minutes ? (
+                            {cardViewSettings.total_spent_time_minutes && task.status === TASK_STATUS.COMPLETED && spentMinutes > 0 ? (
                               <span className="taskSpentBadge">
                                 <Clock3 size={11} />
-                                {spentMinutes}m
+                                {formatSpentTime(spentMinutes)}
                               </span>
                             ) : null}
                           </div>

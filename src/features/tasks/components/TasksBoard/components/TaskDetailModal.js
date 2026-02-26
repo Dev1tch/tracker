@@ -44,6 +44,18 @@ function getDescriptionPreview(text, maxLength = 110) {
   return `${compact.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
+function formatSpentTime(totalMinutes) {
+  if (!totalMinutes || totalMinutes <= 0) return '0m';
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(' ');
+}
+
 function getNormalizedPayload(form) {
   return {
     title: form.title.trim(),
@@ -181,6 +193,12 @@ export default function TaskDetailModal({
           </div>
 
           <div className="tasksModalHeaderActions">
+            {task.status === TASK_STATUS.COMPLETED && (task.total_spent_time_minutes ?? 0) > 0 ? (
+              <span className="taskSpentBadge" title="Total time spent">
+                <Clock3 size={14} />
+                {formatSpentTime(task.total_spent_time_minutes)}
+              </span>
+            ) : null}
             {canStart ? (
               <button
                 type="button"
@@ -221,17 +239,6 @@ export default function TaskDetailModal({
                 <Check size={14} />
               </button>
             ) : null}
-            <button
-              type="button"
-              className="tasksIconBtn"
-              onClick={() => {
-                setForm(getTaskFormFromTask(task));
-                lastSavedFingerprintRef.current = JSON.stringify(getNormalizedPayload(getTaskFormFromTask(task)));
-              }}
-              title="Reset changes"
-            >
-              <X size={14} />
-            </button>
             {isSaving ? (
               <span className="tasksAutoSaveState" title="Autosaving">
                 <Loader2 size={14} className="spin" />
@@ -555,10 +562,10 @@ export default function TaskDetailModal({
                               {subtaskCreatedDate}
                             </span>
                           ) : null}
-                          {cardViewSettings?.total_spent_time_minutes ? (
+                          {cardViewSettings?.total_spent_time_minutes && subtask.status === TASK_STATUS.COMPLETED && subtaskSpentMinutes > 0 ? (
                             <span className="taskSpentBadge">
                               <Clock3 size={11} />
-                              {subtaskSpentMinutes}m
+                              {formatSpentTime(subtaskSpentMinutes)}
                             </span>
                           ) : null}
                           <div
