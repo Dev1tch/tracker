@@ -83,9 +83,23 @@ export default function CreateCalendarModal({ isOpen, onClose, onCreate }) {
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [isColorWheelDragging, setIsColorWheelDragging] = useState(false);
   const [colorInput, setColorInput] = useState(color);
+  const [rgb, setRgb] = useState(hexToRgb(color));
   
   const colorPickerRef = useRef(null);
   const colorWheelRef = useRef(null);
+
+  // Sync RGB and Hex inputs when color changes
+  useEffect(() => {
+    setColorInput(color);
+    setRgb(hexToRgb(color));
+  }, [color]);
+
+  const handleRgbChange = (channel, value) => {
+    const newVal = Math.max(0, Math.min(255, parseInt(value || 0)));
+    const nextRgb = { ...rgb, [channel]: newVal };
+    setRgb(nextRgb);
+    setColor(rgbToHex(nextRgb));
+  };
 
   const currentColorHsv = useMemo(() => rgbToHsv(hexToRgb(color)), [color]);
   
@@ -233,21 +247,55 @@ export default function CreateCalendarModal({ isOpen, onClose, onCreate }) {
                       />
                     ))}
                   </div>
-                  <div className="calColorHexRow">
-                    <label>Hex</label>
-                    <input
-                      type="text"
-                      className="authInput"
-                      value={colorInput}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setColorInput(val);
-                        const norm = normalizeHexColor(val);
-                        if (norm) setColor(norm);
-                      }}
-                      onBlur={() => setColorInput(color)}
-                      maxLength={7}
-                    />
+                  <div className="calColorCustomRow">
+                    <div className="calColorHexColumn">
+                      <label>Hex</label>
+                      <input
+                        type="text"
+                        className="authInput calColorInput"
+                        value={colorInput}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setColorInput(val);
+                          const norm = normalizeHexColor(val);
+                          if (norm) setColor(norm);
+                        }}
+                        onBlur={() => setColorInput(color)}
+                        maxLength={7}
+                      />
+                    </div>
+                    <div className="calColorRgbColumn">
+                      <label>RGB</label>
+                      <div className="calColorRgbInputs">
+                        <input
+                          type="number"
+                          className="authInput calColorInput"
+                          value={rgb.r}
+                          onChange={(e) => handleRgbChange('r', e.target.value)}
+                          placeholder="R"
+                          min="0"
+                          max="255"
+                        />
+                        <input
+                          type="number"
+                          className="authInput calColorInput"
+                          value={rgb.g}
+                          onChange={(e) => handleRgbChange('g', e.target.value)}
+                          placeholder="G"
+                          min="0"
+                          max="255"
+                        />
+                        <input
+                          type="number"
+                          className="authInput calColorInput"
+                          value={rgb.b}
+                          onChange={(e) => handleRgbChange('b', e.target.value)}
+                          placeholder="B"
+                          min="0"
+                          max="255"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

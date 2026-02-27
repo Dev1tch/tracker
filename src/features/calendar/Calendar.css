@@ -728,27 +728,36 @@
 /* ------- Event Blocks ------- */
 .weekGridEvent {
   position: absolute;
-  left: 0;
-  right: 4px;
-  border: none;
-  border-left: 3px solid var(--event-bg, #34d399);
-  background: color-mix(in srgb, var(--event-bg, #34d399) 18%, transparent);
-  border-radius: 3px;
-  padding: 3px 6px;
+  /* Rim light border */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 4px solid var(--event-bg, #34d399);
+  /* 95% Opaque vibrant base to stop color bleed from cards behind */
+  background: color-mix(in srgb, var(--event-bg, #34d399) 15%, #0d0d0d);
+  background-color: color-mix(in srgb, var(--event-bg, #34d399) 25%, #0f0f0f);
+  /* Subtle glow/tint on top of the dark base */
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--event-bg, #34d399) 10%, transparent),
+    transparent
+  );
+  backdrop-filter: blur(12px);
+  border-radius: 4px;
+  padding: 5px 10px;
   cursor: pointer;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   text-align: left;
-  transition: filter 0.2s ease, box-shadow 0.2s ease;
-  z-index: 1;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 4px 4px 15px rgba(0, 0, 0, 0.6), 
+              inset 0 0 0 1px color-mix(in srgb, var(--event-bg, #34d399) 5%, transparent);
 }
 
 .weekGridEvent:hover {
+  transform: scale(1.02);
+  z-index: 100 !important;
   filter: brightness(1.2);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  z-index: 10;
+  box-shadow: 4px 4px 15px rgba(0, 0, 0, 0.6);
 }
 
 .weekGridEventTitle {
@@ -864,25 +873,28 @@
 .calModalForm {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 20px;
+  gap: 12px;
+  padding: 16px;
+  max-height: calc(90vh - 100px);
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .calFormGroup {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .calFormGroup label {
-  font-size: 9px;
+  font-size: 8px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-tertiary);
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
+  gap: 6px;
+  margin-bottom: 2px;
 }
 
 .calModalForm .customSelectHeader {
@@ -1143,6 +1155,47 @@
   height: 24px;
   font-size: 10px;
   padding: 0 6px;
+}
+
+.calColorCustomRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.calColorHexColumn, .calColorRgbColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calColorHexColumn {
+  flex: 1;
+}
+
+.calColorRgbColumn {
+  flex: 2;
+}
+
+.calColorCustomRow label {
+  font-size: 8px;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.calColorRgbInputs {
+  display: flex;
+  gap: 4px;
+}
+
+.calColorInput {
+  height: 28px !important;
+  font-size: 10px !important;
+  padding: 0 8px !important;
+}
+
+.calColorRgbInputs input {
+  width: 100%;
 }
 
 .calModalActions {

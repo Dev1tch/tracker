@@ -28,17 +28,17 @@ function getEventPosition(event) {
 
 // Google Calendar event colorId to hex mapping
 const GOOGLE_EVENT_COLORS = {
-  '1': '#7986cb', // Lavender
-  '2': '#33b679', // Sage
-  '3': '#8e24aa', // Grape
-  '4': '#e67c73', // Flamingo
-  '5': '#f6bf26', // Banana
-  '6': '#f4511e', // Tangerine
-  '7': '#039be5', // Peacock
-  '8': '#616161', // Graphite
-  '9': '#3f51b5', // Blueberry
-  '10': '#0b8043', // Basil
-  '11': '#d50000', // Tomato
+  '1': '#a5b4fc', // Lavender (Vibrant)
+  '2': '#4ade80', // Sage (Vibrant)
+  '3': '#c084fc', // Grape (Vibrant)
+  '4': '#fb7185', // Flamingo (Vibrant)
+  '5': '#fbbf24', // Banana (Vibrant)
+  '6': '#fb923c', // Tangerine (Vibrant)
+  '7': '#38bdf8', // Peacock (Vibrant)
+  '8': '#94a3b8', // Graphite (Vibrant)
+  '9': '#818cf8', // Blueberry (Vibrant)
+  '10': '#2dd4bf', // Basil (Vibrant)
+  '11': '#f87171', // Tomato (Vibrant)
 };
 
 function getEventColor(event) {
@@ -102,7 +102,7 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
     });
   };
 
-  // Handle overlapping events in a day column
+  // Handle overlapping events in a day column using cluster-based layout
   const layoutEventsForDay = (dayEvents) => {
     if (dayEvents.length === 0) return [];
 
@@ -111,33 +111,59 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
       pos: getEventPosition(event),
     })).filter(e => e.pos !== null);
 
-    // Sort by start time
+    // 1. Sort by start time
     positioned.sort((a, b) => a.pos.top - b.pos.top);
 
-    // Simple overlap detection
-    const columns = [];
+    // 2. Group into clusters (groups of events that overlap either directly or transitively)
+    const clusters = [];
     positioned.forEach(item => {
-      let placed = false;
-      for (let col = 0; col < columns.length; col++) {
-        const lastInCol = columns[col][columns[col].length - 1];
-        if (item.pos.top >= lastInCol.pos.top + lastInCol.pos.height) {
-          columns[col].push(item);
-          item.column = col;
-          placed = true;
+      let addedToExisting = false;
+      for (let i = 0; i < clusters.length; i++) {
+        const cluster = clusters[i];
+        // If event starts before the cluster's latest end time, it belongs to this cluster
+        const clusterEnd = Math.max(...cluster.map(c => c.pos.top + c.pos.height));
+        if (item.pos.top < clusterEnd) {
+          cluster.push(item);
+          addedToExisting = true;
           break;
         }
       }
-      if (!placed) {
-        item.column = columns.length;
-        columns.push([item]);
+      if (!addedToExisting) {
+        clusters.push([item]);
       }
     });
 
-    const totalColumns = columns.length;
-    return positioned.map(item => ({
-      ...item,
-      totalColumns,
-    }));
+    // 3. Assign columns per cluster
+    const result = [];
+    clusters.forEach(cluster => {
+      const columns = []; // local columns for this cluster
+      cluster.sort((a, b) => a.pos.top - b.pos.top); // ensures sorted within cluster
+
+      cluster.forEach(item => {
+        let placed = false;
+        for (let col = 0; col < columns.length; col++) {
+          const lastInCol = columns[col][columns[col].length - 1];
+          if (item.pos.top >= lastInCol.pos.top + lastInCol.pos.height) {
+            columns[col].push(item);
+            item.column = col;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          item.column = columns.length;
+          columns.push([item]);
+        }
+      });
+
+      // Assign totalColumns based on cluster's depth
+      cluster.forEach(item => {
+        item.totalColumns = columns.length;
+        result.push(item);
+      });
+    });
+
+    return result;
   };
 
   // Current time position
@@ -235,8 +261,12 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
                   {/* Event blocks */}
                   {layoutEvents.map(({ event, pos, column, totalColumns }) => {
                     const color = getEventColor(event);
-                    const width = totalColumns > 1 ? `${100 / totalColumns - 2}%` : '95%';
-                    const left = totalColumns > 1 ? `${(column / totalColumns) * 100}%` : '0';
+                    // Stacking strategy: offset each column to the right and stack with z-index
+                    const offset = totalColumns > 1 ? 12 : 0;
+                    const leftPos = column * offset;
+                    const width = `${100 - leftPos - 2}%`;
+                    const left = `${leftPos}%`;
+                    const zIndex = 10 + column;
 
                     return (
                       <button
@@ -247,6 +277,7 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
                           height: Math.max(pos.height, 18),
                           width,
                           left,
+                          zIndex,
                           '--event-bg': color,
                         }}
                         onClick={(e) => { e.stopPropagation(); onEventClick(event); }}

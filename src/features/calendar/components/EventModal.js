@@ -161,7 +161,6 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
 
         <form onSubmit={handleSubmit} className="calModalForm">
           <div className="calFormGroup">
-            <label><CalIcon size={16} /> Title</label>
             <input
               type="text"
               className="authInput calTitleInput"
@@ -219,42 +218,44 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             </div>
           </div>
 
-          <div className="calFormGroup">
-            <label><CalIcon size={16} /> Calendar</label>
-            <CustomSelect
-              options={availableCalendars.map(cal => ({
-                value: cal.id,
-                label: cal.summary + (cal.primary ? ' (Primary)' : ''),
-                color: cal.backgroundColor
-              }))}
-              value={calendarId}
-              onChange={setCalendarId}
-              disabled={event && !!event.id}
-            />
-          </div>
+          <div className="calFormRow">
+            <div className="calFormGroup">
+              <label><CalIcon size={16} /> Calendar</label>
+              <CustomSelect
+                options={availableCalendars.map(cal => ({
+                  value: cal.id,
+                  label: cal.summary + (cal.primary ? ' (Primary)' : ''),
+                  color: cal.backgroundColor
+                }))}
+                value={calendarId}
+                onChange={setCalendarId}
+                disabled={event && !!event.id}
+              />
+            </div>
 
-          <div className="calFormGroup">
-            <label><Palette size={16} /> Color</label>
-            <div className="calEventColorPicker">
-              <button
-                type="button"
-                className={`calEventColorSwatch calEventColorDefault ${!colorId ? 'active' : ''}`}
-                onClick={() => setColorId('')}
-                title="Calendar default"
-              >
-                <span style={{ background: 'linear-gradient(135deg, #34d399, #60a5fa)' }} />
-              </button>
-              {GOOGLE_EVENT_COLORS.map(c => (
+            <div className="calFormGroup">
+              <label><Palette size={16} /> Event Color</label>
+              <div className="calEventColorPicker">
                 <button
-                  key={c.id}
                   type="button"
-                  className={`calEventColorSwatch ${colorId === c.id ? 'active' : ''}`}
-                  onClick={() => setColorId(c.id)}
-                  title={c.name}
+                  className={`calEventColorSwatch calEventColorDefault ${!colorId ? 'active' : ''}`}
+                  onClick={() => setColorId('')}
+                  title="Calendar default"
                 >
-                  <span style={{ backgroundColor: c.hex }} />
+                  <span style={{ background: 'linear-gradient(135deg, #34d399, #60a5fa)' }} />
                 </button>
-              ))}
+                {GOOGLE_EVENT_COLORS.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`calEventColorSwatch ${colorId === c.id ? 'active' : ''}`}
+                    onClick={() => setColorId(c.id)}
+                    title={c.name}
+                  >
+                    <span style={{ backgroundColor: c.hex }} />
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
