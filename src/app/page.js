@@ -6,6 +6,7 @@ import { authApi } from '@/lib/api';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import HabitTracker from '@/features/habits/HabitTracker';
 import TasksBoard from '@/features/tasks';
+import Calendar from '@/features/calendar/Calendar';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 
 export default function Home() {
@@ -41,6 +42,8 @@ export default function Home() {
         return <HabitTracker />;
       case 'tasks':
         return <TasksBoard />;
+      case 'calendar':
+        return <Calendar />;
       case 'finance':
         return (
           <div style={{ padding: '40px 60px', color: 'var(--text-primary)', position: 'relative', zIndex: 1 }}>

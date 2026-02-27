@@ -1,0 +1,789 @@
+/* =============================
+   CALENDAR — Modern Design System
+   ============================= */
+
+.calContainer {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 72px 18px 10px;
+  overflow: hidden;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ------- Header ------- */
+.calHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 25px;
+}
+
+.calHeaderTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.calTitle {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.calHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.calTodayBtn {
+  height: 34px;
+  border-radius: 0;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.calTodayBtn:hover {
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.calNavButtons {
+  display: flex;
+  gap: 1px;
+  background: var(--border-color-dim);
+  border: 1px solid var(--border-color-dim);
+}
+
+.calNavBtn {
+  background: rgba(255, 255, 255, 0.02);
+  border: none;
+  color: var(--text-tertiary);
+  width: 34px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.calNavBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ------- Google Connect ------- */
+.calConnectBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  color: #ffffff;
+  padding: 10px 18px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  width: fit-content;
+}
+
+.calConnectBtn:hover {
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+}
+
+.calConnectedBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color-dim);
+  box-shadow: inset 0 0 20px rgba(52, 211, 153, 0.05);
+}
+
+.calConnectedStatus {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.calConnectedDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+  animation: calPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes calPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+.calDisconnectBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  padding: 4px 8px;
+}
+
+.calDisconnectBtn:hover {
+  color: #f87171;
+}
+
+/* ------- Error & Loading ------- */
+.calError {
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  color: #fca5a5;
+  padding: 12px 18px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  margin-bottom: 20px;
+}
+
+.calBoardLoading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.calSpinner {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-color-dim);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: calSpin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes calSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ------- Main Layout View ------- */
+.calMainView {
+  flex: 1;
+  display: flex;
+  gap: 20px;
+  min-height: 0; /* Important for flex child scrolling */
+  overflow: hidden;
+}
+
+/* ------- Calendar Grid ------- */
+.calGridWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border-color-dim);
+}
+
+.calGridHeader {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border-color-dim);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.calDayName {
+  padding: 10px 4px;
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.calGridItems {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 1fr;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.calCell {
+  min-height: 100px;
+  background: transparent;
+  border: 0.5px solid var(--border-color-dim);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  text-align: left;
+}
+
+.calCell:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.calCellOther {
+  opacity: 0.2;
+}
+
+.calCellDay {
+  font-size: 11px;
+  color: var(--text-secondary);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: var(--transition-fast);
+  font-weight: 400;
+}
+
+.calCellToday .calCellDay {
+  background: rgba(255, 255, 255, 0.95);
+  color: #000;
+  font-weight: 600;
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+}
+
+.calCellSelected {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.calCellDots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.calCellEventDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #34d399; /* Use app status color or generic accent */
+  opacity: 0.8;
+}
+
+.calCellHasEvents .calCellDay {
+  color: var(--text-primary);
+}
+
+/* ------- Side Panel ------- */
+.calSidePanel {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color-dim);
+  backdrop-filter: blur(10px);
+}
+
+.calSidePanelHeader {
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color-dim);
+}
+
+.calSidePanelTitle {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.calSidePanelContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 20px;
+  scrollbar-width: thin;
+}
+
+.calEventsEmpty {
+  margin-top: 40px;
+  text-align: center;
+  padding: 20px;
+}
+
+.calEmptyIcon {
+  color: var(--text-muted);
+  opacity: 0.3;
+  margin-bottom: 15px;
+}
+
+.calEmptyText {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.05em;
+  line-height: 1.5;
+}
+
+/* ------- Quick Add Button (Kanban Style) ------- */
+.calSidePanelContent:hover .calQuickAddBtn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.calQuickAddBtn {
+  margin-top: 15px;
+  align-self: stretch;
+  width: 100%;
+  height: 32px;
+  border: none !important;
+  border-radius: 0;
+  background: none !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+
+.calQuickAddBtn:hover {
+  color: #ffffff !important;
+  background: none !important;
+  transform: scale(1.05);
+}
+
+/* ------- Event Card ------- */
+.calEventCard {
+  border: 1px solid var(--border-color-dim);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+
+.calEventCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--event-color, #34d399);
+}
+
+.calEventCard:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateX(2px);
+}
+
+.calEventTitle {
+  font-size: 13px;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+
+.calEventMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calEventTime, .calEventLocation {
+  font-size: 10px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.02em;
+}
+
+.calEventLink {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--text-muted);
+  transition: var(--transition-fast);
+}
+
+.calEventLink:hover {
+  color: var(--text-primary);
+}
+
+/* ------- Empty State (No Google) ------- */
+.calMainEmptyState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.calMainEmptyIcon {
+  color: var(--text-muted);
+  opacity: 0.2;
+  margin-bottom: 25px;
+}
+
+.calMainEmptyTitle {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.calMainEmptyText {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.06em;
+  max-width: 300px;
+  line-height: 1.8;
+}
+
+/* ===========================
+   RESPONSIVE — Mobile
+   =========================== */
+@media (max-width: 1024px) {
+  .calSidePanel {
+    display: none; /* Hide side panel on tablets/mobile, maybe show as modal or bottom sheet later */
+  }
+}
+
+@media (max-width: 768px) {
+  .calContainer {
+    padding: 72px 14px 10px;
+  }
+
+  .calTitle {
+    font-size: 14px;
+    letter-spacing: 0.08em;
+  }
+
+  @media (max-width: 400px) {
+    .calDayHeader {
+      font-size: 8px;
+      padding: 6px 2px;
+    }
+
+    .calCell {
+      min-height: 40px;
+    }
+
+    .calCellDay {
+      font-size: 10px;
+      width: 20px;
+      height: 20px;
+    }
+
+    .calCellEventDot {
+      width: 4px;
+      height: 4px;
+    }
+  }
+
+
+  .calEventCardWrapper {
+    cursor: pointer;
+  }
+
+
+  .calGridHeader {
+    grid-template-columns: repeat(7, 1fr);
+  }
+
+  .calCell {
+    min-height: 60px;
+    padding: 4px;
+  }
+
+  .calCellDay {
+    font-size: 10px;
+    width: 20px;
+    height: 20px;
+  }
+
+  .calConnectBtn {
+    font-size: 9px;
+    padding: 8px 14px;
+  }
+
+  .calConnectedBar {
+    padding: 8px 12px;
+  }
+}
+
+/* ------- Modal ------- */
+.calModalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.calModal {
+  width: 100%;
+  max-width: 450px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.calModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.calModalHeader h3 {
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+}
+
+.calModalClose {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.calModalClose:hover {
+  color: var(--text-primary);
+}
+
+.calModalForm {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.calFormGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calFormGroup label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calFormRow {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.calFormRow .calFormGroup {
+  flex: 1;
+}
+
+.calGuestInputWrapper {
+  position: relative;
+}
+
+.calGuestChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.calGuestChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color-dim);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.calGuestChip button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: var(--transition-fast);
+}
+
+.calGuestChip button:hover {
+  color: #f87171;
+}
+
+.calInput {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color-dim);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  width: 100%;
+  transition: var(--transition-fast);
+}
+
+.calInput:focus {
+  outline: none;
+  border-color: var(--border-color);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.calTitleInput {
+  font-size: 16px;
+  padding: 14px;
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-bottom: 1px solid var(--border-color-dim);
+}
+
+.calTitleInput:focus {
+  border-bottom-color: var(--text-secondary);
+  background: transparent;
+}
+
+.calTimeInputs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.calTimeInputs .calInput {
+  width: auto;
+}
+
+.calTimeSeparator {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.calCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 11px !important;
+  color: var(--text-secondary) !important;
+  margin-top: 4px;
+}
+
+.calTextarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.calModalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color-dim);
+}
+
+.calModalActions {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.calDeleteBtn {
+  background: transparent;
+  border: 1px solid rgba(230, 124, 115, 0.2);
+  color: rgba(230, 124, 115, 0.6);
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.calDeleteBtn:hover {
+  background: rgba(230, 124, 115, 0.1);
+  color: #e67c73;
+  border-color: #e67c73;
+}

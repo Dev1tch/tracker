@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { CheckCircle2, ListTodo, LineChart, LogOut } from 'lucide-react';
+import { CheckCircle2, ListTodo, CalendarDays, LineChart, LogOut } from 'lucide-react';
 import './Dashboard.css';
 
 export default function DashboardLayout({ children, activeTab, onTabChange, onLogout }) {
@@ -106,6 +106,13 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
           >
             <ListTodo size={24} strokeWidth={1.5} />
             <span className="navLabel">Tasks</span>
+          </button>
+          <button 
+            className={`navItem ${activeTab === 'calendar' ? 'active' : ''}`}
+            onClick={() => onTabChange('calendar')}
+          >
+            <CalendarDays size={24} strokeWidth={1.5} />
+            <span className="navLabel">Calendar</span>
           </button>
           <button 
             className={`navItem ${activeTab === 'finance' ? 'active' : ''}`}
