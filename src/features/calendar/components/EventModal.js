@@ -1,8 +1,22 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, ChevronDown } from 'lucide-react';
+import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
+
+const GOOGLE_EVENT_COLORS = [
+  { id: '1', name: 'Lavender', hex: '#7986cb' },
+  { id: '2', name: 'Sage', hex: '#33b679' },
+  { id: '3', name: 'Grape', hex: '#8e24aa' },
+  { id: '4', name: 'Flamingo', hex: '#e67c73' },
+  { id: '5', name: 'Banana', hex: '#f6bf26' },
+  { id: '6', name: 'Tangerine', hex: '#f4511e' },
+  { id: '7', name: 'Peacock', hex: '#039be5' },
+  { id: '8', name: 'Graphite', hex: '#616161' },
+  { id: '9', name: 'Blueberry', hex: '#3f51b5' },
+  { id: '10', name: 'Basil', hex: '#0b8043' },
+  { id: '11', name: 'Tomato', hex: '#d50000' },
+];
 
 export default function EventModal({ isOpen, onClose, onSave, onDelete, event, selectedDate, availableCalendars = [] }) {
   const [title, setTitle] = useState('');
@@ -17,6 +31,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const [guestInput, setGuestInput] = useState('');
   const [recurrence, setRecurrence] = useState('');
   const [reminders, setReminders] = useState([{ method: 'popup', minutes: 30 }]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [colorId, setColorId] = useState('');
 
   useEffect(() => {
     if (event) {
@@ -45,12 +61,16 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       setGuests([]);
       setRecurrence('');
       setReminders([{ method: 'popup', minutes: 30 }]);
+      setColorId('');
     }
     
     if (event) {
       setGuests(event.attendees?.map(a => a.email) || []);
       setRecurrence(event.recurrence?.[0] || '');
       setReminders(event.reminders?.overrides || [{ method: 'popup', minutes: 30 }]);
+      // Extract colorId — could be a number string like '1'-'11' or empty
+      const evtColor = event.color || '';
+      setColorId(evtColor.startsWith('#') ? '' : evtColor);
     }
   }, [event, isOpen]);
 
@@ -83,6 +103,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       end: isAllDay ? { date: end.toISOString().split('T')[0] } : { dateTime: end.toISOString() },
       attendees: guests.map(email => ({ email })),
       recurrence: recurrence ? [recurrence] : undefined,
+      colorId: colorId || undefined,
       reminders: {
         useDefault: false,
         overrides: reminders
@@ -101,17 +122,16 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   };
 
   const handleDelete = async () => {
-    if (window.confirm('Are you sure you want to delete this event?')) {
-      setLoading(true);
-      try {
-        await onDelete(event.id, calendarId);
-        onClose();
-      } catch (err) {
-        console.error(err);
-        alert('Failed to delete event');
-      } finally {
-        setLoading(false);
-      }
+    setLoading(true);
+    try {
+      await onDelete(event.id, calendarId);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete event');
+    } finally {
+      setLoading(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -213,6 +233,31 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             />
           </div>
 
+          <div className="calFormGroup">
+            <label><Palette size={16} /> Color</label>
+            <div className="calEventColorPicker">
+              <button
+                type="button"
+                className={`calEventColorSwatch calEventColorDefault ${!colorId ? 'active' : ''}`}
+                onClick={() => setColorId('')}
+                title="Calendar default"
+              >
+                <span style={{ background: 'linear-gradient(135deg, #34d399, #60a5fa)' }} />
+              </button>
+              {GOOGLE_EVENT_COLORS.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`calEventColorSwatch ${colorId === c.id ? 'active' : ''}`}
+                  onClick={() => setColorId(c.id)}
+                  title={c.name}
+                >
+                  <span style={{ backgroundColor: c.hex }} />
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="calFormRow">
             <div className="calFormGroup">
               <label><MapPin size={16} /> Location</label>
@@ -281,24 +326,39 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
           </div>
 
           <footer className="calModalFooter">
-            {event && (
+            {event && !showDeleteConfirm && (
               <button
                 type="button"
                 className="calDeleteBtn"
-                onClick={handleDelete}
+                onClick={() => setShowDeleteConfirm(true)}
                 disabled={loading}
               >
                 <Trash2 size={16} />
               </button>
             )}
-            <div className="calModalActions">
-              <button type="button" className="btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary" disabled={loading}>
-                {loading ? 'Saving...' : 'Save Event'}
-              </button>
-            </div>
+            {event && showDeleteConfirm && (
+              <div className="calDeleteConfirm">
+                <span className="calDeleteConfirmText">Delete this event?</span>
+                <div className="calDeleteConfirmActions">
+                  <button type="button" className="calDeleteConfirmYes" onClick={handleDelete} disabled={loading}>
+                    {loading ? '...' : 'Delete'}
+                  </button>
+                  <button type="button" className="calDeleteConfirmNo" onClick={() => setShowDeleteConfirm(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {!showDeleteConfirm && (
+              <div className="calModalActions">
+                <button type="button" className="btn-secondary" onClick={onClose}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={loading}>
+                  {loading ? 'Saving...' : 'Save Event'}
+                </button>
+              </div>
+            )}
           </footer>
         </form>
       </div>

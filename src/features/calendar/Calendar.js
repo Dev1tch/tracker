@@ -1,23 +1,56 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalIcon, Info, RefreshCw, Plus, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalIcon, RefreshCw, Plus, ChevronDown } from 'lucide-react';
 import { calendarApi } from '@/lib/api';
 import GoogleConnectButton from './components/GoogleConnectButton';
-import EventCard from './components/EventCard';
 import EventModal from './components/EventModal';
 import CreateCalendarModal from './components/CreateCalendarModal';
+import MiniCalendar from './components/MiniCalendar';
+import WeekGrid from './components/WeekGrid';
 import './Calendar.css';
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+function getWeekStart(date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay()); // Sunday
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getWeekEnd(date) {
+  const start = getWeekStart(date);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+function formatWeekRange(weekStart) {
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+
+  const startMonth = MONTHS[weekStart.getMonth()];
+  const endMonth = MONTHS[weekEnd.getMonth()];
+  const startYear = weekStart.getFullYear();
+  const endYear = weekEnd.getFullYear();
+
+  if (startYear !== endYear) {
+    return `${startMonth} ${startYear} – ${endMonth} ${endYear}`;
+  }
+  if (startMonth !== endMonth) {
+    return `${startMonth} – ${endMonth} ${startYear}`;
+  }
+  return `${startMonth} ${startYear}`;
+}
+
 export default function Calendar() {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(new Date()); 
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [weekStart, setWeekStart] = useState(getWeekStart(new Date()));
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -25,15 +58,12 @@ export default function Calendar() {
   const [availableCalendars, setAvailableCalendars] = useState([]);
   const [enabledCalendarIds, setEnabledCalendarIds] = useState(new Set());
   const [isMyCalendarsOpen, setIsMyCalendarsOpen] = useState(true);
-  const [isOtherCalendarsOpen, setIsOtherCalendarsOpen] = useState(true);
-  
+  const [isOtherCalendarsOpen, setIsOtherCalendarsOpen] = useState(false);
+
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreateCalendarModalOpen, setIsCreateCalendarModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
-
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
 
   // Check for stored tokens on mount & handle OAuth callback params
   useEffect(() => {
@@ -65,7 +95,7 @@ export default function Calendar() {
     }
   }, []);
 
-  // Fetch events when connected or month changes
+  // Fetch events when connected or week changes
   const fetchEvents = useCallback(async () => {
     if (!calendarApi.isConnected()) return;
 
@@ -74,24 +104,20 @@ export default function Calendar() {
 
     try {
       const tokens = calendarApi.getTokens();
+      const startDate = new Date(weekStart);
+      startDate.setDate(startDate.getDate() - 7); // Fetch extra week before for mini-cal
+      const endDate = getWeekEnd(weekStart);
+      endDate.setDate(endDate.getDate() + 7); // Fetch extra week after for mini-cal
 
-      const firstDay = new Date(year, month, 1);
-      const lastDay = new Date(year, month + 1, 0);
-      const startDate = new Date(firstDay);
-      startDate.setDate(startDate.getDate() - firstDay.getDay());
-      const endDate = new Date(lastDay);
-      endDate.setDate(endDate.getDate() + (6 - lastDay.getDay()));
-      endDate.setHours(23, 59, 59, 999);
-
-       const { events: fetchedEvents, calendars: fetchedCalendars } = await calendarApi.getEvents(
+      const { events: fetchedEvents, calendars: fetchedCalendars } = await calendarApi.getEvents(
         tokens,
         startDate.toISOString(),
         endDate.toISOString()
       );
-      
+
       setEvents(fetchedEvents);
       setAvailableCalendars(fetchedCalendars);
-      
+
       // Initialize enabled calendars if not set
       if (enabledCalendarIds.size === 0 && fetchedCalendars.length > 0) {
         const selectedIds = fetchedCalendars.filter(c => c.selected).map(c => c.id);
@@ -109,14 +135,14 @@ export default function Calendar() {
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [weekStart]);
 
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
 
   // Event Handlers
-   const handleSaveEvent = async (eventData, calendarId) => {
+  const handleSaveEvent = async (eventData, calendarId) => {
     const tokens = calendarApi.getTokens();
     if (!tokens) return;
 
@@ -162,8 +188,9 @@ export default function Calendar() {
     setEnabledCalendarIds(newEnabled);
   };
 
-  const openCreateModal = () => {
+  const openCreateModal = (prefilledDate) => {
     setEditingEvent(null);
+    if (prefilledDate) setSelectedDate(prefilledDate);
     setIsModalOpen(true);
   };
 
@@ -173,21 +200,33 @@ export default function Calendar() {
   };
 
   // Navigation
-  const goToPrevMonth = () => {
-    setCurrentDate(new Date(year, month - 1, 1));
+  const goToPrevWeek = () => {
+    const newStart = new Date(weekStart);
+    newStart.setDate(newStart.getDate() - 7);
+    setWeekStart(newStart);
   };
-  const goToNextMonth = () => {
-    setCurrentDate(new Date(year, month + 1, 1));
+
+  const goToNextWeek = () => {
+    const newStart = new Date(weekStart);
+    newStart.setDate(newStart.getDate() + 7);
+    setWeekStart(newStart);
   };
+
   const goToToday = () => {
     const today = new Date();
-    setCurrentDate(today);
     setSelectedDate(today);
+    setWeekStart(getWeekStart(today));
+  };
+
+  const handleDateSelect = (date) => {
+    setSelectedDate(date);
+    setWeekStart(getWeekStart(date));
   };
 
   const handleConnect = () => {
     window.location.href = calendarApi.getAuthUrl();
   };
+
   const handleDisconnect = () => {
     calendarApi.clearTokens();
     setConnected(false);
@@ -197,97 +236,52 @@ export default function Calendar() {
     setEnabledCalendarIds(new Set());
   };
 
-  // Build calendar grid
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const daysInPrevMonth = new Date(year, month, 0).getDate();
-
-  const calendarDays = [];
-  for (let i = firstDayOfMonth - 1; i >= 0; i--) {
-    calendarDays.push({
-      day: daysInPrevMonth - i,
-      isCurrentMonth: false,
-      date: new Date(year, month - 1, daysInPrevMonth - i),
-    });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    calendarDays.push({
-      day: d,
-      isCurrentMonth: true,
-      date: new Date(year, month, d),
-    });
-  }
-  const remaining = 42 - calendarDays.length;
-  for (let i = 1; i <= remaining; i++) {
-    calendarDays.push({
-      day: i,
-      isCurrentMonth: false,
-      date: new Date(year, month + 1, i),
-    });
-  }
-
-   const getEventsForDate = (date) => {
-    if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
-    return events.filter((event) => {
-      const eventDate = event.start.substring(0, 10);
-      return eventDate === dateStr && enabledCalendarIds.has(event.calendarId);
-    });
+  const handleSlotClick = (slotDate) => {
+    setSelectedDate(slotDate);
+    openCreateModal(slotDate);
   };
-
-  const isToday = (date) => {
-    const today = new Date();
-    return (
-      date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear()
-    );
-  };
-
-  const isSelected = (date) => {
-    if (!selectedDate) return false;
-    return (
-      date.getDate() === selectedDate.getDate() &&
-      date.getMonth() === selectedDate.getMonth() &&
-      date.getFullYear() === selectedDate.getFullYear()
-    );
-  };
-
-  const selectedEvents = getEventsForDate(selectedDate);
 
   return (
     <div className="calContainer">
+      {/* Top Header Bar */}
       <header className="calHeader">
-        <div className="calHeaderTop">
+        <div className="calHeaderLeft">
           <h1 className="calTitle">
             <CalIcon size={20} className="glow-icon" />
-            {MONTHS[month]} {year}
+            {formatWeekRange(weekStart)}
           </h1>
-          
-          <div className="calHeaderActions">
-            <button className="calTodayBtn" onClick={goToToday}>Today</button>
-            <div className="calNavButtons">
-              <button className="calNavBtn" onClick={goToPrevMonth} title="Previous Month">
-                <ChevronLeft size={16} />
-              </button>
-              <button className="calNavBtn" onClick={goToNextMonth} title="Next Month">
-                <ChevronRight size={16} />
-              </button>
-            </div>
-            {connected && (
-              <button className="calNavBtn" onClick={fetchEvents} title="Refresh Events" disabled={loading}>
-                <RefreshCw size={14} className={loading ? 'infinite-spin' : ''} />
-              </button>
-            )}
-          </div>
         </div>
 
-        <GoogleConnectButton
-          isConnected={connected}
-          onConnect={handleConnect}
-          onDisconnect={handleDisconnect}
-        />
+        <div className="calHeaderRight">
+          {connected && (
+            <button className="calBookBtn" onClick={() => openCreateModal()}>
+              <Plus size={16} />
+              <span>Book Event</span>
+            </button>
+          )}
+          <button className="calTodayBtn" onClick={goToToday}>Today</button>
+          <div className="calNavButtons">
+            <button className="calNavBtn" onClick={goToPrevWeek} title="Previous Week">
+              <ChevronLeft size={16} />
+            </button>
+            <button className="calNavBtn" onClick={goToNextWeek} title="Next Week">
+              <ChevronRight size={16} />
+            </button>
+          </div>
+          <span className="calViewLabel">Week</span>
+          {connected && (
+            <button className="calNavBtn" onClick={fetchEvents} title="Refresh Events" disabled={loading}>
+              <RefreshCw size={14} className={loading ? 'infinite-spin' : ''} />
+            </button>
+          )}
+        </div>
       </header>
+
+      <GoogleConnectButton
+        isConnected={connected}
+        onConnect={handleConnect}
+        onDisconnect={handleDisconnect}
+      />
 
       {error && <div className="calError">{error}</div>}
 
@@ -302,124 +296,79 @@ export default function Calendar() {
           </p>
         </div>
       ) : (
-        <div className="calMainView">
-          <div className="calGridWrapper glass">
-            <div className="calGridHeader">
-              {DAYS.map(day => <div key={day} className="calDayName">{day}</div>)}
-            </div>
-            <div className="calGridItems">
-              {calendarDays.map((cell, i) => {
-                const dayEvents = getEventsForDate(cell.date);
-                const hasEvents = dayEvents.length > 0;
-                
-                return (
+        <div className="calLayout">
+          {/* Left Sidebar */}
+          <aside className="calSidebar">
+            <MiniCalendar
+              selectedDate={selectedDate}
+              onDateSelect={handleDateSelect}
+              events={events}
+              enabledCalendarIds={enabledCalendarIds}
+            />
+
+            <div className="calCalendarToggles">
+              <div className="calTogglesHeader" onClick={() => setIsMyCalendarsOpen(!isMyCalendarsOpen)}>
+                <h4 className="calTogglesTitle">My Calendars</h4>
+                <div className="calTogglesActions">
                   <button
-                    key={i}
-                    className={`calCell ${!cell.isCurrentMonth ? 'calCellOther' : ''} ${isToday(cell.date) ? 'calCellToday' : ''} ${isSelected(cell.date) ? 'calCellSelected' : ''} ${hasEvents ? 'calCellHasEvents' : ''}`}
-                    onClick={() => setSelectedDate(cell.date)}
+                    className="calAddCalendarBtn"
+                    onClick={(e) => { e.stopPropagation(); setIsCreateCalendarModalOpen(true); }}
+                    title="Add calendar"
                   >
-                    <span className="calCellDay">{cell.day}</span>
-                    {hasEvents && (
-                      <div className="calCellDots">
-                        {dayEvents.slice(0, 4).map((_, j) => (
-                          <span key={j} className="calCellEventDot" />
-                        ))}
-                      </div>
-                    )}
+                    <Plus size={14} />
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <aside className="calSidePanel glass">
-            <div className="calSidePanelHeader">
-              <h3 className="calSidePanelTitle">
-                {selectedDate.toLocaleDateString(undefined, { 
-                  weekday: 'short', 
-                  month: 'short', 
-                  day: 'numeric' 
-                })}
-              </h3>
-            </div>
-            
-            <div className="calSidePanelContent">
-              <div className="calCalendarToggles">
-                <div className="calTogglesHeader" onClick={() => setIsMyCalendarsOpen(!isMyCalendarsOpen)}>
-                  <h4 className="calTogglesTitle">My Calendars</h4>
-                  <div className="calTogglesActions">
-                    <button 
-                      className="calAddCalendarBtn" 
-                      onClick={(e) => { e.stopPropagation(); setIsCreateCalendarModalOpen(true); }}
-                      title="Add calendar"
-                    >
-                      <Plus size={14} />
-                    </button>
-                    <ChevronDown size={14} style={{ transform: isMyCalendarsOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
-                  </div>
+                  <ChevronDown size={14} style={{ transform: isMyCalendarsOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
                 </div>
-                
-                {isMyCalendarsOpen && availableCalendars
-                  .filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer')
-                  .map(cal => (
-                    <label key={cal.id} className="calToggleItem">
-                      <input
-                        type="checkbox"
-                        checked={enabledCalendarIds.has(cal.id)}
-                        onChange={() => toggleCalendar(cal.id)}
-                      />
-                      <span className="calToggleColor" style={{ backgroundColor: cal.backgroundColor }} />
-                      <span className="calToggleSummary">{cal.summary}</span>
-                    </label>
-                  ))}
-
-                <div className="calTogglesHeader" onClick={() => setIsOtherCalendarsOpen(!isOtherCalendarsOpen)} style={{ marginTop: '15px' }}>
-                  <h4 className="calTogglesTitle">Other Calendars</h4>
-                  <ChevronDown size={14} style={{ transform: isOtherCalendarsOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
-                </div>
-                
-                {isOtherCalendarsOpen && availableCalendars
-                  .filter(cal => cal.accessRole !== 'owner' && cal.accessRole !== 'writer')
-                  .map(cal => (
-                    <label key={cal.id} className="calToggleItem">
-                      <input
-                        type="checkbox"
-                        checked={enabledCalendarIds.has(cal.id)}
-                        onChange={() => toggleCalendar(cal.id)}
-                      />
-                      <span className="calToggleColor" style={{ backgroundColor: cal.backgroundColor }} />
-                      <span className="calToggleSummary">{cal.summary}</span>
-                    </label>
-                  ))}
               </div>
 
-              <div className="calEventsList">
-                <h4 className="calTogglesTitle">Schedule</h4>
-              {selectedEvents.length > 0 ? (
-                <>
-                  {selectedEvents.map(event => (
-                    <div key={event.id} onClick={() => openEditModal(event)} className="calEventCardWrapper">
-                      <EventCard event={event} />
-                    </div>
-                  ))}
-                  <button className="calQuickAddBtn" onClick={openCreateModal} title="Book Event">
-                    <Plus size={14} />
-                  </button>
-                </>
-              ) : (
-                <div className="calEventsEmpty">
-                  <div className="calEmptyIcon">
-                    <Info size={24} strokeWidth={1.5} />
-                  </div>
-                  <p className="calEmptyText">No events scheduled for this day.</p>
-                  <button className="calQuickAddBtn" onClick={openCreateModal} title="Book Event">
-                    <Plus size={14} />
-                  </button>
-                </div>
-              )}
+              {isMyCalendarsOpen && availableCalendars
+                .filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer')
+                .map(cal => (
+                  <label key={cal.id} className="calToggleItem">
+                    <input
+                      type="checkbox"
+                      checked={enabledCalendarIds.has(cal.id)}
+                      onChange={() => toggleCalendar(cal.id)}
+                      style={{ '--toggle-color': cal.backgroundColor }}
+                    />
+                    <span className="calToggleColor" style={{ backgroundColor: cal.backgroundColor }} />
+                    <span className="calToggleSummary">{cal.summary}</span>
+                  </label>
+                ))}
+
+              <div className="calTogglesHeader" onClick={() => setIsOtherCalendarsOpen(!isOtherCalendarsOpen)} style={{ marginTop: '15px' }}>
+                <h4 className="calTogglesTitle">Other Calendars</h4>
+                <ChevronDown size={14} style={{ transform: isOtherCalendarsOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
+              </div>
+
+              {isOtherCalendarsOpen && availableCalendars
+                .filter(cal => cal.accessRole !== 'owner' && cal.accessRole !== 'writer')
+                .map(cal => (
+                  <label key={cal.id} className="calToggleItem">
+                    <input
+                      type="checkbox"
+                      checked={enabledCalendarIds.has(cal.id)}
+                      onChange={() => toggleCalendar(cal.id)}
+                      style={{ '--toggle-color': cal.backgroundColor }}
+                    />
+                    <span className="calToggleColor" style={{ backgroundColor: cal.backgroundColor }} />
+                    <span className="calToggleSummary">{cal.summary}</span>
+                  </label>
+                ))}
             </div>
-          </div>
-        </aside>
+
+          </aside>
+
+          {/* Main Week Grid */}
+          <main className="calMain">
+            <WeekGrid
+              weekStart={weekStart}
+              events={events}
+              enabledCalendarIds={enabledCalendarIds}
+              onEventClick={openEditModal}
+              onSlotClick={handleSlotClick}
+            />
+          </main>
         </div>
       )}
 
@@ -428,10 +377,10 @@ export default function Calendar() {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onSave={handleSaveEvent}
-           onDelete={handleDeleteEvent}
+          onDelete={handleDeleteEvent}
           event={editingEvent}
           selectedDate={selectedDate}
-            availableCalendars={availableCalendars}
+          availableCalendars={availableCalendars}
         />
       )}
 
