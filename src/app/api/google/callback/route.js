@@ -6,7 +6,7 @@ export async function GET(request) {
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
-  const appUrl = process.env.GOOGLE_NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const appUrl = request.nextUrl.origin;
   const redirectUri = `${appUrl}/api/google/callback`;
 
   if (error) {
