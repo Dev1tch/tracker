@@ -252,6 +252,21 @@
   scrollbar-color: var(--border-color) transparent;
 }
 
+.calModal {
+  width: min(760px, 100%);
+  max-width: 500px;
+  background: #0f0f0f;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 12px 42px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: visible; /* Allow popovers to float */
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
 .calCell {
   min-height: 100px;
   background: transparent;
@@ -288,11 +303,16 @@
   font-weight: 400;
 }
 
+.calCellToday {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
 .calCellToday .calCellDay {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--text-primary);
   color: #000;
   font-weight: 600;
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 15px var(--glow-color);
 }
 
 .calCellSelected {
@@ -330,6 +350,14 @@
   backdrop-filter: blur(10px);
 }
 
+.calModalFooter {
+  padding: 16px 20px 20px;
+  border-top: 1px solid var(--border-color-dim);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .calSidePanelHeader {
   padding: 20px;
   border-bottom: 1px solid var(--border-color-dim);
@@ -347,8 +375,128 @@
 .calSidePanelContent {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 20px;
+  padding: 10px 0;
   scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+}
+
+.calCalendarToggles {
+  padding: 10px 20px 20px;
+  border-bottom: 1px solid var(--border-color-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calTogglesTitle {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.calTogglesHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 8px;
+  transition: var(--transition-fast);
+}
+
+.calTogglesHeader:hover {
+  color: var(--text-primary);
+}
+
+.calTogglesActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-tertiary);
+}
+
+.calAddCalendarBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 4px;
+  transition: var(--transition-fast);
+}
+
+.calAddCalendarBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.calToggleItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.calToggleItem:hover {
+  opacity: 0.8;
+}
+
+.calToggleItem input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition-fast);
+}
+
+.calToggleItem input[type="checkbox"]:checked {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--text-primary);
+  box-shadow: 0 0 10px var(--glow-color);
+}
+
+.calToggleItem input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-primary);
+  font-size: 10px;
+  text-shadow: 0 0 5px var(--text-primary);
+}
+
+.calToggleColor {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.calToggleSummary {
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calEventsList {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 .calEventsEmpty {
@@ -577,30 +725,27 @@
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 20px;
+  padding: 60px 20px 100px 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
-.calModal {
-  width: 100%;
-  max-width: 450px;
-  max-height: 90vh;
-  overflow-y: auto;
-  padding: 24px;
-}
 
 .calModalHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border-color-dim);
 }
 
 .calModalHeader h3 {
@@ -625,6 +770,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  padding: 20px;
 }
 
 .calFormGroup {
@@ -634,13 +780,23 @@
 }
 
 .calFormGroup label {
-  font-size: 10px;
-  letter-spacing: 0.1em;
+  font-size: 9px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-tertiary);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.calModalForm .customSelectHeader {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.calModalForm .customSelectContainer {
+  margin-bottom: 4px;
 }
 
 .calFormRow {
@@ -742,11 +898,41 @@
 .calCheckboxLabel {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
-  font-size: 11px !important;
+  font-size: 10px !important;
   color: var(--text-secondary) !important;
-  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 8px;
+}
+
+.calCheckboxLabel input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition-fast);
+}
+
+.calCheckboxLabel input[type="checkbox"]:checked {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--text-primary);
+  box-shadow: 0 0 8px var(--glow-color);
+}
+
+.calCheckboxLabel input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-primary);
+  font-size: 8px;
 }
 
 .calTextarea {
@@ -761,6 +947,107 @@
   margin-top: 12px;
   padding-top: 20px;
   border-top: 1px solid var(--border-color-dim);
+}
+
+.calColorPickerWrap {
+  position: relative;
+  display: inline-block;
+}
+
+.calColorBtn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+
+.calColorBtn:hover {
+  transform: scale(1.1);
+}
+
+.calColorPopover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 180px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  background: #0f0f0f;
+  box-shadow: 0 12px 42px rgba(0, 0, 0, 0.82);
+  z-index: 1000;
+  border-radius: 8px;
+}
+
+.calColorWheel {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  position: relative;
+  cursor: crosshair;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(circle at center, #ffffff 0%, rgba(255, 255, 255, 0) 100%),
+    conic-gradient(from 90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+  margin-bottom: 10px;
+}
+
+.calColorPointer {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.calColorSwatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.calColorSwatch {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.2s;
+}
+
+.calColorSwatch:hover {
+  transform: scale(1.1);
+}
+
+.calColorSwatch.active {
+  border: 2px solid #ffffff;
+}
+
+.calColorHexRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calColorHexRow label {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.calColorHexRow input {
+  flex: 1;
+  height: 24px;
+  font-size: 10px;
+  padding: 0 6px;
 }
 
 .calModalActions {

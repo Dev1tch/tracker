@@ -9,7 +9,7 @@ export class CalendarApi {
   }
 
   /**
-   * Fetch events from Google Calendar via the API route
+   * Fetch events and available calendars from Google Calendar via the API route
    */
   async getEvents(tokens, timeMin, timeMax) {
     const params = new URLSearchParams();
@@ -29,15 +29,38 @@ export class CalendarApi {
       throw error;
     }
 
-    return data.events;
+    return { 
+      events: data.events,
+      calendars: data.calendars
+    };
+  }
+
+  /**
+   * Create a new calendar
+   */
+  async createCalendar(tokens, calendarData) {
+    const params = new URLSearchParams();
+    params.set('access_token', tokens.access_token);
+    if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
+
+    const response = await fetch(`/api/google/calendars?${params.toString()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(calendarData),
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to create calendar');
+    return data;
   }
 
   /**
    * Create a new event
    */
-  async createEvent(tokens, eventData) {
+  async createEvent(tokens, eventData, calendarId = 'primary') {
     const params = new URLSearchParams();
     params.set('access_token', tokens.access_token);
+    params.set('calendar_id', calendarId);
     if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
 
     const response = await fetch(`/api/google/events?${params.toString()}`, {
@@ -54,10 +77,11 @@ export class CalendarApi {
   /**
    * Update an existing event
    */
-  async updateEvent(tokens, eventId, eventData) {
+  async updateEvent(tokens, eventId, eventData, calendarId = 'primary') {
     const params = new URLSearchParams();
     params.set('access_token', tokens.access_token);
     params.set('event_id', eventId);
+    params.set('calendar_id', calendarId);
     if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
 
     const response = await fetch(`/api/google/events?${params.toString()}`, {
@@ -74,10 +98,11 @@ export class CalendarApi {
   /**
    * Delete an event
    */
-  async deleteEvent(tokens, eventId) {
+  async deleteEvent(tokens, eventId, calendarId = 'primary') {
     const params = new URLSearchParams();
     params.set('access_token', tokens.access_token);
     params.set('event_id', eventId);
+    params.set('calendar_id', calendarId);
     if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
 
     const response = await fetch(`/api/google/events?${params.toString()}`, {

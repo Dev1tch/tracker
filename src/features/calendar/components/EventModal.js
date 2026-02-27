@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell } from 'lucide-react';
+import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, ChevronDown } from 'lucide-react';
+import CustomSelect from '@/components/ui/CustomSelect';
 
-export default function EventModal({ isOpen, onClose, onSave, onDelete, event, selectedDate }) {
+export default function EventModal({ isOpen, onClose, onSave, onDelete, event, selectedDate, availableCalendars = [] }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [calendarId, setCalendarId] = useState('primary');
   const [location, setLocation] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('10:00');
@@ -31,9 +33,11 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
         const end = new Date(event.end);
         setEndTime(end.toTimeString().slice(0, 5));
       }
+      setCalendarId(event.calendarId || 'primary');
     } else {
       setTitle('');
       setDescription('');
+      setCalendarId('primary');
       setLocation('');
       setStartTime('09:00');
       setEndTime('10:00');
@@ -86,7 +90,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     };
 
     try {
-      await onSave(eventData);
+      await onSave(eventData, calendarId);
       onClose();
     } catch (err) {
       console.error(err);
@@ -100,7 +104,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     if (window.confirm('Are you sure you want to delete this event?')) {
       setLoading(true);
       try {
-        await onDelete(event.id);
+        await onDelete(event.id, calendarId);
         onClose();
       } catch (err) {
         console.error(err);
@@ -111,9 +115,23 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     }
   };
 
+  const handleAddGuest = (email) => {
+    if (email && email.includes('@') && !guests.includes(email)) {
+      setGuests([...guests, email]);
+    }
+  };
+
+  const getReminderValue = () => {
+    return reminders[0]?.minutes?.toString() || '30';
+  };
+
+  const handleReminderChange = (minutes) => {
+    setReminders([{ method: 'popup', minutes: parseInt(minutes) }]);
+  };
+
   return (
-    <div className="calModalOverlay">
-      <div className="calModal glass">
+    <div className="calModalOverlay" onClick={onClose}>
+      <div className="calModal glass" onClick={(e) => e.stopPropagation()}>
         <header className="calModalHeader">
           <h3>{event ? 'Edit Event' : 'New Event'}</h3>
           <button className="calModalClose" onClick={onClose}>
@@ -123,9 +141,10 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
 
         <form onSubmit={handleSubmit} className="calModalForm">
           <div className="calFormGroup">
+            <label><CalIcon size={16} /> Title</label>
             <input
               type="text"
-              className="calInput calTitleInput"
+              className="authInput calTitleInput"
               placeholder="Event Title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -140,7 +159,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
               <div className="calTimeInputs">
                 <input
                   type="time"
-                  className="calInput"
+                  className="authInput"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
                   disabled={isAllDay}
@@ -148,7 +167,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
                 <span className="calTimeSeparator">to</span>
                 <input
                   type="time"
-                  className="calInput"
+                  className="authInput"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
                   disabled={isAllDay}
@@ -163,17 +182,62 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
                 All Day
               </label>
             </div>
+            
+            <div className="calFormGroup">
+              <label><Repeat size={16} /> Repeat</label>
+              <CustomSelect
+                options={[
+                  { value: '', label: 'Does not repeat' },
+                  { value: 'RRULE:FREQ=DAILY', label: 'Daily' },
+                  { value: 'RRULE:FREQ=WEEKLY', label: 'Weekly' },
+                  { value: 'RRULE:FREQ=MONTHLY', label: 'Monthly' },
+                  { value: 'RRULE:FREQ=YEARLY', label: 'Yearly' }
+                ]}
+                value={recurrence}
+                onChange={setRecurrence}
+              />
+            </div>
           </div>
 
           <div className="calFormGroup">
-            <label><MapPin size={16} /> Location</label>
-            <input
-              type="text"
-              className="calInput"
-              placeholder="Add location"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
+            <label><CalIcon size={16} /> Calendar</label>
+            <CustomSelect
+              options={availableCalendars.map(cal => ({
+                value: cal.id,
+                label: cal.summary + (cal.primary ? ' (Primary)' : ''),
+                color: cal.backgroundColor
+              }))}
+              value={calendarId}
+              onChange={setCalendarId}
+              disabled={event && !!event.id}
             />
+          </div>
+
+          <div className="calFormRow">
+            <div className="calFormGroup">
+              <label><MapPin size={16} /> Location</label>
+              <input
+                type="text"
+                className="authInput"
+                placeholder="Add location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              />
+            </div>
+
+            <div className="calFormGroup">
+              <label><Bell size={16} /> Reminder</label>
+              <CustomSelect
+                options={[
+                  { value: '10', label: '10 minutes before' },
+                  { value: '30', label: '30 minutes before' },
+                  { value: '60', label: '1 hour before' },
+                  { value: '1440', label: '1 day before' }
+                ]}
+                value={getReminderValue()}
+                onChange={handleReminderChange}
+              />
+            </div>
           </div>
 
           <div className="calFormGroup">
@@ -181,15 +245,13 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             <div className="calGuestInputWrapper">
               <input
                 type="email"
-                className="calInput"
-                placeholder="Add guest email"
-                value={guestInput}
-                onChange={(e) => setGuestInput(e.target.value)}
+                className="authInput"
+                placeholder="Add guest email and press Enter"
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && guestInput.includes('@')) {
+                  if (e.key === 'Enter') {
                     e.preventDefault();
-                    setGuests([...guests, guestInput]);
-                    setGuestInput('');
+                    handleAddGuest(e.target.value);
+                    e.target.value = '';
                   }
                 }}
               />
@@ -208,41 +270,10 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             )}
           </div>
 
-          <div className="calFormRow">
-            <div className="calFormGroup">
-              <label><Repeat size={16} /> Repeat</label>
-              <select 
-                className="calInput" 
-                value={recurrence} 
-                onChange={(e) => setRecurrence(e.target.value)}
-              >
-                <option value="">Once</option>
-                <option value="RRULE:FREQ=DAILY">Daily</option>
-                <option value="RRULE:FREQ=WEEKLY">Weekly</option>
-                <option value="RRULE:FREQ=MONTHLY">Monthly</option>
-                <option value="RRULE:FREQ=YEARLY">Yearly</option>
-              </select>
-            </div>
-            
-            <div className="calFormGroup">
-              <label><Bell size={16} /> Notifications</label>
-              <select 
-                className="calInput"
-                value={reminders[0]?.minutes || 30}
-                onChange={(e) => setReminders([{ method: 'popup', minutes: parseInt(e.target.value) }])}
-              >
-                <option value="15">15 min before</option>
-                <option value="30">30 min before</option>
-                <option value="60">1 hour before</option>
-                <option value="1440">1 day before</option>
-              </select>
-            </div>
-          </div>
-
           <div className="calFormGroup">
             <label><AlignLeft size={16} /> Description</label>
             <textarea
-              className="calInput calTextarea"
+              className="authInput calTextarea"
               placeholder="Add description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}

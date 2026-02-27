@@ -34,8 +34,9 @@ export async function GET(request) {
       minAccessRole: 'reader'
     });
     
-    // Filter to show only 'selected' calendars (checked in the sidebar)
-    const calendars = (calendarListResponse.data.items || []).filter(cal => cal.selected);
+    // Filter to show only 'selected' calendars by default, but let frontend handle visibility
+    // Actually, let's just fetch all calendars with at least reader access
+    const calendars = (calendarListResponse.data.items || []);
     
     // 2. Fetch events from each calendar in parallel
     const eventPromises = calendars.map(async (cal) => {
@@ -44,7 +45,7 @@ export async function GET(request) {
           calendarId: cal.id,
           timeMin: timeMin || new Date().toISOString(),
           timeMax: timeMax || undefined,
-          maxResults: 100, // Reduced per-calendar results to stay within limits when merging
+          maxResults: 100, 
           singleEvents: true,
           orderBy: 'startTime',
         });
@@ -57,7 +58,7 @@ export async function GET(request) {
         }));
       } catch (err) {
         console.error(`Error fetching events for calendar ${cal.id}:`, err);
-        return []; // Return empty if one calendar fails
+        return [];
       }
     });
     
@@ -66,6 +67,7 @@ export async function GET(request) {
     // 3. Flatten, map, and sort all events
     const allEvents = results.flat().map((event) => ({
       id: event.id,
+      calendarId: event.calendarId,
       title: event.summary || '(No title)',
       description: event.description || '',
       location: event.location || '',
@@ -81,7 +83,18 @@ export async function GET(request) {
     // Sort merged events by start time
     allEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
 
-    return NextResponse.json({ events: allEvents });
+    return NextResponse.json({ 
+      events: allEvents,
+      calendars: calendars.map(c => ({
+        id: c.id,
+        summary: c.summary,
+        backgroundColor: c.backgroundColor,
+        foregroundColor: c.foregroundColor,
+        primary: c.primary || false,
+        selected: c.selected || false,
+        accessRole: c.accessRole
+      }))
+    });
   } catch (err) {
     console.error('Google Calendar events error:', err);
 
@@ -107,6 +120,7 @@ export async function POST(request) {
   const { searchParams } = new URL(request.url);
   const accessToken = searchParams.get('access_token');
   const refreshToken = searchParams.get('refresh_token');
+  const calendarId = searchParams.get('calendar_id') || 'primary';
 
   if (!accessToken) {
     return NextResponse.json({ error: 'No access token provided' }, { status: 401 });
@@ -126,7 +140,7 @@ export async function POST(request) {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
     const response = await calendar.events.insert({
-      calendarId: 'primary',
+      calendarId,
       requestBody: body,
     });
 
@@ -145,6 +159,8 @@ export async function PATCH(request) {
   const accessToken = searchParams.get('access_token');
   const refreshToken = searchParams.get('refresh_token');
   const eventId = searchParams.get('event_id');
+  const calendarId = searchParams.get('calendar_id') || 'primary';
+
 
   if (!accessToken || !eventId) {
     return NextResponse.json({ error: 'Missing access token or event ID' }, { status: 400 });
@@ -164,7 +180,7 @@ export async function PATCH(request) {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
     const response = await calendar.events.patch({
-      calendarId: 'primary',
+      calendarId,
       eventId,
       requestBody: body,
     });
@@ -184,6 +200,8 @@ export async function DELETE(request) {
   const accessToken = searchParams.get('access_token');
   const refreshToken = searchParams.get('refresh_token');
   const eventId = searchParams.get('event_id');
+  const calendarId = searchParams.get('calendar_id') || 'primary';
+
 
   if (!accessToken || !eventId) {
     return NextResponse.json({ error: 'Missing access token or event ID' }, { status: 400 });
@@ -202,7 +220,7 @@ export async function DELETE(request) {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
     await calendar.events.delete({
-      calendarId: 'primary',
+      calendarId,
       eventId,
     });
 

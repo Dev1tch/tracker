@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalIcon, Info, RefreshCw, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalIcon, Info, RefreshCw, Plus, ChevronDown } from 'lucide-react';
 import { calendarApi } from '@/lib/api';
 import GoogleConnectButton from './components/GoogleConnectButton';
 import EventCard from './components/EventCard';
 import EventModal from './components/EventModal';
+import CreateCalendarModal from './components/CreateCalendarModal';
 import './Calendar.css';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -21,9 +22,14 @@ export default function Calendar() {
   const [loading, setLoading] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
+  const [availableCalendars, setAvailableCalendars] = useState([]);
+  const [enabledCalendarIds, setEnabledCalendarIds] = useState(new Set());
+  const [isMyCalendarsOpen, setIsMyCalendarsOpen] = useState(true);
+  const [isOtherCalendarsOpen, setIsOtherCalendarsOpen] = useState(true);
   
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateCalendarModalOpen, setIsCreateCalendarModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
 
   const year = currentDate.getFullYear();
@@ -77,12 +83,20 @@ export default function Calendar() {
       endDate.setDate(endDate.getDate() + (6 - lastDay.getDay()));
       endDate.setHours(23, 59, 59, 999);
 
-      const fetchedEvents = await calendarApi.getEvents(
+       const { events: fetchedEvents, calendars: fetchedCalendars } = await calendarApi.getEvents(
         tokens,
         startDate.toISOString(),
         endDate.toISOString()
       );
+      
       setEvents(fetchedEvents);
+      setAvailableCalendars(fetchedCalendars);
+      
+      // Initialize enabled calendars if not set
+      if (enabledCalendarIds.size === 0 && fetchedCalendars.length > 0) {
+        const selectedIds = fetchedCalendars.filter(c => c.selected).map(c => c.id);
+        setEnabledCalendarIds(new Set(selectedIds.length > 0 ? selectedIds : fetchedCalendars.map(c => c.id)));
+      }
     } catch (err) {
       console.error('Failed to fetch events:', err);
       if (err.code === 'TOKEN_EXPIRED' || err.status === 401 || err.code === 'FORBIDDEN' || err.status === 403) {
@@ -102,24 +116,50 @@ export default function Calendar() {
   }, [fetchEvents]);
 
   // Event Handlers
-  const handleSaveEvent = async (eventData) => {
+   const handleSaveEvent = async (eventData, calendarId) => {
     const tokens = calendarApi.getTokens();
     if (!tokens) return;
 
     if (editingEvent) {
-      await calendarApi.updateEvent(tokens, editingEvent.id, eventData);
+      await calendarApi.updateEvent(tokens, editingEvent.id, eventData, calendarId);
     } else {
-      await calendarApi.createEvent(tokens, eventData);
+      await calendarApi.createEvent(tokens, eventData, calendarId);
     }
     fetchEvents();
   };
 
-  const handleDeleteEvent = async (eventId) => {
+  const handleDeleteEvent = async (eventId, calendarId) => {
     const tokens = calendarApi.getTokens();
     if (!tokens) return;
 
-    await calendarApi.deleteEvent(tokens, eventId);
+    await calendarApi.deleteEvent(tokens, eventId, calendarId);
     fetchEvents();
+  };
+
+  const handleCreateCalendar = async (calendarData) => {
+    const tokens = calendarApi.getTokens();
+    if (!tokens) return;
+
+    setLoading(true);
+    try {
+      await calendarApi.createCalendar(tokens, calendarData);
+      fetchEvents();
+    } catch (err) {
+      console.error('Failed to create calendar:', err);
+      alert('Failed to create calendar');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleCalendar = (id) => {
+    const newEnabled = new Set(enabledCalendarIds);
+    if (newEnabled.has(id)) {
+      newEnabled.delete(id);
+    } else {
+      newEnabled.add(id);
+    }
+    setEnabledCalendarIds(newEnabled);
   };
 
   const openCreateModal = () => {
@@ -153,6 +193,8 @@ export default function Calendar() {
     setConnected(false);
     setEvents([]);
     setSelectedDate(new Date());
+    setAvailableCalendars([]);
+    setEnabledCalendarIds(new Set());
   };
 
   // Build calendar grid
@@ -184,12 +226,12 @@ export default function Calendar() {
     });
   }
 
-  const getEventsForDate = (date) => {
+   const getEventsForDate = (date) => {
     if (!date) return [];
     const dateStr = date.toISOString().split('T')[0];
     return events.filter((event) => {
       const eventDate = event.start.substring(0, 10);
-      return eventDate === dateStr;
+      return eventDate === dateStr && enabledCalendarIds.has(event.calendarId);
     });
   };
 
@@ -300,7 +342,59 @@ export default function Calendar() {
                 })}
               </h3>
             </div>
+            
             <div className="calSidePanelContent">
+              <div className="calCalendarToggles">
+                <div className="calTogglesHeader" onClick={() => setIsMyCalendarsOpen(!isMyCalendarsOpen)}>
+                  <h4 className="calTogglesTitle">My Calendars</h4>
+                  <div className="calTogglesActions">
+                    <button 
+                      className="calAddCalendarBtn" 
+                      onClick={(e) => { e.stopPropagation(); setIsCreateCalendarModalOpen(true); }}
+                      title="Add calendar"
+                    >
+                      <Plus size={14} />
+                    </button>
+                    <ChevronDown size={14} style={{ transform: isMyCalendarsOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
+                  </div>
+                </div>
+                
+                {isMyCalendarsOpen && availableCalendars
+                  .filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer')
+                  .map(cal => (
+                    <label key={cal.id} className="calToggleItem">
+                      <input
+                        type="checkbox"
+                        checked={enabledCalendarIds.has(cal.id)}
+                        onChange={() => toggleCalendar(cal.id)}
+                      />
+                      <span className="calToggleColor" style={{ backgroundColor: cal.backgroundColor }} />
+                      <span className="calToggleSummary">{cal.summary}</span>
+                    </label>
+                  ))}
+
+                <div className="calTogglesHeader" onClick={() => setIsOtherCalendarsOpen(!isOtherCalendarsOpen)} style={{ marginTop: '15px' }}>
+                  <h4 className="calTogglesTitle">Other Calendars</h4>
+                  <ChevronDown size={14} style={{ transform: isOtherCalendarsOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
+                </div>
+                
+                {isOtherCalendarsOpen && availableCalendars
+                  .filter(cal => cal.accessRole !== 'owner' && cal.accessRole !== 'writer')
+                  .map(cal => (
+                    <label key={cal.id} className="calToggleItem">
+                      <input
+                        type="checkbox"
+                        checked={enabledCalendarIds.has(cal.id)}
+                        onChange={() => toggleCalendar(cal.id)}
+                      />
+                      <span className="calToggleColor" style={{ backgroundColor: cal.backgroundColor }} />
+                      <span className="calToggleSummary">{cal.summary}</span>
+                    </label>
+                  ))}
+              </div>
+
+              <div className="calEventsList">
+                <h4 className="calTogglesTitle">Schedule</h4>
               {selectedEvents.length > 0 ? (
                 <>
                   {selectedEvents.map(event => (
@@ -324,7 +418,8 @@ export default function Calendar() {
                 </div>
               )}
             </div>
-          </aside>
+          </div>
+        </aside>
         </div>
       )}
 
@@ -333,9 +428,18 @@ export default function Calendar() {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onSave={handleSaveEvent}
-          onDelete={handleDeleteEvent}
+           onDelete={handleDeleteEvent}
           event={editingEvent}
           selectedDate={selectedDate}
+            availableCalendars={availableCalendars}
+        />
+      )}
+
+      {isCreateCalendarModalOpen && (
+        <CreateCalendarModal
+          isOpen={isCreateCalendarModalOpen}
+          onClose={() => setIsCreateCalendarModalOpen(false)}
+          onCreate={handleCreateCalendar}
         />
       )}
     </div>
