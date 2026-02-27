@@ -4,8 +4,8 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { X, Calendar as CalIcon, Loader2 } from 'lucide-react';
 
 const CALENDAR_COLOR_PRESETS = [
-  '#94a3b8', '#6b7280', '#ef4444', '#f97316', '#f59e0b', '#10b981',
-  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#ec4899'
+  '#ef4444', '#f97316', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6',
+  '#6366f1', '#8b5cf6', '#d946ef', '#f43f5e', '#14b8a6', '#0ea5e9'
 ];
 
 function isValidHexColor(value) {

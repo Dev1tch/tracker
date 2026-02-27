@@ -4,6 +4,22 @@ import React, { useRef, useEffect, useMemo } from 'react';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
+const GOOGLE_EVENT_COLORS = {
+  '1': '#7986cb', // Lavender
+  '2': '#33b679', // Sage
+  '3': '#8e24aa', // Grape
+  '4': '#e67c73', // Flamingo
+  '5': '#f6bf26', // Banana
+  '6': '#f4511e', // Tangerine
+  '7': '#039be5', // Peacock
+  '8': '#616161', // Graphite
+  '9': '#3f51b5', // Blueberry
+  '10': '#0b8043', // Basil
+  '11': '#d50000', // Tomato
+};
+
+const HOUR_HEIGHT = 44; // Reduced from 60 for more density
+
 function formatHour(h) {
   if (h === 0) return '12 AM';
   if (h < 12) return `${h} AM`;
@@ -21,33 +37,31 @@ function getEventPosition(event) {
   const duration = Math.max(endMinutes - startMinutes, 15); // minimum 15min height
 
   return {
-    top: (startMinutes / 60) * 60, // 60px per hour
-    height: (duration / 60) * 60,
+    top: (startMinutes / 60) * HOUR_HEIGHT,
+    height: (duration / 60) * HOUR_HEIGHT,
   };
 }
 
-// Google Calendar event colorId to hex mapping
-const GOOGLE_EVENT_COLORS = {
-  '1': '#a5b4fc', // Lavender (Vibrant)
-  '2': '#4ade80', // Sage (Vibrant)
-  '3': '#c084fc', // Grape (Vibrant)
-  '4': '#fb7185', // Flamingo (Vibrant)
-  '5': '#fbbf24', // Banana (Vibrant)
-  '6': '#fb923c', // Tangerine (Vibrant)
-  '7': '#38bdf8', // Peacock (Vibrant)
-  '8': '#94a3b8', // Graphite (Vibrant)
-  '9': '#818cf8', // Blueberry (Vibrant)
-  '10': '#2dd4bf', // Basil (Vibrant)
-  '11': '#f87171', // Tomato (Vibrant)
-};
-
 function getEventColor(event) {
   const color = event.color;
-  if (!color) return '#34d399'; // Default emerald
-  // If it's a hex color (from calendarColor), use directly
-  if (color.startsWith('#')) return color;
-  // If it's a Google colorId number
-  return GOOGLE_EVENT_COLORS[color] || '#34d399';
+  if (!color) return event.calendarColor || '#34d399';
+  return GOOGLE_EVENT_COLORS[color] || color;
+}
+
+function getContrastColor(hex) {
+  if (!hex || !hex.startsWith('#')) return '#ffffff';
+  
+  // Remove hash
+  const color = hex.slice(1);
+  const r = parseInt(color.slice(0, 2), 16);
+  const g = parseInt(color.slice(2, 4), 16);
+  const b = parseInt(color.slice(4, 6), 16);
+  
+  // Calculate luminance (standard formula)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  
+  // Return light or dark text based on background luminance
+  return luminance > 0.5 ? '#1a1a1a' : '#ffffff';
 }
 
 function isSameDay(d1, d2) {
@@ -72,7 +86,7 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
   // Scroll to ~7AM on mount
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = 7 * 60; // 7 hours * 60px
+      scrollRef.current.scrollTop = 7 * HOUR_HEIGHT;
     }
   }, []);
 
@@ -169,7 +183,7 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
   // Current time position
   const currentTimePosition = useMemo(() => {
     const now = new Date();
-    return (now.getHours() * 60 + now.getMinutes()) / 60 * 60;
+    return (now.getHours() * 60 + now.getMinutes()) / 60 * HOUR_HEIGHT;
   }, []);
 
   const handleSlotClick = (date, hour) => {
@@ -225,10 +239,10 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
 
       {/* Scrollable time grid */}
       <div className="weekGridScrollable" ref={scrollRef}>
-        <div className="weekGridBody" style={{ height: 24 * 60 }}>
+        <div className="weekGridBody" style={{ height: 24 * HOUR_HEIGHT }}>
           {/* Hour lines */}
           {HOURS.map(h => (
-            <div key={h} className="weekGridHourRow" style={{ top: h * 60 }}>
+            <div key={h} className="weekGridHourRow" style={{ top: h * HOUR_HEIGHT }}>
               <div className="weekGridTimeGutter">
                 <span>{formatHour(h)}</span>
               </div>
@@ -253,14 +267,17 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
                     <div
                       key={h}
                       className="weekGridSlot"
-                      style={{ top: h * 60, height: 60 }}
+                      style={{ top: h * HOUR_HEIGHT, height: HOUR_HEIGHT }}
                       onClick={() => handleSlotClick(day, h)}
                     />
                   ))}
 
                   {/* Event blocks */}
                   {layoutEvents.map(({ event, pos, column, totalColumns }) => {
-                    const color = getEventColor(event);
+                    const eventColor = getEventColor(event);
+                    const calendarColor = event.calendarColor || eventColor;
+                    const textColor = getContrastColor(eventColor);
+                    
                     // Stacking strategy: offset each column to the right and stack with z-index
                     const offset = totalColumns > 1 ? 12 : 0;
                     const leftPos = column * offset;
@@ -278,7 +295,9 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
                           width,
                           left,
                           zIndex,
-                          '--event-bg': color,
+                          '--event-bg': eventColor,
+                          '--calendar-color': calendarColor,
+                          '--text-color': textColor,
                         }}
                         onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                       >

@@ -324,14 +324,12 @@ export default function Calendar() {
               {isMyCalendarsOpen && availableCalendars
                 .filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer')
                 .map(cal => (
-                  <label key={cal.id} className="calToggleItem">
+                  <label key={cal.id} className="calToggleItem" style={{ '--toggle-color': cal.backgroundColor }}>
                     <input
                       type="checkbox"
                       checked={enabledCalendarIds.has(cal.id)}
                       onChange={() => toggleCalendar(cal.id)}
-                      style={{ '--toggle-color': cal.backgroundColor }}
                     />
-                    <span className="calToggleColor" style={{ backgroundColor: cal.backgroundColor }} />
                     <span className="calToggleSummary">{cal.summary}</span>
                   </label>
                 ))}
@@ -344,14 +342,12 @@ export default function Calendar() {
               {isOtherCalendarsOpen && availableCalendars
                 .filter(cal => cal.accessRole !== 'owner' && cal.accessRole !== 'writer')
                 .map(cal => (
-                  <label key={cal.id} className="calToggleItem">
+                  <label key={cal.id} className="calToggleItem" style={{ '--toggle-color': cal.backgroundColor }}>
                     <input
                       type="checkbox"
                       checked={enabledCalendarIds.has(cal.id)}
                       onChange={() => toggleCalendar(cal.id)}
-                      style={{ '--toggle-color': cal.backgroundColor }}
                     />
-                    <span className="calToggleColor" style={{ backgroundColor: cal.backgroundColor }} />
                     <span className="calToggleSummary">{cal.summary}</span>
                   </label>
                 ))}
