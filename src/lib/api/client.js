@@ -112,5 +112,5 @@ export class ApiClient {
   }
 }
 
-// export const apiClient = new ApiClient('https://tracker-backend-mocha.vercel.app/api/v1');
-export const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1');
+export const apiClient = new ApiClient('https://tracker-backend-mocha.vercel.app/api/v1');
+// export const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1');

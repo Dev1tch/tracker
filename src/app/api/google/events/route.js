@@ -28,17 +28,43 @@ export async function GET(request) {
     });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-
-    const response = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: timeMin || new Date().toISOString(),
-      timeMax: timeMax || undefined,
-      maxResults: 250,
-      singleEvents: true,
-      orderBy: 'startTime',
+    
+    // 1. Get the list of all calendars the user has
+    const calendarListResponse = await calendar.calendarList.list({
+      minAccessRole: 'reader'
     });
-
-    const events = (response.data.items || []).map((event) => ({
+    
+    // Filter to show only 'selected' calendars (checked in the sidebar)
+    const calendars = (calendarListResponse.data.items || []).filter(cal => cal.selected);
+    
+    // 2. Fetch events from each calendar in parallel
+    const eventPromises = calendars.map(async (cal) => {
+      try {
+        const response = await calendar.events.list({
+          calendarId: cal.id,
+          timeMin: timeMin || new Date().toISOString(),
+          timeMax: timeMax || undefined,
+          maxResults: 100, // Reduced per-calendar results to stay within limits when merging
+          singleEvents: true,
+          orderBy: 'startTime',
+        });
+        
+        return (response.data.items || []).map(event => ({
+          ...event,
+          calendarId: cal.id,
+          calendarSummary: cal.summary,
+          calendarColor: cal.backgroundColor
+        }));
+      } catch (err) {
+        console.error(`Error fetching events for calendar ${cal.id}:`, err);
+        return []; // Return empty if one calendar fails
+      }
+    });
+    
+    const results = await Promise.all(eventPromises);
+    
+    // 3. Flatten, map, and sort all events
+    const allEvents = results.flat().map((event) => ({
       id: event.id,
       title: event.summary || '(No title)',
       description: event.description || '',
@@ -46,12 +72,16 @@ export async function GET(request) {
       start: event.start?.dateTime || event.start?.date || '',
       end: event.end?.dateTime || event.end?.date || '',
       allDay: !event.start?.dateTime,
-      color: event.colorId || null,
+      color: event.colorId || event.calendarColor || null,
       htmlLink: event.htmlLink || '',
       status: event.status,
+      calendarName: event.calendarSummary,
     }));
+    
+    // Sort merged events by start time
+    allEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
 
-    return NextResponse.json({ events });
+    return NextResponse.json({ events: allEvents });
   } catch (err) {
     console.error('Google Calendar events error:', err);
 
