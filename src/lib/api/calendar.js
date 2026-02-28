@@ -1,4 +1,9 @@
 const STORAGE_KEY = 'google_calendar_tokens';
+export const SCOPES = {
+  CALENDAR: 'https://www.googleapis.com/auth/calendar',
+  CALENDAR_EVENTS: 'https://www.googleapis.com/auth/calendar.events',
+  CALENDAR_READONLY: 'https://www.googleapis.com/auth/calendar.readonly'
+};
 
 export class CalendarApi {
   /**
@@ -119,7 +124,7 @@ export class CalendarApi {
   /**
    * Save Google OAuth tokens for a specific account to localStorage
    */
-  saveAccount(tokens, email, picture) {
+  saveAccount(tokens, email, picture, scope) {
     if (typeof window !== 'undefined') {
       const accounts = this.getAccounts();
       const existingIndex = accounts.findIndex(a => a.email === email);
@@ -128,6 +133,7 @@ export class CalendarApi {
         email,
         picture,
         tokens,
+        scope: scope ? scope.split(' ') : [],
         active: true, // Enabled by default
         lastSync: new Date().toISOString()
       };
@@ -140,6 +146,16 @@ export class CalendarApi {
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
     }
+  }
+
+  /**
+   * Check if an account has a specific permission
+   */
+  hasPermission(account, requiredScope) {
+    if (!account || !account.scope) return false;
+    // 'calendar' scope is a super-scope that covers others
+    if (account.scope.includes(SCOPES.CALENDAR)) return true;
+    return account.scope.includes(requiredScope);
   }
 
   /**

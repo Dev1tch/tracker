@@ -17,8 +17,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Calendar summary is required' }, { status: 400 });
     }
 
-    const appUrl = process.env.GOOGLE_NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const redirectUri = `${appUrl}/api/google/callback`;
+    const origin = new URL(request.url).origin;
+    const redirectUri = `${origin}/api/google/callback`;
 
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,

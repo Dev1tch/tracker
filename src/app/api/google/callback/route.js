@@ -37,6 +37,7 @@ export async function GET(request) {
     if (tokens.access_token) params.set('google_access_token', tokens.access_token);
     if (tokens.refresh_token) params.set('google_refresh_token', tokens.refresh_token);
     if (tokens.expiry_date) params.set('google_expiry_date', tokens.expiry_date.toString());
+    if (tokens.scope) params.set('google_scope', tokens.scope);
     
     // Add user identification
     if (userInfo.data.email) params.set('google_email', userInfo.data.email);

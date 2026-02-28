@@ -13,8 +13,8 @@ export async function GET(request) {
   }
 
   try {
-    const appUrl = process.env.GOOGLE_NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const redirectUri = `${appUrl}/api/google/callback`;
+    const origin = new URL(request.url).origin;
+    const redirectUri = `${origin}/api/google/callback`;
 
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -30,13 +30,17 @@ export async function GET(request) {
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
     
     // 1. Get the list of all calendars the user has
-    const calendarListResponse = await calendar.calendarList.list({
-      minAccessRole: 'reader'
-    });
-    
-    // Filter to show only 'selected' calendars by default, but let frontend handle visibility
-    // Actually, let's just fetch all calendars with at least reader access
-    const calendars = (calendarListResponse.data.items || []);
+    let calendars = [];
+    try {
+      const calendarListResponse = await calendar.calendarList.list({
+        minAccessRole: 'reader'
+      });
+      calendars = calendarListResponse.data.items || [];
+    } catch (listErr) {
+      console.error('Error fetching calendar list, falling back to primary:', listErr);
+      // Fallback: if we can't list calendars, just use 'primary'
+      calendars = [{ id: 'primary', summary: 'Primary Calendar', backgroundColor: '#4285f4', accessRole: 'owner' }];
+    }
     
     // 2. Fetch events from each calendar in parallel
     const eventPromises = calendars.map(async (cal) => {

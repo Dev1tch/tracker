@@ -79,6 +79,7 @@ export default function Calendar() {
       const expiryDate = params.get('google_expiry_date');
       const email = params.get('google_email');
       const picture = params.get('google_picture');
+      const scope = params.get('google_scope');
       const googleError = params.get('google_error');
 
       if (googleError) {
@@ -93,7 +94,7 @@ export default function Calendar() {
           refresh_token: refreshToken || null,
           expiry_date: expiryDate ? parseInt(expiryDate, 10) : null,
         };
-        calendarApi.saveAccount(tokens, email, picture);
+        calendarApi.saveAccount(tokens, email, picture, scope);
         setAccounts(calendarApi.getAccounts());
         window.history.replaceState({}, '', window.location.pathname);
       }
@@ -175,6 +176,13 @@ export default function Calendar() {
     }
 
     try {
+      // Permission check
+      const SCOPES = require('@/lib/api/calendar').SCOPES;
+      if (!calendarApi.hasPermission(account, SCOPES.CALENDAR_EVENTS)) {
+        toast('Insufficient permissions to manage events. Please reconnect with full access.', 'error');
+        return;
+      }
+
       if (editingEvent) {
         await calendarApi.updateEvent(account, editingEvent.id, eventData, calendarId);
         toast('Event updated successfully');
@@ -197,6 +205,13 @@ export default function Calendar() {
     }
 
     try {
+      // Permission check
+      const SCOPES = require('@/lib/api/calendar').SCOPES;
+      if (!calendarApi.hasPermission(account, SCOPES.CALENDAR_EVENTS)) {
+        toast('Insufficient permissions to delete events. Please reconnect with full access.', 'error');
+        return;
+      }
+
       await calendarApi.deleteEvent(account, eventId, calendarId);
       toast('Event deleted successfully');
       fetchEvents();
@@ -218,6 +233,13 @@ export default function Calendar() {
 
     setLoading(true);
     try {
+      // Permission check
+      const SCOPES = require('@/lib/api/calendar').SCOPES;
+      if (!calendarApi.hasPermission(account, SCOPES.CALENDAR)) {
+        toast('Insufficient permissions to create calendars. Please reconnect with full access.', 'error');
+        return;
+      }
+
       await calendarApi.createCalendar(account, calendarData);
       toast('Calendar created successfully');
       fetchEvents();
