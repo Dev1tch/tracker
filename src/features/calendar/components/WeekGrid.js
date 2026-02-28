@@ -209,7 +209,7 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
                 {dayAllDay.map(event => (
                   <button
                     key={`${event.accountEmail}-${event.calendarId}-${event.id}`}
-                    className="weekGridAllDayEvent"
+                    className={`weekGridAllDayEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''}`}
                     style={{ '--event-bg': getEventColor(event) }}
                     onClick={() => onEventClick(event)}
                   >
@@ -272,7 +272,7 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
                     return (
                       <button
                         key={`${event.calendarId}-${event.id}`}
-                        className="weekGridEvent"
+                        className={`weekGridEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''}`}
                         style={{
                           top: pos.top,
                           height: Math.max(pos.height, 18),

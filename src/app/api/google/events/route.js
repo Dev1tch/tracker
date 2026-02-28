@@ -116,6 +116,8 @@ export async function GET(request) {
         calendarName: event.calendarSummary,
         recurrence: event.recurrence || masterRecurrence || [],
         attendees: event.attendees || [],
+        eventType: event.eventType || 'default',
+        outOfOfficeProperties: event.outOfOfficeProperties || null,
       };
     });
     
@@ -178,6 +180,7 @@ export async function POST(request) {
     });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    console.log('Sending to Google Calendar API:', JSON.stringify(body, null, 2));
     const response = await calendar.events.insert({
       calendarId,
       requestBody: body,
@@ -186,8 +189,14 @@ export async function POST(request) {
     return NextResponse.json(response.data);
   } catch (err) {
     console.error('Google Calendar create event error:', err);
+    if (err.response) {
+      console.error('Detailed Google API Error:', JSON.stringify(err.response.data, null, 2));
+    }
     return NextResponse.json(
-      { error: err.message || 'Failed to create event' },
+      { 
+        error: err.message || 'Failed to create event',
+        details: err.response?.data?.error || err.errors || null
+      },
       { status: err.code || 500 }
     );
   }

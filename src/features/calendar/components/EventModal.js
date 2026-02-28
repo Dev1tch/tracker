@@ -88,6 +88,9 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const [guestInput, setGuestInput] = useState('');
   const [recurrence, setRecurrence] = useState('');
   const [reminders, setReminders] = useState([{ method: 'popup', minutes: 30 }]);
+  const [eventType, setEventType] = useState('default');
+  const [autoDecline, setAutoDecline] = useState(true);
+  const [declineMessage, setDeclineMessage] = useState('Declined as I am currently out of office.');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAccountPrompt, setShowAccountPrompt] = useState(false);
   const [pendingEventData, setPendingEventData] = useState(null);
@@ -139,6 +142,11 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     
     if (event) {
       setGuests(event.attendees?.map(a => a.email) || []);
+      setEventType(event.eventType || 'default');
+      if (event.outOfOfficeProperties) {
+        setAutoDecline(event.outOfOfficeProperties.autoDeclineMode !== 'doNotDecline');
+        setDeclineMessage(event.outOfOfficeProperties.declineMessage || '');
+      }
       
       // Smarter recurrence detection
       const rrule = event.recurrence?.[0] || '';
@@ -192,27 +200,78 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     const start = new Date(year, month, day);
     const end = new Date(year, month, day);
 
-    if (!isAllDay) {
-      const [sh, sm] = startTime.split(':');
-      const [eh, em] = endTime.split(':');
-      start.setHours(parseInt(sh), parseInt(sm));
-      end.setHours(parseInt(eh), parseInt(em));
-    }
+    const formatDate = (date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    const isOOO = eventType === 'outOfOffice';
+    
+    // Helper to format date with local timezone offset for Google Calendar
+    const toLocalISOString = (date) => {
+      const offset = -date.getTimezoneOffset();
+      const diff = offset >= 0 ? '+' : '-';
+      const pad = (num) => String(Math.floor(Math.abs(num))).padStart(2, '0');
+      return date.getFullYear() +
+        '-' + pad(date.getMonth() + 1) +
+        '-' + pad(date.getDate()) +
+        'T' + pad(date.getHours()) +
+        ':' + pad(date.getMinutes()) +
+        ':' + pad(date.getSeconds()) +
+        diff + pad(offset / 60) +
+        ':' + pad(offset % 60);
+    };
+
+    const [startH, startM] = startTime.split(':');
+    const [endH, endM] = endTime.split(':');
+    
+    start.setHours(parseInt(startH), parseInt(startM), 0, 0);
+    end.setHours(parseInt(endH), parseInt(endM), 0, 0);
 
     const eventData = {
       summary: title,
-      description,
-      location,
-      start: isAllDay ? { date: start.toISOString().split('T')[0] } : { dateTime: start.toISOString() },
-      end: isAllDay ? { date: end.toISOString().split('T')[0] } : { dateTime: end.toISOString() },
-      attendees: guests.map(email => ({ email })),
-      recurrence: recurrence ? [recurrence] : undefined,
-      colorId: colorId || undefined,
-      reminders: {
+      eventType: isOOO ? 'outOfOffice' : 'default',
+    };
+
+    if (isOOO) {
+      // OOO MUST be timed (dateTime), not date (all-day), even if it covers the whole day.
+      if (isAllDay) {
+        const oooStart = new Date(year, month, day, 0, 0, 0);
+        const oooEnd = new Date(year, month, day, 23, 59, 59);
+        eventData.start = { dateTime: toLocalISOString(oooStart) };
+        eventData.end = { dateTime: toLocalISOString(oooEnd) };
+      } else {
+        eventData.start = { dateTime: toLocalISOString(start) };
+        eventData.end = { dateTime: toLocalISOString(end) };
+      }
+      
+      eventData.outOfOfficeProperties = {
+        autoDeclineMode: autoDecline ? 'declineAllConflictingInvitations' : 'declineNone',
+        declineMessage: declineMessage
+      };
+      eventData.transparency = 'opaque';
+    } else {
+      // Default events can be all-day (date) or timed (dateTime)
+      if (isAllDay) {
+        eventData.start = { date: formatDate(start) };
+        eventData.end = { date: formatDate(new Date(end.getTime() + 86400000)) };
+      } else {
+        eventData.start = { dateTime: toLocalISOString(start) };
+        eventData.end = { dateTime: toLocalISOString(end) };
+      }
+
+      eventData.description = description;
+      eventData.location = location;
+      eventData.colorId = colorId || undefined;
+      eventData.attendees = guests.map(email => ({ email }));
+      eventData.recurrence = recurrence ? [recurrence] : undefined;
+      eventData.reminders = {
         useDefault: false,
         overrides: reminders
-      }
-    };
+      };
+    }
 
     try {
       let finalCalendarId = calendarId;
@@ -332,6 +391,30 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
 
           <div className="calFormRow">
             <div className="calFormGroup">
+              <label><Palette size={16} /> Type</label>
+              <div className="calEventTypeTabs">
+                <button 
+                  type="button" 
+                  className={`calTypeTab ${eventType === 'default' ? 'active' : ''}`}
+                  onClick={() => setEventType('default')}
+                  disabled={event && event.id && event.eventType !== 'default'}
+                >
+                  Event
+                </button>
+                <button 
+                  type="button" 
+                  className={`calTypeTab ${eventType === 'outOfOffice' ? 'active' : ''}`}
+                  onClick={() => {
+                    setEventType('outOfOffice');
+                    setIsAllDay(true); // OOO is usually all day
+                  }}
+                  disabled={event && event.id && event.eventType !== 'outOfOffice'}
+                >
+                  Out of Office
+                </button>
+              </div>
+            </div>
+            <div className="calFormGroup">
               <label><Clock size={16} /> Time</label>
               <div className="calTimeInputs">
                 <TimeSelect
@@ -355,8 +438,32 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
                 All Day
               </label>
             </div>
-            
-            <div className="calFormGroup">
+          </div>
+
+          {eventType === 'outOfOffice' && (
+            <div className="calOOOSection glass">
+              <label className="calCheckboxLabel">
+                <input
+                  type="checkbox"
+                  checked={autoDecline}
+                  onChange={(e) => setAutoDecline(e.target.checked)}
+                />
+                Automatically decline meetings
+              </label>
+              {autoDecline && (
+                <textarea
+                  className="authInput calOOOMessage"
+                  placeholder="Decline message"
+                  value={declineMessage}
+                  onChange={(e) => setDeclineMessage(e.target.value)}
+                  rows={2}
+                />
+              )}
+            </div>
+          )}
+
+          <div className="calFormRow">
+            <div className="calFormGroup" style={{ flex: 1 }}>
               <label><Repeat size={16} /> Repeat</label>
               <CustomSelect
                 options={recurrenceOptions}
