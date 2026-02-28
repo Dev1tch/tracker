@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette, ChevronDown } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
+import { useToast } from '@/components/ui/ToastProvider';
+import AccountPromptModal from './AccountPromptModal';
 
 const GOOGLE_EVENT_COLORS = [
   { id: '1', name: 'Lavender', hex: '#7986cb' },
@@ -72,7 +74,8 @@ function TimeSelect({ value, onChange, disabled }) {
   );
 }
 
-export default function EventModal({ isOpen, onClose, onSave, onDelete, event, selectedDate, availableCalendars = [] }) {
+export default function EventModal({ isOpen, onClose, onSave, onDelete, event, selectedDate, availableCalendars = [], accounts = [] }) {
+  const toast = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [calendarId, setCalendarId] = useState('primary');
@@ -86,6 +89,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const [recurrence, setRecurrence] = useState('');
   const [reminders, setReminders] = useState([{ method: 'popup', minutes: 30 }]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAccountPrompt, setShowAccountPrompt] = useState(false);
+  const [pendingEventData, setPendingEventData] = useState(null);
   const [colorId, setColorId] = useState('');
   const [recurrenceOptions, setRecurrenceOptions] = useState([
     { value: '', label: 'Does not repeat' },
@@ -110,11 +115,18 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
         const end = new Date(event.end);
         setEndTime(end.toTimeString().slice(0, 5));
       }
-      setCalendarId(event.calendarId || 'primary');
+      setCalendarId(event.accountEmail ? `${event.accountEmail}:${event.calendarId || 'primary'}` : (event.calendarId || 'primary'));
     } else {
       setTitle('');
       setDescription('');
-      setCalendarId('primary');
+      
+      const activeAccounts = accounts.filter(a => a.active);
+      if (activeAccounts.length === 1) {
+        const primaryCal = availableCalendars.find(c => c.accountEmail === activeAccounts[0].email && c.primary);
+        setCalendarId(primaryCal ? `${activeAccounts[0].email}:${primaryCal.id}` : `${activeAccounts[0].email}:primary`);
+      } else {
+        setCalendarId('primary');
+      }
       setLocation('');
       setStartTime('09:00');
       setEndTime('10:00');
@@ -162,9 +174,9 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       // Extract colorId — could be a number string like '1'-'11' or empty
       const evtColor = event.color || '';
       setColorId(evtColor.startsWith('#') ? '' : evtColor);
-      setCalendarId(event.calendarId || 'primary');
+      setCalendarId(event.accountEmail ? `${event.accountEmail}:${event.calendarId || 'primary'}` : (event.calendarId || 'primary'));
     }
-  }, [event, isOpen]);
+  }, [event, isOpen, accounts, availableCalendars]);
 
   if (!isOpen) return null;
 
@@ -203,20 +215,58 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     };
 
     try {
-      const selectedCal = availableCalendars.find(c => c.id === calendarId);
-      const accEmail = event?.accountEmail || selectedCal?.accountEmail;
+      let finalCalendarId = calendarId;
+      let accEmail = event?.accountEmail;
+
+      if (calendarId.includes(':')) {
+        const [email, id] = calendarId.split(':');
+        accEmail = email;
+        finalCalendarId = id;
+      } else if (!accEmail) {
+        const activeAccounts = accounts.filter(a => a.active);
+        if (activeAccounts.length === 1) {
+          accEmail = activeAccounts[0].email;
+        } else if (activeAccounts.length > 1) {
+          // Multiple accounts, no specific selected -> prompt
+          setPendingEventData(eventData);
+          setShowAccountPrompt(true);
+          setLoading(false);
+          return;
+        } else {
+          const selectedCal = availableCalendars.find(c => c.id === calendarId);
+          accEmail = selectedCal?.accountEmail;
+        }
+      }
       
       if (!accEmail) {
-        throw new Error('No account associated with this calendar');
+        // This should theoretically not happen with the prompt above
+        toast('Please select an account', 'warning');
+        setLoading(false);
+        return;
       }
 
-      await onSave(eventData, calendarId, accEmail);
+      await onSave(eventData, finalCalendarId, accEmail);
       onClose();
     } catch (err) {
       console.error(err);
-      alert(err.message || 'Failed to save event');
+      toast(err.message || 'Failed to save event', 'error');
+    } finally {
+      if (!showAccountPrompt) setLoading(false);
+    }
+  };
+
+  const handleAccountSelect = async (email) => {
+    setShowAccountPrompt(false);
+    setLoading(true);
+    try {
+      await onSave(pendingEventData, 'primary', email);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast('Failed to save event to selected account', 'error');
     } finally {
       setLoading(false);
+      setPendingEventData(null);
     }
   };
 
@@ -226,11 +276,17 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       if (!event.accountEmail) {
         throw new Error('No account associated with this event');
       }
-      await onDelete(event.id, calendarId, event.accountEmail);
+      
+      let finalCalendarId = calendarId;
+      if (calendarId.includes(':')) {
+        finalCalendarId = calendarId.split(':')[1];
+      }
+      
+      await onDelete(event.id, finalCalendarId, event.accountEmail);
       onClose();
     } catch (err) {
       console.error(err);
-      alert(err.message || 'Failed to delete event');
+      toast(err.message || 'Failed to delete event', 'error');
     } finally {
       setLoading(false);
       setShowDeleteConfirm(false);
@@ -314,12 +370,15 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             <div className="calFormGroup">
               <label><CalIcon size={16} /> Calendar</label>
               <CustomSelect
-                options={availableCalendars.map(cal => ({
-                  value: cal.id,
-                  label: `${cal.summary}${cal.primary ? ' (Primary)' : ''} (${cal.accountEmail})`,
-                  color: cal.backgroundColor
-                }))}
-                value={calendarId}
+                options={[
+                  { value: 'primary', label: 'Default (Primary)', color: 'rgba(255,255,255,0.2)' },
+                  ...availableCalendars.map(cal => ({
+                    value: `${cal.accountEmail}:${cal.id}`,
+                    label: `${cal.summary}${cal.primary ? ' (Primary)' : ''} (${cal.accountEmail})`,
+                    color: cal.backgroundColor
+                  }))
+                ]}
+                value={calendarId.includes(':') ? calendarId : availableCalendars.find(c => c.id === calendarId)?.accountEmail ? `${availableCalendars.find(c => c.id === calendarId).accountEmail}:${calendarId}` : calendarId}
                 onChange={setCalendarId}
                 disabled={event && !!event.id}
               />
@@ -455,6 +514,13 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
           </footer>
         </form>
       </div>
+
+      <AccountPromptModal
+        isOpen={showAccountPrompt}
+        onClose={() => setShowAccountPrompt(false)}
+        accounts={accounts}
+        onSelect={handleAccountSelect}
+      />
     </div>
   );
 }

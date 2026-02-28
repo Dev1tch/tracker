@@ -72,6 +72,7 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
       {/* Subtle Top Branding */}
       <header className="topHeader">
         <div className="brand">
+          <img src="/logo.svg" alt="Life Tracker Logo" className="brandLogo" />
           Life tracker 
           <span style={{ opacity: 0.3, margin: '0 4px', textTransform: 'none' }}>/</span> 
           <span style={{ color: 'var(--text-secondary)' }}>{activeTab}</span>

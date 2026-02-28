@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { X, Calendar as CalIcon, Loader2 } from 'lucide-react';
+import { useToast } from '@/components/ui/ToastProvider';
 
 const CALENDAR_COLOR_PRESETS = [
   '#ef4444', '#f97316', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6',
@@ -75,6 +76,7 @@ function rgbToHsv({ r, g, b }) {
 }
 
 export default function CreateCalendarModal({ isOpen, onClose, onCreate }) {
+  const toast = useToast();
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#3b82f6');
@@ -183,7 +185,7 @@ export default function CreateCalendarModal({ isOpen, onClose, onCreate }) {
       setColor('#3b82f6');
     } catch (err) {
       console.error(err);
-      alert('Failed to create calendar');
+      toast(err.message || 'Failed to create calendar', 'error');
     } finally {
       setLoading(false);
     }

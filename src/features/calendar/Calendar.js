@@ -8,6 +8,7 @@ import EventModal from './components/EventModal';
 import CreateCalendarModal from './components/CreateCalendarModal';
 import MiniCalendar from './components/MiniCalendar';
 import WeekGrid from './components/WeekGrid';
+import { useToast } from '@/components/ui/ToastProvider';
 import './Calendar.css';
 
 const MONTHS = [
@@ -49,6 +50,7 @@ function formatWeekRange(weekStart) {
 }
 
 export default function Calendar() {
+  const toast = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekStart, setWeekStart] = useState(getWeekStart(new Date()));
   const [events, setEvents] = useState([]);
@@ -165,37 +167,63 @@ export default function Calendar() {
   }, [fetchEvents]);
 
   // Event Handlers
-  const handleSaveEvent = async (eventData, calendarId) => {
-    const tokens = calendarApi.getTokens();
-    if (!tokens) return;
-
-    if (editingEvent) {
-      await calendarApi.updateEvent(tokens, editingEvent.id, eventData, calendarId);
-    } else {
-      await calendarApi.createEvent(tokens, eventData, calendarId);
+  const handleSaveEvent = async (eventData, calendarId, accountEmail) => {
+    const account = accounts.find(a => a.email === accountEmail);
+    if (!account) {
+      toast('Account not found', 'error');
+      return;
     }
-    fetchEvents();
+
+    try {
+      if (editingEvent) {
+        await calendarApi.updateEvent(account, editingEvent.id, eventData, calendarId);
+        toast('Event updated successfully');
+      } else {
+        await calendarApi.createEvent(account, eventData, calendarId);
+        toast('Event created successfully');
+      }
+      fetchEvents();
+    } catch (err) {
+      console.error(err);
+      toast(err.message || 'Failed to save event', 'error');
+    }
   };
 
   const handleDeleteEvent = async (eventId, calendarId, accountEmail) => {
     const account = accounts.find(a => a.email === accountEmail);
-    if (!account) return;
+    if (!account) {
+      toast('Account not found', 'error');
+      return;
+    }
 
-    await calendarApi.deleteEvent(account, eventId, calendarId);
-    fetchEvents();
+    try {
+      await calendarApi.deleteEvent(account, eventId, calendarId);
+      toast('Event deleted successfully');
+      fetchEvents();
+    } catch (err) {
+      console.error(err);
+      toast(err.message || 'Failed to delete event', 'error');
+    }
   };
 
   const handleCreateCalendar = async (calendarData) => {
-    const tokens = calendarApi.getTokens();
-    if (!tokens) return;
+    const activeAccounts = accounts.filter(a => a.active);
+    if (activeAccounts.length === 0) {
+      toast('No active Google accounts found', 'error');
+      return;
+    }
+
+    // Default to first active account for now
+    const account = activeAccounts[0];
 
     setLoading(true);
     try {
-      await calendarApi.createCalendar(tokens, calendarData);
+      await calendarApi.createCalendar(account, calendarData);
+      toast('Calendar created successfully');
       fetchEvents();
     } catch (err) {
       console.error('Failed to create calendar:', err);
-      alert('Failed to create calendar');
+      toast(err.message || 'Failed to create calendar', 'error');
     } finally {
       setLoading(false);
     }
@@ -259,6 +287,7 @@ export default function Calendar() {
     if (confirm(`Disconnected account ${email}?`)) {
       calendarApi.removeAccount(email);
       setAccounts(calendarApi.getAccounts());
+      toast(`Account ${email} disconnected`);
     }
   };
 
@@ -410,6 +439,7 @@ export default function Calendar() {
           event={editingEvent}
           selectedDate={selectedDate}
           availableCalendars={availableCalendars}
+          accounts={accounts}
         />
       )}
 

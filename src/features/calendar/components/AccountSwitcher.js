@@ -54,7 +54,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
       {isOpen && (
         <div className="account-dropdown-menu glass">
           <div className="account-dropdown-header">
-            <span>Accounts</span>
+            <h4>Accounts</h4>
             <button className="dropdown-add-btn" onClick={() => { onConnect(); setIsOpen(false); }}>
               <Plus size={14} />
             </button>
@@ -106,7 +106,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           gap: 8px;
           cursor: pointer;
           padding: 4px 8px;
-          border-radius: 8px;
+          border-radius: 0;
           transition: background 0.2s;
           margin-right: -4px;
         }
@@ -141,37 +141,38 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           top: calc(100% + 8px);
           right: 0;
           width: 240px;
-          padding: 12px;
-          border-radius: 12px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 1px solid var(--border-color);
+          background: rgba(12, 12, 12, 0.98);
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.42);
+          border-radius: 0;
           animation: slideDown 0.2s ease-out;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-          background: rgba(20, 20, 25, 0.95);
-          backdrop-filter: blur(15px);
+          z-index: 1001;
         }
         @keyframes slideDown {
           from { opacity: 0; transform: translateY(-10px); }
           to { opacity: 1; transform: translateY(0); }
         }
         .account-dropdown-header {
+          padding: 8px 10px 7px;
+          border-bottom: 1px solid var(--border-color-dim);
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 12px;
-          font-size: 0.7rem;
-          font-weight: 700;
-          color: rgba(255, 255, 255, 0.4);
+        }
+        .account-dropdown-header h4 {
+          margin: 0;
+          font-size: 10px;
+          letter-spacing: 0.12em;
           text-transform: uppercase;
-          letter-spacing: 0.1em;
-          padding: 0 4px;
+          color: var(--text-secondary);
         }
         .dropdown-add-btn {
-          background: rgba(255, 255, 255, 0.05);
+          background: transparent;
           border: none;
-          color: white;
+          color: rgba(255, 255, 255, 0.6);
           width: 24px;
           height: 24px;
-          border-radius: 6px;
+          border-radius: 0;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -179,23 +180,27 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           transition: all 0.2s;
         }
         .dropdown-add-btn:hover {
-          background: var(--primary-color, #7c3aed);
-          transform: scale(1.05);
+          color: rgba(255, 255, 255, 1);
+          transform: scale(1.1);
         }
         .account-dropdown-list {
+          padding: 7px 10px 8px;
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 7px;
         }
         .account-dropdown-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
           padding: 8px;
-          border-radius: 10px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 0;
+          background: rgba(255, 255, 255, 0.02);
+          border: none;
           transition: all 0.2s;
+        }
+        .account-dropdown-item:hover {
+          background: rgba(255, 255, 255, 0.05);
         }
         .account-dropdown-item.inactive {
           opacity: 0.5;
@@ -239,7 +244,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           color: rgba(255, 255, 255, 0.3);
           width: 26px;
           height: 26px;
-          border-radius: 6px;
+          border-radius: 0;
           display: flex;
           align-items: center;
           justify-content: center;

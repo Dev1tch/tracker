@@ -120,7 +120,7 @@
 }
 
 .timetableDayLabel.weekStart {
-  border-left: 2px solid rgba(255, 255, 255, 0.4);
+  border-left: 2px solid rgba(255, 255, 255, 1); /* Full white for prominence */
 }
 
 .timetableDayLabel.todayLabel {
@@ -304,10 +304,9 @@
 }
 
 .dayCube:hover {
-  border-color: var(--text-secondary);
-  box-shadow: 0 -1px 0 0 var(--text-secondary), 0 1px 0 0 var(--text-secondary);
+  outline: 2px solid #fff;
+  outline-offset: -1px;
   z-index: 10;
-  transform: translateY(-2px);
 }
 
 .dayCube.success {
@@ -368,7 +367,7 @@
 }
 
 .dayCube.weekStart {
-  border-left: 2px solid rgba(255, 255, 255, 0.4);
+  border-left: 2px solid rgba(255, 255, 255, 1); /* Full white for prominence */
 }
 
 .dayCube.weekStart:hover,
