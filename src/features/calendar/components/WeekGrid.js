@@ -54,7 +54,7 @@ function isSameDay(d1, d2) {
     d1.getFullYear() === d2.getFullYear();
 }
 
-export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEventClick, onSlotClick }) {
+export default function WeekGrid({ weekStart, events, tasks = [], enabledCalendarIds, onEventClick, onTaskClick, onSlotClick }) {
   const scrollRef = useRef(null);
 
   const weekDays = useMemo(() => {
@@ -92,6 +92,24 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
 
     return { allDayEvents: allDay, timedEvents: timed };
   }, [events, enabledCalendarIds]);
+
+  // Transform unfinished tasks with due dates into events
+  const taskEvents = useMemo(() => {
+    return tasks
+      .filter(task => 
+        task.due_date && 
+        !['completed', 'cancelled', 'archived'].includes(task.status?.toLowerCase())
+      )
+      .map(task => ({
+        id: `task-${task.id}`,
+        title: task.title,
+        start: task.due_date,
+        end: new Date(new Date(task.due_date).getTime() + 30 * 60 * 1000).toISOString(), // 30 min duration
+        color: '#ef4444', // Red
+        eventType: 'task',
+        originalTask: task
+      }));
+  }, [tasks]);
 
   // Get events for a specific day
   const getEventsForDay = (date, eventsList) => {
@@ -238,7 +256,10 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
           {/* Day columns with events */}
           <div className="weekGridColumns">
             {weekDays.map((day, dayIdx) => {
-              const dayEvents = getEventsForDay(day, timedEvents);
+              const dayEvents = [
+                ...getEventsForDay(day, timedEvents),
+                ...getEventsForDay(day, taskEvents)
+              ];
               const layoutEvents = layoutEventsForDay(dayEvents);
               const isToday = isSameDay(day, today);
 
@@ -271,21 +292,28 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
 
                     return (
                       <button
-                        key={`${event.calendarId}-${event.id}`}
-                        className={`weekGridEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''}`}
+                        key={event.eventType === 'task' ? event.id : `${event.calendarId}-${event.id}`}
+                        className={`weekGridEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''} ${event.eventType === 'task' ? 'weekGridEventTask' : ''}`}
                         style={{
                           top: pos.top,
-                          height: Math.max(pos.height, 18),
+                          height: event.eventType === 'task' ? Math.max(pos.height, 18) : Math.max(pos.height, 18),
                           width,
                           left,
                           zIndex,
                           '--event-bg': eventColor,
                           '--calendar-color': calendarColor,
                         }}
-                        onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          if (event.eventType === 'task') {
+                            onTaskClick(event.originalTask);
+                          } else {
+                            onEventClick(event); 
+                          }
+                        }}
                       >
                         <span className="weekGridEventTitle">{event.title}</span>
-                        {pos.height >= 35 && (
+                        {pos.height >= 35 && event.eventType !== 'task' && (
                           <span className="weekGridEventTime">
                             {new Date(event.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             {' – '}

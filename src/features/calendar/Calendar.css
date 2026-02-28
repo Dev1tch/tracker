@@ -21,6 +21,8 @@
   gap: 16px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 1050;
 }
 
 .calHeaderLeft {
@@ -131,6 +133,54 @@
 .calBookBtn:hover {
   border-color: rgba(255, 255, 255, 0.95);
   box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+}
+
+/* ------- Settings Popover ------- */
+.calSettingsWrap {
+  position: relative;
+}
+
+.calSettingsPopover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 220px;
+  background: rgba(10, 10, 10, 0.95);
+  border: 1px solid var(--border-color);
+  padding: 16px;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.calSettingsGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calSettingsGroup label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.calCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.calCheckboxLabel input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 /* ------- Google Connect ------- */
@@ -750,6 +800,21 @@
   text-align: left;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.weekGridEventTask {
+  border-left-width: 3px;
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  backdrop-filter: blur(4px);
+  height: auto !important;
+  min-height: 22px;
+  padding: 3px 8px;
+}
+
+.weekGridEventTask .weekGridEventTitle {
+  color: #fca5a5;
+  font-size: 10px;
 }
 
 .weekGridEvent:hover {

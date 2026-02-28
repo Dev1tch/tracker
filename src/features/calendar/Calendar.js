@@ -1,13 +1,14 @@
-'use client';
-
-import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalIcon, RefreshCw, Plus, ChevronDown } from 'lucide-react';
-import { calendarApi } from '@/lib/api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Calendar as CalIcon, RefreshCw, Plus, ChevronDown, Settings2 } from 'lucide-react';
+import { calendarApi, tasksApi, authApi, TASK_STATUS } from '@/lib/api';
 import AccountSwitcher from './components/AccountSwitcher';
 import EventModal from './components/EventModal';
 import CreateCalendarModal from './components/CreateCalendarModal';
 import MiniCalendar from './components/MiniCalendar';
 import WeekGrid from './components/WeekGrid';
+import TaskDetailModal from '@/features/tasks/components/TasksBoard/components/TaskDetailModal';
+import CustomSelect from '@/components/ui/CustomSelect';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/ToastProvider';
 import './Calendar.css';
 
@@ -16,15 +17,17 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-function getWeekStart(date) {
+function getWeekStart(date, weekStartDay = 0) {
   const d = new Date(date);
-  d.setDate(d.getDate() - d.getDay()); // Sunday
+  const day = d.getDay();
+  const diff = (day < weekStartDay ? 7 : 0) + day - weekStartDay;
+  d.setDate(d.getDate() - diff);
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function getWeekEnd(date) {
-  const start = getWeekStart(date);
+function getWeekEnd(date, weekStartDay = 0) {
+  const start = getWeekStart(date, weekStartDay);
   const end = new Date(start);
   end.setDate(end.getDate() + 6);
   end.setHours(23, 59, 59, 999);
@@ -49,11 +52,91 @@ function formatWeekRange(weekStart) {
   return `${startMonth} ${startYear}`;
 }
 
+const SETTINGS_STORAGE_KEY = 'calendar.settings';
+const STATUS_CONFIG_STORAGE_PREFIX = 'tasks.statusConfig';
+const LEGACY_STATUS_COLORS_STORAGE_PREFIX = 'tasks.statusColors';
+
+const DEFAULT_STATUS_COLORS = {
+  'to_do': '#94a3b8',
+  'in_progress': '#60a5fa',
+  'paused': '#9ca3af',
+  'in_review': '#fbbf24',
+  'completed': '#34d399',
+  'cancelled': '#f87171',
+  'archived': '#6b7280',
+};
+
+const DEFAULT_SETTINGS = {
+  weekStart: 0, // 0 = Sunday, 1 = Monday
+  syncTasks: true,
+};
+
+function loadStatusConfig() {
+  if (typeof window === 'undefined') return DEFAULT_STATUS_COLORS;
+  try {
+    const accountId = getAccountStorageId();
+    const legacyRaw = localStorage.getItem(`tasks.statusColors.${accountId}`);
+    const legacyColors = legacyRaw ? JSON.parse(legacyRaw) : {};
+    const raw = localStorage.getItem(`tasks.statusConfig.${accountId}`);
+    const config = raw ? JSON.parse(raw) : {};
+    
+    return ['to_do', 'in_progress', 'paused', 'in_review', 'completed', 'cancelled', 'archived'].reduce((acc, status) => {
+      const value = config[status];
+      const color = (typeof value === 'object' ? value?.color : value) || legacyColors[status] || DEFAULT_STATUS_COLORS[status];
+      acc[status] = color;
+      return acc;
+    }, {});
+  } catch {
+    return DEFAULT_STATUS_COLORS;
+  }
+}
+
+function getAccountStorageId() {
+  if (typeof window === 'undefined') return 'guest';
+  const token = authApi.getCurrentToken();
+  if (!token) return 'guest';
+  try {
+    const payloadSegment = token.split('.')[1] || '';
+    const normalized = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = '='.repeat((4 - (normalized.length % 4)) % 4);
+    const payload = JSON.parse(window.atob(`${normalized}${padding}`));
+    return payload?.sub || payload?.user_id || payload?.id || payload?.email || 'guest';
+  } catch {
+    return 'guest';
+  }
+}
+
+function loadSettings() {
+  if (typeof window === 'undefined') return DEFAULT_SETTINGS;
+  try {
+    const key = `${SETTINGS_STORAGE_KEY}.${getAccountStorageId()}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function saveSettings(settings) {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `${SETTINGS_STORAGE_KEY}.${getAccountStorageId()}`;
+    localStorage.setItem(key, JSON.stringify(settings));
+  } catch (err) {
+    console.error('Failed to save calendar settings:', err);
+  }
+}
+
 export default function Calendar() {
   const toast = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [weekStart, setWeekStart] = useState(getWeekStart(new Date()));
+  const [settings, setSettings] = useState(loadSettings);
+  const [statusColors, setStatusColors] = useState(loadStatusConfig);
+  const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date(), settings.weekStart));
   const [events, setEvents] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [taskTypes, setTaskTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState(null);
@@ -65,7 +148,12 @@ export default function Calendar() {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreateCalendarModalOpen, setIsCreateCalendarModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [detailTaskId, setDetailTaskId] = useState(null);
+  const [taskToDelete, setTaskToDelete] = useState(null);
+  const [accountToDisconnect, setAccountToDisconnect] = useState(null);
+  const settingsRef = useRef(null);
 
   // Check for stored tokens on mount & handle OAuth callback params
   useEffect(() => {
@@ -104,51 +192,73 @@ export default function Calendar() {
   // Fetch events when connected or week changes
   const fetchEvents = useCallback(async () => {
     const activeAccounts = accounts.filter(a => a.active);
-    if (activeAccounts.length === 0) {
-      setEvents([]);
-      setAvailableCalendars([]);
-      return;
-    }
-
+    
     setLoading(true);
     setError(null);
 
     try {
       const startDate = new Date(weekStart);
       startDate.setDate(startDate.getDate() - 7); 
-      const endDate = getWeekEnd(weekStart);
+      const endDate = getWeekEnd(weekStart, settings.weekStart);
       endDate.setDate(endDate.getDate() + 7);
 
-      const fetchPromises = activeAccounts.map(account => 
-        calendarApi.getEvents(
-          account,
-          startDate.toISOString(),
-          endDate.toISOString()
-        )
-      );
+      const promises = [];
+      
+      // Google Calendar Events
+      if (activeAccounts.length > 0) {
+        activeAccounts.forEach(account => {
+          promises.push(
+            calendarApi.getEvents(
+              account,
+              startDate.toISOString(),
+              endDate.toISOString()
+            ).then(res => ({ type: 'calendar', accountEmail: account.email, ...res }))
+          );
+        });
+      }
 
-      const results = await Promise.allSettled(fetchPromises);
+      // Tasks
+      const shouldSyncTasks = settings.syncTasks;
+      if (shouldSyncTasks) {
+        promises.push(tasksApi.getTasks().then(res => ({ type: 'tasks', tasks: res })));
+        promises.push(tasksApi.getTaskTypes().then(res => ({ type: 'taskTypes', taskTypes: res })));
+      }
+
+      const results = await Promise.allSettled(promises);
       
       let allEvents = [];
       let allCalendars = [];
+      let allTasks = [];
+      let allTaskTypes = [];
       let errors = [];
 
       results.forEach((result) => {
         if (result.status === 'fulfilled') {
-          allEvents = [...allEvents, ...result.value.events];
-          allCalendars = [...allCalendars, ...result.value.calendars];
+          const data = result.value;
+          if (data.type === 'calendar') {
+            allEvents = [...allEvents, ...data.events];
+            allCalendars = [...allCalendars, ...data.calendars];
+          } else if (data.type === 'tasks') {
+            allTasks = data.tasks;
+          } else if (data.type === 'taskTypes') {
+            allTaskTypes = data.taskTypes;
+          }
         } else {
-          console.error('Failed to fetch events for account:', result.reason);
-          errors.push(result.reason.email || 'Unknown account');
+          console.error('Failed to fetch data:', result.reason);
+          if (result.reason.email) {
+            errors.push(result.reason.email);
+          }
         }
       });
 
       if (errors.length > 0) {
-        setError(`Failed to sync: ${errors.join(', ')}. Try reconnecting these accounts.`);
+        setError(`Failed to sync calendar: ${errors.join(', ')}. Try reconnecting these accounts.`);
       }
 
       setEvents(allEvents);
       setAvailableCalendars(allCalendars);
+      setTasks(allTasks);
+      setTaskTypes(allTaskTypes);
 
       // Initialize enabled calendars if not set
       if (enabledCalendarIds.size === 0 && allCalendars.length > 0) {
@@ -156,16 +266,32 @@ export default function Calendar() {
         setEnabledCalendarIds(new Set(selectedIds.length > 0 ? selectedIds : allCalendars.map(c => `${c.accountEmail}-${c.id}`)));
       }
     } catch (err) {
-      console.error('Failed to fetch events:', err);
-      setError('Failed to load events. Please try again.');
+      console.error('Failed to fetch calendar data:', err);
+      setError('Failed to load. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [weekStart, accounts, enabledCalendarIds.size]);
+  }, [weekStart, accounts, enabledCalendarIds.size, settings.syncTasks, settings.weekStart]);
 
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
+
+  useEffect(() => {
+    saveSettings(settings);
+    setWeekStart(getWeekStart(selectedDate, settings.weekStart));
+  }, [settings, selectedDate]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) return undefined;
+    function handleClickOutside(e) {
+      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
+        setIsSettingsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isSettingsOpen]);
 
   // Event Handlers
   const handleSaveEvent = async (eventData, calendarId, accountEmail) => {
@@ -288,12 +414,12 @@ export default function Calendar() {
   const goToToday = () => {
     const today = new Date();
     setSelectedDate(today);
-    setWeekStart(getWeekStart(today));
+    setWeekStart(getWeekStart(today, settings.weekStart));
   };
 
   const handleDateSelect = (date) => {
     setSelectedDate(date);
-    setWeekStart(getWeekStart(date));
+    setWeekStart(getWeekStart(date, settings.weekStart));
   };
 
   const handleConnect = () => {
@@ -306,11 +432,7 @@ export default function Calendar() {
   };
 
   const handleDisconnectAccount = (email) => {
-    if (confirm(`Disconnected account ${email}?`)) {
-      calendarApi.removeAccount(email);
-      setAccounts(calendarApi.getAccounts());
-      toast(`Account ${email} disconnected`);
-    }
+    setAccountToDisconnect(email);
   };
 
   const handleSlotClick = (slotDate) => {
@@ -345,7 +467,41 @@ export default function Calendar() {
               <ChevronRight size={16} />
             </button>
           </div>
-          <span className="calViewLabel">Week</span>
+          <div className="calSettingsWrap" ref={settingsRef}>
+            <button 
+              className="calNavBtn" 
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+              title="Calendar Settings"
+            >
+              <Settings2 size={16} />
+            </button>
+            {isSettingsOpen && (
+              <div className="calSettingsPopover glass">
+                <div className="calSettingsGroup">
+                  <label>Week Start</label>
+                  <CustomSelect
+                    options={[
+                      { value: 0, label: 'Sunday' },
+                      { value: 1, label: 'Monday' },
+                      { value: 6, label: 'Saturday' }
+                    ]}
+                    value={settings.weekStart}
+                    onChange={(val) => setSettings(s => ({ ...s, weekStart: parseInt(val) }))}
+                  />
+                </div>
+                <div className="calSettingsGroup">
+                  <label className="calCheckboxLabel">
+                    <input
+                      type="checkbox"
+                      checked={settings.syncTasks}
+                      onChange={(e) => setSettings(s => ({ ...s, syncTasks: e.target.checked }))}
+                    />
+                    Sync Tasks
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
           {accounts.length > 0 && (
             <button className="calNavBtn" onClick={fetchEvents} title="Refresh Events" disabled={loading}>
               <RefreshCw size={14} className={loading ? 'infinite-spin' : ''} />
@@ -444,12 +600,40 @@ export default function Calendar() {
             <WeekGrid
               weekStart={weekStart}
               events={events}
+              tasks={settings.syncTasks ? tasks : []}
               enabledCalendarIds={enabledCalendarIds}
               onEventClick={openEditModal}
               onSlotClick={handleSlotClick}
+              onTaskClick={(task) => setDetailTaskId(task.id)}
             />
           </main>
         </div>
+      )}
+
+      {detailTaskId && (
+        <TaskDetailModal
+          task={tasks.find(t => t.id === detailTaskId)}
+          allTasks={tasks}
+          taskTypes={taskTypes}
+          onClose={() => setDetailTaskId(null)}
+          onSave={async (id, data) => {
+            await tasksApi.updateTask(id, data);
+            fetchEvents();
+          }}
+          onDelete={(id) => setTaskToDelete({ id, isSubtask: false })}
+          onUpdateStatus={async (id, status) => {
+            await tasksApi.updateTaskStatus(id, status);
+            fetchEvents();
+          }}
+          onCreateSubtask={async (parentId, data) => {
+            await tasksApi.createTask({ ...data, parent_task_id: parentId });
+            fetchEvents();
+          }}
+          onDeleteSubtask={(id) => setTaskToDelete({ id, isSubtask: true })}
+          onOpenTask={(id) => setDetailTaskId(id)}
+          onOpenTypeManager={() => {}} // Optional
+          statusColors={statusColors}
+        />
       )}
 
       {isModalOpen && (
@@ -472,6 +656,48 @@ export default function Calendar() {
           onCreate={handleCreateCalendar}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!taskToDelete}
+        title={taskToDelete?.isSubtask ? "Delete Subtask?" : "Delete Task?"}
+        message={taskToDelete?.isSubtask 
+          ? "Are you sure you want to delete this subtask? This action cannot be undone." 
+          : "Are you sure you want to delete this task? This action cannot be undone."}
+        confirmText="Delete"
+        onConfirm={async () => {
+          if (!taskToDelete) return;
+          try {
+            await tasksApi.deleteTasksBulk({ task_ids: [taskToDelete.id] });
+            if (!taskToDelete.isSubtask && taskToDelete.id === detailTaskId) {
+              setDetailTaskId(null);
+            }
+            fetchEvents();
+            toast(taskToDelete.isSubtask ? 'Subtask deleted' : 'Task deleted', 'success');
+          } catch (err) {
+            console.error('Failed to delete task', err);
+            toast('Failed to delete task', 'error');
+          } finally {
+            setTaskToDelete(null);
+          }
+        }}
+        onCancel={() => setTaskToDelete(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!accountToDisconnect}
+        title="Disconnect Account"
+        message={`Are you sure you want to disconnect ${accountToDisconnect}? You will no longer see events from this account.`}
+        confirmText="Disconnect"
+        onConfirm={() => {
+          if (accountToDisconnect) {
+            calendarApi.removeAccount(accountToDisconnect);
+            setAccounts(calendarApi.getAccounts());
+            toast(`Account ${accountToDisconnect} disconnected`);
+            setAccountToDisconnect(null);
+          }
+        }}
+        onCancel={() => setAccountToDisconnect(null)}
+      />
     </div>
   );
 }
