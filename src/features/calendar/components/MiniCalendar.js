@@ -47,7 +47,8 @@ export default function MiniCalendar({ selectedDate, onDateSelect, events = [], 
     const dateStr = date.toISOString().split('T')[0];
     return events.some(event => {
       const eventDate = event.start?.substring(0, 10);
-      return eventDate === dateStr && enabledCalendarIds?.has(event.calendarId);
+      const compositeId = `${event.accountEmail}-${event.calendarId}`;
+      return eventDate === dateStr && enabledCalendarIds?.has(compositeId);
     });
   };
 

@@ -762,22 +762,22 @@
 .weekGridEventTitle {
   font-size: 11px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #ffffff;
   letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* Halo/Shadow to ensure black text is readable on dark calendar colors */
-  text-shadow: 0 0 4px rgba(255, 255, 255, 0.8), 0 0 2px rgba(255, 255, 255, 0.5);
+  /* Darker shadow for white text readability on light backgrounds */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .weekGridEventTime {
   font-size: 9px;
   font-weight: 500;
-  color: #1a1a1a;
-  opacity: 0.8;
+  color: #ffffff;
+  opacity: 0.9;
   letter-spacing: 0.02em;
-  text-shadow: 0 0 3px rgba(255, 255, 255, 0.6);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

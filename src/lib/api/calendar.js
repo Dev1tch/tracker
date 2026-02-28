@@ -11,10 +11,10 @@ export class CalendarApi {
   /**
    * Fetch events and available calendars from Google Calendar via the API route
    */
-  async getEvents(tokens, timeMin, timeMax) {
+  async getEvents(account, timeMin, timeMax) {
     const params = new URLSearchParams();
-    params.set('access_token', tokens.access_token);
-    if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
+    params.set('access_token', account.tokens.access_token);
+    if (account.tokens.refresh_token) params.set('refresh_token', account.tokens.refresh_token);
     if (timeMin) params.set('time_min', timeMin);
     if (timeMax) params.set('time_max', timeMax);
 
@@ -26,22 +26,24 @@ export class CalendarApi {
       error.code = data.code;
       error.status = response.status;
       error.details = data.details;
+      error.email = account.email; // Track which account failed
       throw error;
     }
 
-    return { 
-      events: data.events,
-      calendars: data.calendars
-    };
+    // Tag events and calendars with user email for UI identification
+    const events = (data.events || []).map(e => ({ ...e, accountEmail: account.email }));
+    const calendars = (data.calendars || []).map(c => ({ ...c, accountEmail: account.email }));
+
+    return { events, calendars };
   }
 
   /**
    * Create a new calendar
    */
-  async createCalendar(tokens, calendarData) {
+  async createCalendar(account, calendarData) {
     const params = new URLSearchParams();
-    params.set('access_token', tokens.access_token);
-    if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
+    params.set('access_token', account.tokens.access_token);
+    if (account.tokens.refresh_token) params.set('refresh_token', account.tokens.refresh_token);
 
     const response = await fetch(`/api/google/calendars?${params.toString()}`, {
       method: 'POST',
@@ -57,11 +59,11 @@ export class CalendarApi {
   /**
    * Create a new event
    */
-  async createEvent(tokens, eventData, calendarId = 'primary') {
+  async createEvent(account, eventData, calendarId = 'primary') {
     const params = new URLSearchParams();
-    params.set('access_token', tokens.access_token);
+    params.set('access_token', account.tokens.access_token);
     params.set('calendar_id', calendarId);
-    if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
+    if (account.tokens.refresh_token) params.set('refresh_token', account.tokens.refresh_token);
 
     const response = await fetch(`/api/google/events?${params.toString()}`, {
       method: 'POST',
@@ -77,12 +79,12 @@ export class CalendarApi {
   /**
    * Update an existing event
    */
-  async updateEvent(tokens, eventId, eventData, calendarId = 'primary') {
+  async updateEvent(account, eventId, eventData, calendarId = 'primary') {
     const params = new URLSearchParams();
-    params.set('access_token', tokens.access_token);
+    params.set('access_token', account.tokens.access_token);
     params.set('event_id', eventId);
     params.set('calendar_id', calendarId);
-    if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
+    if (account.tokens.refresh_token) params.set('refresh_token', account.tokens.refresh_token);
 
     const response = await fetch(`/api/google/events?${params.toString()}`, {
       method: 'PATCH',
@@ -98,12 +100,12 @@ export class CalendarApi {
   /**
    * Delete an event
    */
-  async deleteEvent(tokens, eventId, calendarId = 'primary') {
+  async deleteEvent(account, eventId, calendarId = 'primary') {
     const params = new URLSearchParams();
-    params.set('access_token', tokens.access_token);
+    params.set('access_token', account.tokens.access_token);
     params.set('event_id', eventId);
     params.set('calendar_id', calendarId);
-    if (tokens.refresh_token) params.set('refresh_token', tokens.refresh_token);
+    if (account.tokens.refresh_token) params.set('refresh_token', account.tokens.refresh_token);
 
     const response = await fetch(`/api/google/events?${params.toString()}`, {
       method: 'DELETE',
@@ -115,43 +117,88 @@ export class CalendarApi {
   }
 
   /**
-   * Save Google OAuth tokens to localStorage
+   * Save Google OAuth tokens for a specific account to localStorage
    */
-  saveTokens(tokens) {
+  saveAccount(tokens, email, picture) {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tokens));
+      const accounts = this.getAccounts();
+      const existingIndex = accounts.findIndex(a => a.email === email);
+      
+      const accountData = {
+        email,
+        picture,
+        tokens,
+        active: true, // Enabled by default
+        lastSync: new Date().toISOString()
+      };
+
+      if (existingIndex >= 0) {
+        accounts[existingIndex] = accountData;
+      } else {
+        accounts.push(accountData);
+      }
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
     }
   }
 
   /**
-   * Get stored Google OAuth tokens
+   * Get all connected Google accounts
    */
-  getTokens() {
-    if (typeof window === 'undefined') return null;
+  getAccounts() {
+    if (typeof window === 'undefined') return [];
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return null;
+    if (!stored) return [];
     try {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      // Handle legacy format (single object) if it exists
+      if (!Array.isArray(parsed) && parsed && parsed.access_token) {
+        return []; // We'll force a reconnect for simplicity with multi-account format
+      }
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
-      return null;
+      return [];
     }
   }
 
   /**
-   * Clear stored tokens (disconnect)
+   * Toggle an account's active status
    */
-  clearTokens() {
+  toggleAccount(email) {
+    if (typeof window !== 'undefined') {
+      const accounts = this.getAccounts();
+      const index = accounts.findIndex(a => a.email === email);
+      if (index >= 0) {
+        accounts[index].active = !accounts[index].active;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+      }
+    }
+  }
+
+  /**
+   * Disconnect a specific account
+   */
+  removeAccount(email) {
+    if (typeof window !== 'undefined') {
+      const accounts = this.getAccounts().filter(a => a.email !== email);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+    }
+  }
+
+  /**
+   * Clear all stored accounts (full disconnect)
+   */
+  clearAll() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(STORAGE_KEY);
     }
   }
 
   /**
-   * Check if Google Calendar is connected
+   * Check if any Google account is connected
    */
   isConnected() {
-    const tokens = this.getTokens();
-    return Boolean(tokens?.access_token);
+    return this.getAccounts().length > 0;
   }
 }
 

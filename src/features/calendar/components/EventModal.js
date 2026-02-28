@@ -162,6 +162,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       // Extract colorId — could be a number string like '1'-'11' or empty
       const evtColor = event.color || '';
       setColorId(evtColor.startsWith('#') ? '' : evtColor);
+      setCalendarId(event.calendarId || 'primary');
     }
   }, [event, isOpen]);
 
@@ -202,11 +203,18 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     };
 
     try {
-      await onSave(eventData, calendarId);
+      const selectedCal = availableCalendars.find(c => c.id === calendarId);
+      const accEmail = event?.accountEmail || selectedCal?.accountEmail;
+      
+      if (!accEmail) {
+        throw new Error('No account associated with this calendar');
+      }
+
+      await onSave(eventData, calendarId, accEmail);
       onClose();
     } catch (err) {
       console.error(err);
-      alert('Failed to save event');
+      alert(err.message || 'Failed to save event');
     } finally {
       setLoading(false);
     }
@@ -215,11 +223,14 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const handleDelete = async () => {
     setLoading(true);
     try {
-      await onDelete(event.id, calendarId);
+      if (!event.accountEmail) {
+        throw new Error('No account associated with this event');
+      }
+      await onDelete(event.id, calendarId, event.accountEmail);
       onClose();
     } catch (err) {
       console.error(err);
-      alert('Failed to delete event');
+      alert(err.message || 'Failed to delete event');
     } finally {
       setLoading(false);
       setShowDeleteConfirm(false);
@@ -305,7 +316,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
               <CustomSelect
                 options={availableCalendars.map(cal => ({
                   value: cal.id,
-                  label: cal.summary + (cal.primary ? ' (Primary)' : ''),
+                  label: `${cal.summary}${cal.primary ? ' (Primary)' : ''} (${cal.accountEmail})`,
                   color: cal.backgroundColor
                 }))}
                 value={calendarId}

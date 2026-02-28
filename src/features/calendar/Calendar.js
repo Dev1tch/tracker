@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalIcon, RefreshCw, Plus, ChevronDown } from 'lucide-react';
 import { calendarApi } from '@/lib/api';
-import GoogleConnectButton from './components/GoogleConnectButton';
+import AccountSwitcher from './components/AccountSwitcher';
 import EventModal from './components/EventModal';
 import CreateCalendarModal from './components/CreateCalendarModal';
 import MiniCalendar from './components/MiniCalendar';
@@ -53,7 +53,7 @@ export default function Calendar() {
   const [weekStart, setWeekStart] = useState(getWeekStart(new Date()));
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState(null);
   const [availableCalendars, setAvailableCalendars] = useState([]);
   const [enabledCalendarIds, setEnabledCalendarIds] = useState(new Set());
@@ -67,13 +67,16 @@ export default function Calendar() {
 
   // Check for stored tokens on mount & handle OAuth callback params
   useEffect(() => {
-    setConnected(calendarApi.isConnected());
+    const loadedAccounts = calendarApi.getAccounts();
+    setAccounts(loadedAccounts);
 
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const accessToken = params.get('google_access_token');
       const refreshToken = params.get('google_refresh_token');
       const expiryDate = params.get('google_expiry_date');
+      const email = params.get('google_email');
+      const picture = params.get('google_picture');
       const googleError = params.get('google_error');
 
       if (googleError) {
@@ -82,14 +85,14 @@ export default function Calendar() {
         return;
       }
 
-      if (accessToken) {
+      if (accessToken && email) {
         const tokens = {
           access_token: accessToken,
           refresh_token: refreshToken || null,
           expiry_date: expiryDate ? parseInt(expiryDate, 10) : null,
         };
-        calendarApi.saveTokens(tokens);
-        setConnected(true);
+        calendarApi.saveAccount(tokens, email, picture);
+        setAccounts(calendarApi.getAccounts());
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
@@ -97,45 +100,65 @@ export default function Calendar() {
 
   // Fetch events when connected or week changes
   const fetchEvents = useCallback(async () => {
-    if (!calendarApi.isConnected()) return;
+    const activeAccounts = accounts.filter(a => a.active);
+    if (activeAccounts.length === 0) {
+      setEvents([]);
+      setAvailableCalendars([]);
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      const tokens = calendarApi.getTokens();
       const startDate = new Date(weekStart);
-      startDate.setDate(startDate.getDate() - 7); // Fetch extra week before for mini-cal
+      startDate.setDate(startDate.getDate() - 7); 
       const endDate = getWeekEnd(weekStart);
-      endDate.setDate(endDate.getDate() + 7); // Fetch extra week after for mini-cal
+      endDate.setDate(endDate.getDate() + 7);
 
-      const { events: fetchedEvents, calendars: fetchedCalendars } = await calendarApi.getEvents(
-        tokens,
-        startDate.toISOString(),
-        endDate.toISOString()
+      const fetchPromises = activeAccounts.map(account => 
+        calendarApi.getEvents(
+          account,
+          startDate.toISOString(),
+          endDate.toISOString()
+        )
       );
 
-      setEvents(fetchedEvents);
-      setAvailableCalendars(fetchedCalendars);
+      const results = await Promise.allSettled(fetchPromises);
+      
+      let allEvents = [];
+      let allCalendars = [];
+      let errors = [];
+
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          allEvents = [...allEvents, ...result.value.events];
+          allCalendars = [...allCalendars, ...result.value.calendars];
+        } else {
+          console.error('Failed to fetch events for account:', result.reason);
+          errors.push(result.reason.email || 'Unknown account');
+        }
+      });
+
+      if (errors.length > 0) {
+        setError(`Failed to sync: ${errors.join(', ')}. Try reconnecting these accounts.`);
+      }
+
+      setEvents(allEvents);
+      setAvailableCalendars(allCalendars);
 
       // Initialize enabled calendars if not set
-      if (enabledCalendarIds.size === 0 && fetchedCalendars.length > 0) {
-        const selectedIds = fetchedCalendars.filter(c => c.selected).map(c => c.id);
-        setEnabledCalendarIds(new Set(selectedIds.length > 0 ? selectedIds : fetchedCalendars.map(c => c.id)));
+      if (enabledCalendarIds.size === 0 && allCalendars.length > 0) {
+        const selectedIds = allCalendars.filter(c => c.selected).map(c => `${c.accountEmail}-${c.id}`);
+        setEnabledCalendarIds(new Set(selectedIds.length > 0 ? selectedIds : allCalendars.map(c => `${c.accountEmail}-${c.id}`)));
       }
     } catch (err) {
       console.error('Failed to fetch events:', err);
-      if (err.code === 'TOKEN_EXPIRED' || err.status === 401 || err.code === 'FORBIDDEN' || err.status === 403) {
-        setError('Connection lost. Please reconnect Google Calendar.');
-        calendarApi.clearTokens();
-        setConnected(false);
-      } else {
-        setError('Failed to load events. Please try again.');
-      }
+      setError('Failed to load events. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [weekStart]);
+  }, [weekStart, accounts, enabledCalendarIds.size]);
 
   useEffect(() => {
     fetchEvents();
@@ -154,11 +177,11 @@ export default function Calendar() {
     fetchEvents();
   };
 
-  const handleDeleteEvent = async (eventId, calendarId) => {
-    const tokens = calendarApi.getTokens();
-    if (!tokens) return;
+  const handleDeleteEvent = async (eventId, calendarId, accountEmail) => {
+    const account = accounts.find(a => a.email === accountEmail);
+    if (!account) return;
 
-    await calendarApi.deleteEvent(tokens, eventId, calendarId);
+    await calendarApi.deleteEvent(account, eventId, calendarId);
     fetchEvents();
   };
 
@@ -227,13 +250,16 @@ export default function Calendar() {
     window.location.href = calendarApi.getAuthUrl();
   };
 
-  const handleDisconnect = () => {
-    calendarApi.clearTokens();
-    setConnected(false);
-    setEvents([]);
-    setSelectedDate(new Date());
-    setAvailableCalendars([]);
-    setEnabledCalendarIds(new Set());
+  const handleToggleAccount = (email) => {
+    calendarApi.toggleAccount(email);
+    setAccounts(calendarApi.getAccounts());
+  };
+
+  const handleDisconnectAccount = (email) => {
+    if (confirm(`Disconnected account ${email}?`)) {
+      calendarApi.removeAccount(email);
+      setAccounts(calendarApi.getAccounts());
+    }
   };
 
   const handleSlotClick = (slotDate) => {
@@ -253,7 +279,7 @@ export default function Calendar() {
         </div>
 
         <div className="calHeaderRight">
-          {connected && (
+          {accounts.length > 0 && (
             <button className="calBookBtn" onClick={() => openCreateModal()}>
               <Plus size={16} />
               <span>Book Event</span>
@@ -269,7 +295,7 @@ export default function Calendar() {
             </button>
           </div>
           <span className="calViewLabel">Week</span>
-          {connected && (
+          {accounts.length > 0 && (
             <button className="calNavBtn" onClick={fetchEvents} title="Refresh Events" disabled={loading}>
               <RefreshCw size={14} className={loading ? 'infinite-spin' : ''} />
             </button>
@@ -277,15 +303,16 @@ export default function Calendar() {
         </div>
       </header>
 
-      <GoogleConnectButton
-        isConnected={connected}
+      <AccountSwitcher 
+        accounts={accounts}
         onConnect={handleConnect}
-        onDisconnect={handleDisconnect}
+        onToggle={handleToggleAccount}
+        onDisconnect={handleDisconnectAccount}
       />
 
       {error && <div className="calError">{error}</div>}
 
-      {!connected ? (
+      {accounts.length === 0 ? (
         <div className="calMainEmptyState">
           <div className="calMainEmptyIcon">
             <CalIcon size={64} strokeWidth={1} />
@@ -313,7 +340,7 @@ export default function Calendar() {
                   <button
                     className="calAddCalendarBtn"
                     onClick={(e) => { e.stopPropagation(); setIsCreateCalendarModalOpen(true); }}
-                    title="Add calendar"
+                    title="Add calendar (primary account)"
                   >
                     <Plus size={14} />
                   </button>
@@ -324,13 +351,16 @@ export default function Calendar() {
               {isMyCalendarsOpen && availableCalendars
                 .filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer')
                 .map(cal => (
-                  <label key={cal.id} className="calToggleItem" style={{ '--toggle-color': cal.backgroundColor }}>
+                  <label key={`${cal.accountEmail}-${cal.id}`} className="calToggleItem" style={{ '--toggle-color': cal.backgroundColor }}>
                     <input
                       type="checkbox"
-                      checked={enabledCalendarIds.has(cal.id)}
-                      onChange={() => toggleCalendar(cal.id)}
+                      checked={enabledCalendarIds.has(`${cal.accountEmail}-${cal.id}`)}
+                      onChange={() => toggleCalendar(`${cal.accountEmail}-${cal.id}`)}
                     />
-                    <span className="calToggleSummary">{cal.summary}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span className="calToggleSummary">{cal.summary}</span>
+                      <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)' }}>{cal.accountEmail}</span>
+                    </div>
                   </label>
                 ))}
 
@@ -342,13 +372,16 @@ export default function Calendar() {
               {isOtherCalendarsOpen && availableCalendars
                 .filter(cal => cal.accessRole !== 'owner' && cal.accessRole !== 'writer')
                 .map(cal => (
-                  <label key={cal.id} className="calToggleItem" style={{ '--toggle-color': cal.backgroundColor }}>
+                  <label key={`${cal.accountEmail}-${cal.id}`} className="calToggleItem" style={{ '--toggle-color': cal.backgroundColor }}>
                     <input
                       type="checkbox"
-                      checked={enabledCalendarIds.has(cal.id)}
-                      onChange={() => toggleCalendar(cal.id)}
+                      checked={enabledCalendarIds.has(`${cal.accountEmail}-${cal.id}`)}
+                      onChange={() => toggleCalendar(`${cal.accountEmail}-${cal.id}`)}
                     />
-                    <span className="calToggleSummary">{cal.summary}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span className="calToggleSummary">{cal.summary}</span>
+                      <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)' }}>{cal.accountEmail}</span>
+                    </div>
                   </label>
                 ))}
             </div>

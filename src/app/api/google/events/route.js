@@ -67,9 +67,18 @@ export async function GET(request) {
     const allInstances = results.flat();
 
     // 4. Identify unique recurringEventIds to fetch their master event definitions
-    const recurringIds = [...new Set(allInstances
-      .filter(e => e.recurringEventId && !e.recurrence)
-      .map(e => ({ id: e.recurringEventId, calendarId: e.calendarId })))];
+    const uniqueRecurringKeys = new Set();
+    const recurringIds = [];
+    
+    allInstances.forEach(e => {
+      if (e.recurringEventId && !e.recurrence) {
+        const key = `${e.calendarId}-${e.recurringEventId}`;
+        if (!uniqueRecurringKeys.has(key)) {
+          uniqueRecurringKeys.add(key);
+          recurringIds.push({ id: e.recurringEventId, calendarId: e.calendarId });
+        }
+      }
+    });
 
     const masterEventMap = new Map();
     if (recurringIds.length > 0) {

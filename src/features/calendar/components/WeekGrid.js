@@ -80,7 +80,8 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
     const timed = [];
 
     events.forEach(event => {
-      if (!enabledCalendarIds.has(event.calendarId)) return;
+      const compositeId = `${event.accountEmail}-${event.calendarId}`;
+      if (!enabledCalendarIds.has(compositeId)) return;
 
       if (event.allDay) {
         allDay.push(event);
@@ -207,7 +208,7 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
               <div key={i} className="weekGridAllDayCell">
                 {dayAllDay.map(event => (
                   <button
-                    key={`${event.calendarId}-${event.id}`}
+                    key={`${event.accountEmail}-${event.calendarId}-${event.id}`}
                     className="weekGridAllDayEvent"
                     style={{ '--event-bg': getEventColor(event) }}
                     onClick={() => onEventClick(event)}

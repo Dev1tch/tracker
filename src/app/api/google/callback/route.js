@@ -26,12 +26,21 @@ export async function GET(request) {
     );
 
     const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
 
-    // Redirect back to app with tokens as URL params (stored client-side)
+    // Fetch user info to identify the account
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const userInfo = await oauth2.userinfo.get();
+
+    // Redirect back to app with tokens and user info as URL params (stored client-side)
     const params = new URLSearchParams();
     if (tokens.access_token) params.set('google_access_token', tokens.access_token);
     if (tokens.refresh_token) params.set('google_refresh_token', tokens.refresh_token);
     if (tokens.expiry_date) params.set('google_expiry_date', tokens.expiry_date.toString());
+    
+    // Add user identification
+    if (userInfo.data.email) params.set('google_email', userInfo.data.email);
+    if (userInfo.data.picture) params.set('google_picture', userInfo.data.picture);
 
     return NextResponse.redirect(`${appUrl}?${params.toString()}`);
   } catch (err) {

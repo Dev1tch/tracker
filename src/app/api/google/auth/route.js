@@ -21,7 +21,11 @@ export async function GET(request) {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/calendar'],
+    scope: [
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+    ],
   });
 
   return NextResponse.redirect(authUrl);
