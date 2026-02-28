@@ -64,22 +64,47 @@ export async function GET(request) {
     
     const results = await Promise.all(eventPromises);
     
-    // 3. Flatten, map, and sort all events
-    const allEvents = results.flat().map((event) => ({
-      id: event.id,
-      calendarId: event.calendarId,
-      title: event.summary || '(No title)',
-      description: event.description || '',
-      location: event.location || '',
-      start: event.start?.dateTime || event.start?.date || '',
-      end: event.end?.dateTime || event.end?.date || '',
-      allDay: !event.start?.dateTime,
-      color: event.colorId || null,
-      calendarColor: event.calendarColor || null,
-      htmlLink: event.htmlLink || '',
-      status: event.status,
-      calendarName: event.calendarSummary,
-    }));
+    const allInstances = results.flat();
+
+    // 4. Identify unique recurringEventIds to fetch their master event definitions
+    const recurringIds = [...new Set(allInstances
+      .filter(e => e.recurringEventId && !e.recurrence)
+      .map(e => ({ id: e.recurringEventId, calendarId: e.calendarId })))];
+
+    const masterEventMap = new Map();
+    if (recurringIds.length > 0) {
+      await Promise.all(recurringIds.map(async ({ id, calendarId }) => {
+        try {
+          const master = await calendar.events.get({ calendarId, eventId: id });
+          masterEventMap.set(`${calendarId}-${id}`, master.data.recurrence || []);
+        } catch (err) {
+          console.error(`Error fetching master event ${id}:`, err);
+        }
+      }));
+    }
+
+    // 5. Build final event objects and merge recurrence from master events if needed
+    const allEvents = allInstances.map((event) => {
+      const masterRecurrence = event.recurringEventId ? masterEventMap.get(`${event.calendarId}-${event.recurringEventId}`) : null;
+      
+      return {
+        id: event.id,
+        calendarId: event.calendarId,
+        title: event.summary || '(No title)',
+        description: event.description || '',
+        location: event.location || '',
+        start: event.start?.dateTime || event.start?.date || '',
+        end: event.end?.dateTime || event.end?.date || '',
+        allDay: !event.start?.dateTime,
+        color: event.colorId || null,
+        calendarColor: event.calendarColor || null,
+        htmlLink: event.htmlLink || '',
+        status: event.status,
+        calendarName: event.calendarSummary,
+        recurrence: event.recurrence || masterRecurrence || [],
+        attendees: event.attendees || [],
+      };
+    });
     
     // Sort merged events by start time
     allEvents.sort((a, b) => new Date(a.start) - new Date(b.start));

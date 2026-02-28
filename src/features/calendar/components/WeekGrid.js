@@ -48,22 +48,6 @@ function getEventColor(event) {
   return GOOGLE_EVENT_COLORS[color] || color;
 }
 
-function getContrastColor(hex) {
-  if (!hex || !hex.startsWith('#')) return '#ffffff';
-  
-  // Remove hash
-  const color = hex.slice(1);
-  const r = parseInt(color.slice(0, 2), 16);
-  const g = parseInt(color.slice(2, 4), 16);
-  const b = parseInt(color.slice(4, 6), 16);
-  
-  // Calculate luminance (standard formula)
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  
-  // Return light or dark text based on background luminance
-  return luminance > 0.5 ? '#1a1a1a' : '#ffffff';
-}
-
 function isSameDay(d1, d2) {
   return d1.getDate() === d2.getDate() &&
     d1.getMonth() === d2.getMonth() &&
@@ -276,7 +260,6 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
                   {layoutEvents.map(({ event, pos, column, totalColumns }) => {
                     const eventColor = getEventColor(event);
                     const calendarColor = event.calendarColor || eventColor;
-                    const textColor = getContrastColor(eventColor);
                     
                     // Stacking strategy: offset each column to the right and stack with z-index
                     const offset = totalColumns > 1 ? 12 : 0;
@@ -297,7 +280,6 @@ export default function WeekGrid({ weekStart, events, enabledCalendarIds, onEven
                           zIndex,
                           '--event-bg': eventColor,
                           '--calendar-color': calendarColor,
-                          '--text-color': textColor,
                         }}
                         onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                       >

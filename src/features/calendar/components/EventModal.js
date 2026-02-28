@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette, ChevronDown } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
 
 const GOOGLE_EVENT_COLORS = [
@@ -18,6 +18,60 @@ const GOOGLE_EVENT_COLORS = [
   { id: '11', name: 'Tomato', hex: '#d50000' },
 ];
 
+function TimeSelect({ value, onChange, disabled }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+  const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+  const minutes = ['00', '15', '30', '45'];
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const [h, m] = value.split(':');
+
+  return (
+    <div className={`calTimeSelect ${disabled ? 'disabled' : ''}`} ref={containerRef}>
+      <div className="calTimeSelectHeader" onClick={() => !disabled && setIsOpen(!isOpen)}>
+        <span>{value}</span>
+        <ChevronDown size={14} className={isOpen ? 'rotate' : ''} />
+      </div>
+      {isOpen && (
+        <div className="calTimeSelectDropdown glass">
+          <div className="calTimeSelectColumn">
+            {hours.map(hour => (
+              <div 
+                key={hour} 
+                className={`calTimeSelectOption ${h === hour ? 'selected' : ''}`}
+                onClick={() => { onChange(`${hour}:${m}`); setIsOpen(false); }}
+              >
+                {hour}
+              </div>
+            ))}
+          </div>
+          <div className="calTimeSelectColumn">
+            {minutes.map(minute => (
+              <div 
+                key={minute} 
+                className={`calTimeSelectOption ${m === minute ? 'selected' : ''}`}
+                onClick={() => { onChange(`${h}:${minute}`); setIsOpen(false); }}
+              >
+                {minute}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EventModal({ isOpen, onClose, onSave, onDelete, event, selectedDate, availableCalendars = [] }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -33,6 +87,13 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const [reminders, setReminders] = useState([{ method: 'popup', minutes: 30 }]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [colorId, setColorId] = useState('');
+  const [recurrenceOptions, setRecurrenceOptions] = useState([
+    { value: '', label: 'Does not repeat' },
+    { value: 'RRULE:FREQ=DAILY', label: 'Daily' },
+    { value: 'RRULE:FREQ=WEEKLY', label: 'Weekly' },
+    { value: 'RRULE:FREQ=MONTHLY', label: 'Monthly' },
+    { value: 'RRULE:FREQ=YEARLY', label: 'Yearly' }
+  ]);
 
   useEffect(() => {
     if (event) {
@@ -66,7 +127,37 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     
     if (event) {
       setGuests(event.attendees?.map(a => a.email) || []);
-      setRecurrence(event.recurrence?.[0] || '');
+      
+      // Smarter recurrence detection
+      const rrule = event.recurrence?.[0] || '';
+      const presets = [
+        { value: 'RRULE:FREQ=DAILY', match: 'FREQ=DAILY', label: 'Daily' },
+        { value: 'RRULE:FREQ=WEEKLY', match: 'FREQ=WEEKLY', label: 'Weekly' },
+        { value: 'RRULE:FREQ=MONTHLY', match: 'FREQ=MONTHLY', label: 'Monthly' },
+        { value: 'RRULE:FREQ=YEARLY', match: 'FREQ=YEARLY', label: 'Yearly' }
+      ];
+
+      const standardOptions = [
+        { value: '', label: 'Does not repeat' },
+        ...presets.map(p => ({ value: p.value, label: p.label }))
+      ];
+
+      // Try to find a matching preset string or substring
+      const matchedPreset = presets.find(p => rrule === p.value || rrule.includes(p.match));
+
+      if (rrule && !matchedPreset && !standardOptions.some(opt => opt.value === rrule)) {
+        const freq = rrule.split('FREQ=')[1]?.split(';')[0];
+        const label = `Custom (${freq ? freq.charAt(0) + freq.slice(1).toLowerCase() : 'Recurrence'})`;
+        setRecurrenceOptions([...standardOptions, { value: rrule, label }]);
+        setRecurrence(rrule);
+      } else if (matchedPreset) {
+        setRecurrenceOptions(standardOptions);
+        setRecurrence(matchedPreset.value); // Use the preset value for dropdown selection
+      } else {
+        setRecurrenceOptions(standardOptions);
+        setRecurrence(rrule); // Likely empty string
+      }
+      
       setReminders(event.reminders?.overrides || [{ method: 'popup', minutes: 30 }]);
       // Extract colorId — could be a number string like '1'-'11' or empty
       const evtColor = event.color || '';
@@ -176,19 +267,15 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             <div className="calFormGroup">
               <label><Clock size={16} /> Time</label>
               <div className="calTimeInputs">
-                <input
-                  type="time"
-                  className="authInput"
+                <TimeSelect
                   value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
+                  onChange={setStartTime}
                   disabled={isAllDay}
                 />
                 <span className="calTimeSeparator">to</span>
-                <input
-                  type="time"
-                  className="authInput"
+                <TimeSelect
                   value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
+                  onChange={setEndTime}
                   disabled={isAllDay}
                 />
               </div>
@@ -205,13 +292,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             <div className="calFormGroup">
               <label><Repeat size={16} /> Repeat</label>
               <CustomSelect
-                options={[
-                  { value: '', label: 'Does not repeat' },
-                  { value: 'RRULE:FREQ=DAILY', label: 'Daily' },
-                  { value: 'RRULE:FREQ=WEEKLY', label: 'Weekly' },
-                  { value: 'RRULE:FREQ=MONTHLY', label: 'Monthly' },
-                  { value: 'RRULE:FREQ=YEARLY', label: 'Yearly' }
-                ]}
+                options={recurrenceOptions}
                 value={recurrence}
                 onChange={setRecurrence}
               />
