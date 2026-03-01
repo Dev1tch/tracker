@@ -52,6 +52,7 @@ export async function GET(request) {
           maxResults: 100, 
           singleEvents: true,
           orderBy: 'startTime',
+          eventTypes: ['default', 'outOfOffice'],
         });
         
         return (response.data.items || []).map(event => ({
@@ -100,15 +101,50 @@ export async function GET(request) {
     const allEvents = allInstances.map((event) => {
       const masterRecurrence = event.recurringEventId ? masterEventMap.get(`${event.calendarId}-${event.recurringEventId}`) : null;
       
+      let start = event.start?.dateTime || event.start?.date || '';
+      let end = event.end?.dateTime || event.end?.date || '';
+      let allDay = !event.start?.dateTime;
+
+      // Detect pseudo all-day events (e.g. 00:00 to 23:59 or 00:00 to next day 00:00)
+      if (event.start?.dateTime && event.end?.dateTime) {
+        const startDT = event.start.dateTime;
+        const endDT = event.end.dateTime;
+        
+        // If it starts at 00:00:00, check if it's a full day
+        if (startDT.includes('T00:00:00')) {
+          const startDate = new Date(startDT);
+          const endDate = new Date(endDT);
+          const diffMs = endDate - startDate;
+          const diffHours = diffMs / (1000 * 60 * 60);
+
+          // If it lasts ~24 hours, treat it as all-day
+          if (diffHours >= 23.9) {
+            allDay = true;
+            start = startDT.split('T')[0];
+            
+            // For all-day events, the end date must be the day AFTER the last full day (exclusive)
+            // If the timed end is already 00:00:00 of the next day, just use that date part
+            if (endDT.includes('T00:00:00') && diffHours >= 23.9) {
+               end = endDT.split('T')[0];
+            } else {
+               // Otherwise, calculate the next day from the start date to be safe
+               const nextDay = new Date(startDate);
+               nextDay.setDate(nextDay.getDate() + 1);
+               end = nextDay.toISOString().split('T')[0];
+            }
+          }
+        }
+      }
+      
       return {
         id: event.id,
         calendarId: event.calendarId,
         title: event.summary || '(No title)',
         description: event.description || '',
         location: event.location || '',
-        start: event.start?.dateTime || event.start?.date || '',
-        end: event.end?.dateTime || event.end?.date || '',
-        allDay: !event.start?.dateTime,
+        start,
+        end,
+        allDay,
         color: event.colorId || null,
         calendarColor: event.calendarColor || null,
         htmlLink: event.htmlLink || '',

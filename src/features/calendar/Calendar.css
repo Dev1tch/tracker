@@ -804,17 +804,33 @@
 
 .weekGridEventTask {
   border-left-width: 3px;
-  background: rgba(239, 68, 68, 0.25);
-  border-color: #ef4444;
-  backdrop-filter: blur(4px);
-  height: auto !important;
-  min-height: 22px;
+  background: #ef4444 !important; /* Fully opaque for clarity */
+  border-color: #b91c1c;
+  backdrop-filter: none;
   padding: 3px 8px;
+  z-index: 50 !important; /* Higher default z-index for tasks */
 }
 
 .weekGridEventTask .weekGridEventTitle {
-  color: #fca5a5;
+  color: #ffffff; /* White text on red background */
   font-size: 10px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.weekGridEventSticky {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.4), 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+  border-style: solid !important;
+  opacity: 0.95;
+  transition: top 0.1s linear, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.weekGridEventSticky::after {
+  content: '📌';
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 8px;
+  opacity: 0.7;
 }
 
 .weekGridEvent:hover {
@@ -1583,6 +1599,12 @@
     color-mix(in srgb, var(--event-bg) 90%, black) 20px
   ) !important;
   border: 1px dashed rgba(255, 255, 255, 0.3) !important;
+}
+
+.weekGridAllDayEvent[class*="weekGridEventTask"] {
+  background: rgba(239, 68, 68, 0.4) !important;
+  border: 1px solid #ef4444 !important;
+  color: #fca5a5 !important;
 }
 
 .weekGridEventOOO::before {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
@@ -27,13 +27,33 @@ function formatHour(h) {
   return `${h - 12} PM`;
 }
 
-function getEventPosition(event) {
-  if (event.allDay) return null;
+function getEventPosition(event, dayDate) {
+  if (event.allDay && event.eventType !== 'outOfOffice') return null;
 
-  const start = new Date(event.start);
-  const end = new Date(event.end);
-  const startMinutes = start.getHours() * 60 + start.getMinutes();
-  const endMinutes = end.getHours() * 60 + end.getMinutes();
+  const start = parseEventDate(event.start);
+  const end = parseEventDate(event.end);
+  if (!start || !end) return null;
+
+  const dayStart = new Date(dayDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayDate);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  if (event.allDay) {
+    return {
+      top: 0,
+      height: 24 * HOUR_HEIGHT,
+    };
+  }
+
+  // If event starts before this day, visually start at midnight
+  const effectiveStart = start < dayStart ? dayStart : start;
+  // If event ends after this day, visually end at midnight (end of day)
+  const effectiveEnd = end > dayEnd ? dayEnd : end;
+
+  const startMinutes = effectiveStart.getHours() * 60 + effectiveStart.getMinutes();
+  const endMinutes = ((effectiveEnd - dayStart) / (1000 * 60)); // total minutes from start of day
+
   const duration = Math.max(endMinutes - startMinutes, 15); // minimum 15min height
 
   return {
@@ -48,14 +68,54 @@ function getEventColor(event) {
   return GOOGLE_EVENT_COLORS[color] || color;
 }
 
+function parseEventDate(dateStr) {
+  if (!dateStr) return null;
+  // If it's just YYYY-MM-DD, parse it as local date to avoid UTC shifts
+  if (typeof dateStr === 'string' && dateStr.length === 10 && dateStr.includes('-')) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  return new Date(dateStr);
+}
+
 function isSameDay(d1, d2) {
-  return d1.getDate() === d2.getDate() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getFullYear() === d2.getFullYear();
+  const date1 = parseEventDate(d1);
+  const date2 = parseEventDate(d2);
+  if (!date1 || !date2) return false;
+  return date1.getDate() === date2.getDate() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getFullYear() === date2.getFullYear();
+}
+
+function isEventOnDay(event, dayDate) {
+  const start = parseEventDate(event.start);
+  const end = parseEventDate(event.end);
+  if (!start || !end) return false;
+
+  const d = new Date(dayDate);
+  d.setHours(0, 0, 0, 0);
+
+  if (event.allDay) {
+    // Google's all-day 'end' is exclusive
+    // example: start "2024-01-01", end "2024-01-02" means ONLY Jan 1st.
+    return d >= start && d < end;
+  }
+
+  // For timed events, we check if they overlap with the day
+  // An event covers a day if it starts before the end of the day 
+  // AND ends after the start of the day.
+  const dayStart = new Date(dayDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayDate);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  return start <= dayEnd && end >= dayStart;
 }
 
 export default function WeekGrid({ weekStart, events, tasks = [], enabledCalendarIds, onEventClick, onTaskClick, onSlotClick }) {
   const scrollRef = useRef(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -67,31 +127,37 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
 
   const today = new Date();
 
-  // Scroll to ~7AM on mount
+  // Scroll to ~7AM on mount and setup scroll listener
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 7 * HOUR_HEIGHT;
+      setScrollTop(scrollRef.current.scrollTop);
+      setContainerHeight(scrollRef.current.clientHeight);
     }
-  }, []);
 
-  // Separate all-day and timed events
-  const { allDayEvents, timedEvents } = useMemo(() => {
-    const allDay = [];
-    const timed = [];
-
-    events.forEach(event => {
-      const compositeId = `${event.accountEmail}-${event.calendarId}`;
-      if (!enabledCalendarIds.has(compositeId)) return;
-
-      if (event.allDay) {
-        allDay.push(event);
-      } else {
-        timed.push(event);
+    const handleScroll = () => {
+      if (scrollRef.current) {
+        setScrollTop(scrollRef.current.scrollTop);
       }
-    });
+    };
 
-    return { allDayEvents: allDay, timedEvents: timed };
-  }, [events, enabledCalendarIds]);
+    const handleResize = () => {
+      if (scrollRef.current) {
+        setContainerHeight(scrollRef.current.clientHeight);
+      }
+    };
+
+    const scrollEl = scrollRef.current;
+    if (scrollEl) {
+      scrollEl.addEventListener('scroll', handleScroll);
+    }
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      if (scrollEl) scrollEl.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   // Transform unfinished tasks with due dates into events
   const taskEvents = useMemo(() => {
@@ -111,21 +177,44 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
       }));
   }, [tasks]);
 
+  // Separate all-day and timed events
+  const { allDayEvents, timedEvents } = useMemo(() => {
+    const allDay = [];
+    const timed = [];
+
+    events.forEach(event => {
+      const compositeId = `${event.accountEmail}-${event.calendarId}`;
+      if (!enabledCalendarIds.has(compositeId)) return;
+
+      if (event.allDay) {
+        allDay.push(event);
+        if (event.eventType === 'outOfOffice') {
+          timed.push(event);
+        }
+      } else {
+        timed.push(event);
+      }
+    });
+
+    // Add tasks to all-day row too
+    const tasksAsAllDay = taskEvents.map(te => ({ ...te, allDay: true }));
+    allDay.push(...tasksAsAllDay);
+
+    return { allDayEvents: allDay, timedEvents: timed };
+  }, [events, enabledCalendarIds, taskEvents]);
+
   // Get events for a specific day
   const getEventsForDay = (date, eventsList) => {
-    return eventsList.filter(event => {
-      const eventDate = new Date(event.start);
-      return isSameDay(eventDate, date);
-    });
+    return eventsList.filter(event => isEventOnDay(event, date));
   };
 
   // Handle overlapping events in a day column using cluster-based layout
-  const layoutEventsForDay = (dayEvents) => {
+  const layoutEventsForDay = (dayDate, dayEvents) => {
     if (dayEvents.length === 0) return [];
-
+    
     const positioned = dayEvents.map(event => ({
       event,
-      pos: getEventPosition(event),
+      pos: getEventPosition(event, dayDate),
     })).filter(e => e.pos !== null);
 
     // 1. Sort by start time
@@ -226,10 +315,16 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
               <div key={i} className="weekGridAllDayCell">
                 {dayAllDay.map(event => (
                   <button
-                    key={`${event.accountEmail}-${event.calendarId}-${event.id}`}
-                    className={`weekGridAllDayEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''}`}
+                    key={event.eventType === 'task' ? event.id : `${event.accountEmail}-${event.calendarId}-${event.id || event.start}`}
+                    className={`weekGridAllDayEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''} ${event.eventType === 'task' ? 'weekGridEventTask' : ''}`}
                     style={{ '--event-bg': getEventColor(event) }}
-                    onClick={() => onEventClick(event)}
+                    onClick={() => {
+                      if (event.eventType === 'task') {
+                        onTaskClick(event.originalTask);
+                      } else {
+                        onEventClick(event);
+                      }
+                    }}
                   >
                     {event.title}
                   </button>
@@ -260,7 +355,20 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
                 ...getEventsForDay(day, timedEvents),
                 ...getEventsForDay(day, taskEvents)
               ];
-              const layoutEvents = layoutEventsForDay(dayEvents);
+              
+              // Separate OOO from standard layout events so they don't squeeze other events
+              const dayOOO = dayEvents.filter(e => e.eventType === 'outOfOffice');
+              const dayStandard = dayEvents.filter(e => e.eventType !== 'outOfOffice');
+              
+              const layoutEvents = [
+                ...dayOOO.map(event => ({
+                  event,
+                  pos: getEventPosition(event, day),
+                  column: 0,
+                  totalColumns: 1,
+                })),
+                ...layoutEventsForDay(day, dayStandard)
+              ];
               const isToday = isSameDay(day, today);
 
               return (
@@ -284,22 +392,47 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
                     const calendarColor = event.calendarColor || eventColor;
                     
                     // Stacking strategy: offset each column to the right and stack with z-index
+                    const isOOO = event.eventType === 'outOfOffice';
                     const offset = totalColumns > 1 ? 12 : 0;
                     const leftPos = column * offset;
-                    const width = `${100 - leftPos - 2}%`;
-                    const left = `${leftPos}%`;
-                    const zIndex = 10 + column;
+                    const width = isOOO ? '98%' : `${100 - leftPos - 2}%`;
+                    const left = isOOO ? '1%' : `${leftPos}%`;
+                    const zIndex = isOOO ? 5 : 10 + column;
+
+                    const isSticky = event.eventType === 'task';
+                    const originalTop = pos.top;
+                    let displayTop = originalTop;
+                    let isClamped = false;
+
+                    if (isSticky) {
+                      const eventHeight = Math.max(pos.height, 24);
+                      const stickyMargin = 8;
+                      const minTop = scrollTop + stickyMargin;
+                      const maxTop = scrollTop + containerHeight - eventHeight - stickyMargin;
+                      
+                      // Bias logic: morning tasks (before 12 PM) stick to top,
+                      // evening tasks (12 PM or later) stick to bottom.
+                      const isMorning = originalTop < (12 * HOUR_HEIGHT);
+                      
+                      if (isMorning && originalTop < minTop) {
+                        displayTop = minTop;
+                        isClamped = true;
+                      } else if (!isMorning && originalTop > maxTop) {
+                        displayTop = maxTop;
+                        isClamped = true;
+                      }
+                    }
 
                     return (
                       <button
                         key={event.eventType === 'task' ? event.id : `${event.calendarId}-${event.id}`}
-                        className={`weekGridEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''} ${event.eventType === 'task' ? 'weekGridEventTask' : ''}`}
+                        className={`weekGridEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''} ${event.eventType === 'task' ? 'weekGridEventTask' : ''} ${isClamped ? 'weekGridEventSticky' : ''}`}
                         style={{
-                          top: pos.top,
-                          height: event.eventType === 'task' ? Math.max(pos.height, 18) : Math.max(pos.height, 18),
+                          top: displayTop,
+                          height: event.eventType === 'task' ? 24 : Math.max(pos.height, 18),
                           width,
                           left,
-                          zIndex,
+                          zIndex: isClamped ? zIndex + 100 : zIndex,
                           '--event-bg': eventColor,
                           '--calendar-color': calendarColor,
                         }}
