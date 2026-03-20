@@ -116,6 +116,7 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
   const scrollRef = useRef(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
+  const [scrollbarWidth, setScrollbarWidth] = useState(0);
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -129,10 +130,17 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
 
   // Scroll to ~7AM on mount and setup scroll listener
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = 7 * HOUR_HEIGHT;
+    const updateScrollMetrics = () => {
+      if (!scrollRef.current) return;
+
       setScrollTop(scrollRef.current.scrollTop);
       setContainerHeight(scrollRef.current.clientHeight);
+      setScrollbarWidth(scrollRef.current.offsetWidth - scrollRef.current.clientWidth);
+    };
+
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 7 * HOUR_HEIGHT;
+      updateScrollMetrics();
     }
 
     const handleScroll = () => {
@@ -142,9 +150,7 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
     };
 
     const handleResize = () => {
-      if (scrollRef.current) {
-        setContainerHeight(scrollRef.current.clientHeight);
-      }
+      updateScrollMetrics();
     };
 
     const scrollEl = scrollRef.current;
@@ -301,6 +307,7 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
             </div>
           );
         })}
+        <div className="weekGridScrollGutter" style={{ width: scrollbarWidth }} aria-hidden="true" />
       </div>
 
       {/* All-day events row */}
@@ -332,6 +339,7 @@ export default function WeekGrid({ weekStart, events, tasks = [], enabledCalenda
               </div>
             );
           })}
+          <div className="weekGridScrollGutter" style={{ width: scrollbarWidth }} aria-hidden="true" />
         </div>
       )}
 

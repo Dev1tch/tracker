@@ -598,6 +598,10 @@
   flex-shrink: 0;
 }
 
+.weekGridScrollGutter {
+  flex-shrink: 0;
+}
+
 .weekGridTimeGutterHeader {
   width: 56px;
   min-width: 56px;
@@ -705,6 +709,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--border-color) transparent;
 }
