@@ -32,7 +32,7 @@ export class AuthApi {
   }
 
   getCurrentToken() {
-    return apiClient.token;
+    return apiClient.getToken();
   }
 }
 

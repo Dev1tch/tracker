@@ -1,17 +1,31 @@
+export const AUTH_CHANGE_EVENT = 'life-tracker:auth-change';
+
 export class ApiClient {
   constructor(baseUrl = '/api/v1') {
     this.baseUrl = baseUrl;
     this.token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   }
 
-  setToken(token) {
-    this.token = token;
+  getToken() {
     if (typeof window !== 'undefined') {
-      if (token) {
-        localStorage.setItem('token', token);
+      this.token = localStorage.getItem('token');
+    }
+
+    return this.token;
+  }
+
+  setToken(token) {
+    const nextToken = token || null;
+    this.token = nextToken;
+
+    if (typeof window !== 'undefined') {
+      if (nextToken) {
+        localStorage.setItem('token', nextToken);
       } else {
         localStorage.removeItem('token');
       }
+
+      window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
     }
   }
 
