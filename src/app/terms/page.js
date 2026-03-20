@@ -88,7 +88,7 @@ export default function TermsPage() {
         <h2>Contact</h2>
         <p>
           For legal questions about these Terms of Service, contact:{' '}
-          <a href="mailto:support@lifetracker.app">support@lifetracker.app</a>
+          <a href="n.urch.lifetracker@gmail.com">n.urch.lifetracker@gmail.com</a>
         </p>
       </section>
     </LegalScreen>
