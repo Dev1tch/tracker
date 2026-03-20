@@ -352,6 +352,33 @@
     z-index: 1;
 }
 
+.authLegalLinks {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.5;
+}
+
+.authLegalLinks a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: var(--transition-fast);
+}
+
+.authLegalLinks a:hover {
+    color: var(--text-primary);
+    text-shadow: 0 0 10px var(--glow-color);
+}
+
+.authLegalLinks span {
+    color: var(--text-muted);
+}
+
 .authFooter {
     margin-top: 50px;
     font-size: 9px;

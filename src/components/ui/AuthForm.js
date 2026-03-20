@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import './AuthForm.css';
 import { authApi } from '@/lib/api';
 import zxcvbn from 'zxcvbn';
@@ -209,6 +210,14 @@ export default function AuthForm({ onLoginSuccess }) {
     }
   };
 
+  const renderLegalLinks = () => (
+    <div className="authLegalLinks">
+      <Link href="/privacy">Privacy Policy</Link>
+      <span aria-hidden="true">•</span>
+      <Link href="/terms">Terms of Service</Link>
+    </div>
+  );
+
   return (
     <div className="authBody">
       <canvas ref={canvasRef} className="particleCanvas"></canvas>
@@ -261,6 +270,7 @@ export default function AuthForm({ onLoginSuccess }) {
                 <button type="submit" className="authSubmitBtn" disabled={isLoading}>
                   <span>{isLoading ? 'Verifying...' : 'Initialize'}</span>
                 </button>
+                {renderLegalLinks()}
               </form>
             ) : (
               <form onSubmit={handleSignup} noValidate>
@@ -314,6 +324,7 @@ export default function AuthForm({ onLoginSuccess }) {
                 <button type="submit" className="authSubmitBtn" disabled={isLoading}>
                   <span>{isLoading ? 'Processing...' : 'Create identity'}</span>
                 </button>
+                {renderLegalLinks()}
               </form>
             )}
           </div>
