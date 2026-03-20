@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette, ChevronDown } from 'lucide-react';
+import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette, ChevronDown, ExternalLink, Video } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { useToast } from '@/components/ui/ToastProvider';
 import AccountPromptModal from './AccountPromptModal';
@@ -366,6 +366,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     setReminders([{ method: 'popup', minutes: parseInt(minutes) }]);
   };
 
+  const googleMeetLink = event?.googleMeetLink || '';
+
   return (
     <div className="calModalOverlay" onClick={onClose}>
       <div className="calModal glass" onClick={(e) => e.stopPropagation()}>
@@ -388,6 +390,22 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
               autoFocus
             />
           </div>
+
+          {googleMeetLink && (
+            <div className="calMeetRow">
+              <a
+                href={googleMeetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="calMeetLink"
+                title="Join Google Meet"
+              >
+                <Video size={14} />
+                <span>Google Meet</span>
+                <ExternalLink size={12} />
+              </a>
+            </div>
+          )}
 
           <div className="calFormRow">
             <div className="calFormGroup">

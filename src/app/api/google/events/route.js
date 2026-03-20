@@ -1,6 +1,23 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
 
+function getGoogleMeetLink(event) {
+  const hangoutLink = typeof event?.hangoutLink === 'string' ? event.hangoutLink : '';
+  if (hangoutLink) return hangoutLink;
+
+  const conferenceType = event?.conferenceData?.conferenceSolution?.key?.type || '';
+  const conferenceName = event?.conferenceData?.conferenceSolution?.name || '';
+  const videoEntry = event?.conferenceData?.entryPoints?.find(
+    (entryPoint) => entryPoint.entryPointType === 'video' && typeof entryPoint.uri === 'string'
+  );
+  const candidate = videoEntry?.uri || '';
+  const isGoogleMeet = conferenceType === 'hangoutsMeet'
+    || /google meet/i.test(conferenceName)
+    || /meet\.google\.com/i.test(candidate);
+
+  return isGoogleMeet ? candidate : '';
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const accessToken = searchParams.get('access_token');
@@ -154,6 +171,7 @@ export async function GET(request) {
         attendees: event.attendees || [],
         eventType: event.eventType || 'default',
         outOfOfficeProperties: event.outOfOfficeProperties || null,
+        googleMeetLink: getGoogleMeetLink(event),
       };
     });
     

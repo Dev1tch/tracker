@@ -69,6 +69,7 @@ const DEFAULT_STATUS_COLORS = {
 const DEFAULT_SETTINGS = {
   weekStart: 0, // 0 = Sunday, 1 = Monday
   syncTasks: true,
+  eventCardStyle: 'frame',
 };
 
 function loadStatusConfig() {
@@ -490,6 +491,17 @@ export default function Calendar() {
                   />
                 </div>
                 <div className="calSettingsGroup">
+                  <label>Event Cards</label>
+                  <CustomSelect
+                    options={[
+                      { value: 'frame', label: 'Colored Frame' },
+                      { value: 'filled', label: 'Full Color' },
+                    ]}
+                    value={settings.eventCardStyle}
+                    onChange={(value) => setSettings((s) => ({ ...s, eventCardStyle: value }))}
+                  />
+                </div>
+                <div className="calSettingsGroup">
                   <label className="calCheckboxLabel">
                     <input
                       type="checkbox"
@@ -602,6 +614,7 @@ export default function Calendar() {
               events={events}
               tasks={settings.syncTasks ? tasks : []}
               enabledCalendarIds={enabledCalendarIds}
+              eventCardStyle={settings.eventCardStyle}
               onEventClick={openEditModal}
               onSlotClick={handleSlotClick}
               onTaskClick={(task) => setDetailTaskId(task.id)}

@@ -144,7 +144,7 @@
   position: absolute;
   top: calc(100% + 10px);
   right: 0;
-  width: 220px;
+  width: 244px;
   background: rgba(10, 10, 10, 0.95);
   border: 1px solid var(--border-color);
   padding: 16px;
@@ -681,26 +681,70 @@
   gap: 2px;
 }
 
+.weekGridAllDayEventWrap {
+  position: relative;
+  isolation: isolate;
+  transform-origin: center;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.weekGridAllDayEventWrap:hover {
+  z-index: 12;
+  transform: translateY(-1px) scale(1.02);
+}
+
 .weekGridAllDayEvent {
-  background: var(--event-bg, #34d399);
+  position: relative;
+  display: block;
+  width: 100%;
+  z-index: 1;
   color: #fff;
   font-size: 10px;
   letter-spacing: 0.02em;
   padding: 2px 6px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 3px;
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: filter 0.2s ease;
-  opacity: 0.85;
+  transition: var(--transition-fast);
+  opacity: 0.92;
+}
+
+.weekGridAllDayEvent.hasMeetLink {
+  padding-right: calc(var(--meet-action-size, 14px) + 10px);
+}
+
+.weekGridAllDayEvent[data-card-style='filled'] {
+  background: var(--event-bg, #34d399);
+  border-color: transparent;
+}
+
+.weekGridAllDayEvent[data-card-style='frame'] {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    rgba(10, 12, 16, 0.94);
+  border-color: color-mix(in srgb, var(--event-bg, #34d399) 78%, rgba(255, 255, 255, 0.14));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--event-bg, #34d399) 26%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.24);
 }
 
 .weekGridAllDayEvent:hover {
   opacity: 1;
+}
+
+.weekGridAllDayEvent[data-card-style='filled']:hover {
   filter: brightness(1.15);
+}
+
+.weekGridAllDayEvent[data-card-style='frame']:hover {
+  border-color: color-mix(in srgb, var(--event-bg, #34d399) 94%, rgba(255, 255, 255, 0.2));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--event-bg, #34d399) 34%, transparent),
+    0 8px 20px rgba(0, 0, 0, 0.32);
 }
 
 /* ------- Scrollable Time Grid ------- */
@@ -787,13 +831,24 @@
 }
 
 /* ------- Event Blocks ------- */
-.weekGridEvent {
+.weekGridEventWrap {
   position: absolute;
-  /* Rim light border */
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-left: 4px solid var(--calendar-color, var(--event-bg, #34d399));
-  /* 80% opacity for better text contrast while keeping "glass" look */
-  background: color-mix(in srgb, var(--event-bg, #34d399) 80%, transparent);
+  isolation: isolate;
+  transform-origin: center;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.weekGridEventWrap:hover {
+  z-index: 120 !important;
+  transform: scale(1.02);
+}
+
+.weekGridEvent {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  border: 1px solid transparent;
   backdrop-filter: blur(10px);
   border-radius: 4px;
   padding: 5px 10px;
@@ -805,6 +860,26 @@
   text-align: left;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.weekGridEvent.hasMeetLink {
+  padding-right: calc(var(--meet-action-size, 16px) + 12px);
+}
+
+.weekGridEvent[data-card-style='filled'] {
+  border-color: rgba(255, 255, 255, 0.1);
+  border-left: 4px solid var(--calendar-color, var(--event-bg, #34d399));
+  background: color-mix(in srgb, var(--event-bg, #34d399) 80%, transparent);
+}
+
+.weekGridEvent[data-card-style='frame'] {
+  border-color: color-mix(in srgb, var(--calendar-color, var(--event-bg, #34d399)) 78%, rgba(255, 255, 255, 0.12));
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    rgba(10, 12, 16, 0.92);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--calendar-color, var(--event-bg, #34d399)) 22%, transparent),
+    2px 6px 16px rgba(0, 0, 0, 0.38);
 }
 
 .weekGridEventTask {
@@ -839,10 +914,19 @@
 }
 
 .weekGridEvent:hover {
-  transform: scale(1.02);
-  z-index: 100 !important;
-  filter: brightness(1.1);
+  z-index: 1 !important;
   box-shadow: 4px 4px 15px rgba(0, 0, 0, 0.6);
+}
+
+.weekGridEvent[data-card-style='filled']:hover {
+  filter: brightness(1.1);
+}
+
+.weekGridEvent[data-card-style='frame']:hover {
+  border-color: color-mix(in srgb, var(--calendar-color, var(--event-bg, #34d399)) 94%, rgba(255, 255, 255, 0.18));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--calendar-color, var(--event-bg, #34d399)) 28%, transparent),
+    4px 8px 20px rgba(0, 0, 0, 0.48);
 }
 
 .weekGridEventTitle {
@@ -867,6 +951,46 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.weekGridMeetAction {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: var(--meet-action-size, 16px);
+  height: var(--meet-action-size, 16px);
+  border: 1px solid rgba(34, 197, 94, 0.55);
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.14);
+  color: #4ade80;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  z-index: 3;
+  transform: translateY(-50%);
+  transition: var(--transition-fast);
+}
+
+.weekGridMeetAction:hover {
+  background: rgba(34, 197, 94, 0.24);
+  border-color: rgba(74, 222, 128, 0.8);
+  color: #bbf7d0;
+}
+
+.weekGridMeetAction:focus-visible {
+  outline: 2px solid rgba(74, 222, 128, 0.75);
+  outline-offset: 1px;
+}
+
+.weekGridMeetActionAllDay {
+  right: 4px;
+}
+
+.weekGridMeetActionIcon {
+  width: calc(var(--meet-action-size, 16px) - 6px);
+  height: calc(var(--meet-action-size, 16px) - 6px);
 }
 
 /* ------- Current Time Line ------- */
@@ -1108,6 +1232,33 @@
 
 .calGuestChip button:hover {
   color: #f87171;
+}
+
+.calMeetRow {
+  margin-top: -2px;
+}
+
+.calMeetLink {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: var(--transition-fast);
+}
+
+.calMeetLink:hover {
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .calInput {
@@ -1595,7 +1746,7 @@
 }
 
 /* ------- OOO Event Styling in Grid ------- */
-.weekGridEventOOO {
+.weekGridEventOOO[data-card-style='filled'] {
   background: repeating-linear-gradient(
     45deg,
     color-mix(in srgb, var(--event-bg) 80%, black),
@@ -1604,6 +1755,20 @@
     color-mix(in srgb, var(--event-bg) 90%, black) 20px
   ) !important;
   border: 1px dashed rgba(255, 255, 255, 0.3) !important;
+}
+
+.weekGridEventOOO[data-card-style='frame'] {
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--event-bg, #34d399) 14%, rgba(10, 12, 16, 0.96)),
+    color-mix(in srgb, var(--event-bg, #34d399) 14%, rgba(10, 12, 16, 0.96)) 10px,
+    rgba(10, 12, 16, 0.96) 10px,
+    rgba(10, 12, 16, 0.96) 20px
+  ) !important;
+  border: 1px dashed color-mix(in srgb, var(--event-bg, #34d399) 78%, rgba(255, 255, 255, 0.14)) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--event-bg, #34d399) 20%, transparent),
+    2px 6px 16px rgba(0, 0, 0, 0.38) !important;
 }
 
 .weekGridAllDayEvent[class*="weekGridEventTask"] {
@@ -1811,6 +1976,22 @@
   align-items: center;
   gap: 6px;
   letter-spacing: 0.02em;
+}
+
+.calEventMeetingLink {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  transition: var(--transition-fast);
+}
+
+.calEventMeetingLink:hover {
+  color: var(--text-primary);
 }
 
 .calEventLink {
