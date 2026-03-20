@@ -19,6 +19,24 @@
   /* Transitions */
   --transition-smooth: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: all 0.4s ease;
+
+  --cursor-arrow: url('/cursors/arrow.cur');
+  --cursor-busy: url('/cursors/busy.ani');
+  --cursor-working: url('/cursors/working.ani');
+  --cursor-link: url('/cursors/link.cur');
+  --cursor-text: url('/cursors/text.cur');
+  --cursor-unavail: url('/cursors/unavail.cur');
+  --cursor-cross: url('/cursors/cross.cur');
+  --cursor-help: url('/cursors/helpsel.cur');
+  --cursor-move: url('/cursors/up.cur');
+  --cursor-pen: url('/cursors/pen.cur');
+  --cursor-person: url('/cursors/person.cur');
+  --cursor-pin: url('/cursors/pin.cur');
+  --cursor-up: url('/cursors/up.cur');
+  --cursor-horizontal: url('/cursors/horizontal.cur');
+  --cursor-vertical: url('/cursors/vertical.cur');
+  --cursor-dgn1: url('/cursors/dgn1.cur');
+  --cursor-dgn2: url('/cursors/dgn2.cur');
 }
 
 * {
@@ -33,12 +51,145 @@ html, body {
   font-family: var(--font-main);
   min-height: 100vh;
   width: 100%;
+  cursor: var(--cursor-arrow), auto;
 }
 
 body {
   overflow-x: hidden;
   margin: 0;
   padding: 0;
+}
+
+a,
+button:not(:disabled):not([aria-disabled="true"]),
+[role="button"]:not([aria-disabled="true"]),
+select:not(:disabled),
+summary,
+label[for],
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="reset"]:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+input[type="range"]:not(:disabled),
+input[type="color"]:not(:disabled),
+[class*="Btn"],
+[class*="Button"],
+[class*="Trigger"],
+[class*="Tab"],
+.navItem,
+.clickableText,
+.customSelectHeader,
+.customSelectOption,
+.dayCube:not(.future),
+.mobileDayCol:not(.futureCol),
+.weekGridSlot,
+.account-trigger {
+  cursor: var(--cursor-link), pointer !important;
+}
+
+input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+textarea,
+[contenteditable="true"] {
+  cursor: var(--cursor-text), text;
+}
+
+:disabled,
+[aria-disabled="true"] {
+  cursor: var(--cursor-unavail), not-allowed !important;
+}
+
+[aria-busy="true"],
+[data-cursor="working"],
+.cursor-working,
+.spin,
+.infinite-spin {
+  cursor: var(--cursor-working), progress !important;
+}
+
+[data-cursor="busy"],
+.cursor-busy {
+  cursor: var(--cursor-busy), wait !important;
+}
+
+[draggable="true"],
+[data-cursor="move"],
+.cursor-move {
+  cursor: var(--cursor-move), move !important;
+}
+
+[data-cursor="cross"],
+.cursor-cross {
+  cursor: var(--cursor-cross), crosshair !important;
+}
+
+[data-cursor="help"],
+.cursor-help {
+  cursor: var(--cursor-help), help !important;
+}
+
+[data-cursor="pen"],
+.cursor-pen {
+  cursor: var(--cursor-pen), crosshair !important;
+}
+
+[data-cursor="person"],
+.cursor-person {
+  cursor: var(--cursor-person), pointer !important;
+}
+
+[data-cursor="pin"],
+.cursor-pin {
+  cursor: var(--cursor-pin), pointer !important;
+}
+
+[data-cursor="up"],
+.cursor-up {
+  cursor: var(--cursor-up), n-resize !important;
+}
+
+[data-cursor="horizontal"],
+.cursor-horizontal,
+.cursor-col-resize {
+  cursor: var(--cursor-horizontal), ew-resize !important;
+}
+
+[data-cursor="vertical"],
+.cursor-vertical,
+.cursor-row-resize {
+  cursor: var(--cursor-vertical), ns-resize !important;
+}
+
+[data-cursor="dgn1"],
+.cursor-dgn1,
+.cursor-nwse-resize {
+  cursor: var(--cursor-dgn1), nwse-resize !important;
+}
+
+[data-cursor="dgn2"],
+.cursor-dgn2,
+.cursor-nesw-resize {
+  cursor: var(--cursor-dgn2), nesw-resize !important;
+}
+
+[data-cursor="arrow"],
+.cursor-arrow {
+  cursor: var(--cursor-arrow), auto !important;
+}
+
+[data-cursor="link"],
+.cursor-link {
+  cursor: var(--cursor-link), pointer !important;
+}
+
+[data-cursor="text"],
+.cursor-text {
+  cursor: var(--cursor-text), text !important;
+}
+
+[data-cursor="unavail"],
+.cursor-unavail {
+  cursor: var(--cursor-unavail), not-allowed !important;
 }
 
 /* Base Typography */

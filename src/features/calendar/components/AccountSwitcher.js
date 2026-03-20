@@ -140,7 +140,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           position: absolute;
           top: calc(100% + 8px);
           right: 0;
-          width: 240px;
+          width: min(320px, calc(100vw - 32px));
           border: 1px solid var(--border-color);
           background: rgba(12, 12, 12, 0.98);
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.42);
@@ -209,7 +209,13 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           display: flex;
           align-items: center;
           gap: 10px;
+          flex: 1;
+          min-width: 0;
           overflow: hidden;
+        }
+        .item-details {
+          flex: 1;
+          min-width: 0;
         }
         .item-avatar {
           width: 26px;
@@ -227,16 +233,17 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           justify-content: center;
         }
         .item-email {
+          display: block;
           font-size: 0.75rem;
           font-weight: 500;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 120px;
+          line-height: 1.3;
+          white-space: normal;
+          overflow-wrap: anywhere;
         }
         .item-actions {
           display: flex;
           gap: 6px;
+          flex-shrink: 0;
         }
         .item-toggle-btn, .item-remove-btn {
           background: rgba(255, 255, 255, 0.05);

@@ -366,6 +366,14 @@
   box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 -2px 0 0 #fff, 0 0 10px var(--glow-color);
 }
 
+.timetableRow:only-child .dayCube.today {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff;
+}
+
+.timetableRow:only-child .dayCube.today.success {
+  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff, 0 0 10px var(--glow-color);
+}
+
 .dayCube.weekStart {
   border-left: 2px solid rgba(255, 255, 255, 1); /* Full white for prominence */
 }
@@ -379,7 +387,7 @@
 
 .dayCube.future {
   opacity: 0.3;
-  cursor: not-allowed;
+  cursor: var(--cursor-unavail), not-allowed;
   border-color: transparent;
 }
 

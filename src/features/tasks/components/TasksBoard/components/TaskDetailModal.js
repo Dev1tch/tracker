@@ -63,7 +63,6 @@ function getNormalizedPayload(form) {
     description: form.description || null,
     task_type_id: form.task_type_id || null,
     parent_task_id: form.parent_task_id || null,
-    status: form.status,
     priority: form.priority,
     start_date: toIsoOrNull(form.start_date),
     due_date: toIsoOrNull(form.due_date),
@@ -107,6 +106,15 @@ export default function TaskDetailModal({
     lastSavedFingerprintRef.current = payloadFingerprint;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!task) return;
+    setForm((prev) => (
+      prev.status === task.status
+        ? prev
+        : { ...prev, status: task.status }
+    ));
+  }, [task, task?.status]);
 
   useEffect(() => {
     if (!task?.id) return undefined;
@@ -176,6 +184,30 @@ export default function TaskDetailModal({
   ];
   const taskTypeById = new Map(taskTypes.map((type) => [String(type.id), type]));
   const startDateDisplay = formatDateTime(task.start_date);
+
+  const handleStatusAction = (status, { closeOnSuccess = false } = {}) => {
+    if (task.status === status && form.status === status) {
+      if (closeOnSuccess) {
+        onClose();
+      }
+      return;
+    }
+
+    setForm((prev) => (
+      prev.status === status
+        ? prev
+        : { ...prev, status }
+    ));
+
+    if (closeOnSuccess) {
+      onClose();
+    }
+
+    Promise.resolve(onUpdateStatus(task.id, status)).catch(() => {
+      // Status handler already surfaces errors and rolls back optimistic state.
+    });
+  };
+
   return (
     <div className="tasksModalOverlay" onClick={onClose}>
       <div className="tasksModal tasksDetailModal" onClick={(e) => e.stopPropagation()}>
@@ -205,7 +237,7 @@ export default function TaskDetailModal({
               <button
                 type="button"
                 className="tasksIconBtn"
-                onClick={() => onUpdateStatus(task.id, TASK_STATUS.IN_PROGRESS)}
+                onClick={() => handleStatusAction(TASK_STATUS.IN_PROGRESS)}
                 title="Start task"
               >
                 <Play size={14} />
@@ -215,7 +247,7 @@ export default function TaskDetailModal({
               <button
                 type="button"
                 className="tasksIconBtn"
-                onClick={() => onUpdateStatus(task.id, TASK_STATUS.PAUSED)}
+                onClick={() => handleStatusAction(TASK_STATUS.PAUSED)}
                 title="Pause task"
               >
                 <Pause size={14} />
@@ -225,7 +257,7 @@ export default function TaskDetailModal({
               <button
                 type="button"
                 className="tasksIconBtn"
-                onClick={() => onUpdateStatus(task.id, TASK_STATUS.IN_PROGRESS)}
+                onClick={() => handleStatusAction(TASK_STATUS.IN_PROGRESS)}
                 title="Resume task"
               >
                 <MoveRight size={14} />
@@ -235,7 +267,7 @@ export default function TaskDetailModal({
               <button
                 type="button"
                 className="tasksIconBtn"
-                onClick={() => onUpdateStatus(task.id, TASK_STATUS.COMPLETED)}
+                onClick={() => handleStatusAction(TASK_STATUS.COMPLETED, { closeOnSuccess: true })}
                 title="Complete task"
               >
                 <Check size={14} />
@@ -288,7 +320,7 @@ export default function TaskDetailModal({
                   <CustomSelect
                     options={statusOptions}
                     value={form.status}
-                    onChange={(value) => setForm((prev) => ({ ...prev, status: value }))}
+                    onChange={(value) => handleStatusAction(value)}
                     placeholder="Select status"
                   />
                 </div>

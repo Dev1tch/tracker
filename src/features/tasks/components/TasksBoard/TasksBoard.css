@@ -572,15 +572,18 @@
 
 .tasksBoardScroller::-webkit-scrollbar {
   height: 3px;
+  cursor: var(--cursor-horizontal), ew-resize;
 }
 
 .tasksBoardScroller::-webkit-scrollbar-track {
   background: transparent;
+  cursor: var(--cursor-horizontal), ew-resize;
 }
 
 .tasksBoardScroller::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.25);
   border-radius: 10px;
+  cursor: var(--cursor-horizontal), ew-resize;
 }
 
 .tasksBoardScroller::-webkit-scrollbar-thumb:hover {
@@ -627,11 +630,19 @@
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  cursor: grab;
+  cursor: var(--cursor-move), move;
+  user-select: none;
+  transition: opacity 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 
-.tasksColumnHeader:active {
-  cursor: grabbing;
+.tasksColumnHeader:active,
+.tasksColumnHeader.isDragging {
+  cursor: var(--cursor-move), move;
+}
+
+.tasksColumnHeader.isDragging {
+  opacity: 0.45;
+  transform: scale(0.985);
 }
 
 .tasksColumnHeader span:last-child {
@@ -685,6 +696,35 @@
   box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.42);
 }
 
+.tasksBoardGrid.isDragging .tasksCardDeleteBtn,
+.tasksBoardGrid.isDragging .tasksColumnAddBtn {
+  transition: none;
+}
+
+.tasksDragPreview {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  pointer-events: none;
+  z-index: 12000;
+  transform: rotate(1deg);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
+}
+
+.tasksDragPreview.tasksCard {
+  opacity: 0.96;
+}
+
+.tasksDragPreview.tasksColumnHeader {
+  opacity: 0.96;
+  background: rgba(12, 12, 12, 0.96);
+}
+
+body.tasksDragging,
+body.tasksDragging * {
+  cursor: var(--cursor-move), move !important;
+}
+
 .status-todo .tasksColumnHeader {
   border-top: 3px solid var(--tasks-status-color-todo);
 }
@@ -722,6 +762,11 @@
   flex-direction: column;
   gap: 7px;
   cursor: pointer;
+  transition: border-color 140ms ease, opacity 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.tasksCard[draggable="true"] {
+  cursor: var(--cursor-move), move;
 }
 
 .tasksCard.hasTypeAccent,
@@ -745,6 +790,13 @@
 
 .tasksCard:hover {
   border-color: rgba(255, 255, 255, 0.3);
+}
+
+.tasksCard.isDragging {
+  opacity: 0.38;
+  transform: scale(0.985);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
 .tasksCard.selected {

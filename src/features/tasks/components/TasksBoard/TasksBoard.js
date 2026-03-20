@@ -410,6 +410,7 @@ export default function TasksBoard() {
   const cardViewSettingsRef = useRef(null);
   const statusColorPickerRef = useRef(null);
   const statusColorWheelRef = useRef(null);
+  const dragPreviewRef = useRef(null);
 
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
@@ -423,6 +424,18 @@ export default function TasksBoard() {
     () => tasks.find((task) => task.id === detailTaskId) || null,
     [tasks, detailTaskId]
   );
+
+  useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.classList.remove('tasksDragging');
+      }
+      if (dragPreviewRef.current) {
+        dragPreviewRef.current.remove();
+        dragPreviewRef.current = null;
+      }
+    };
+  }, []);
 
   const allStatuses = useMemo(() => {
     const extra = Array.from(new Set(tasks.map((task) => task.status))).filter(
@@ -1066,13 +1079,38 @@ export default function TasksBoard() {
   };
 
   const handleDragStart = (event, taskId) => {
+    event.dataTransfer.setData('text/plain', String(taskId));
     event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.dropEffect = 'move';
+
+    if (typeof document !== 'undefined') {
+      document.body.classList.add('tasksDragging');
+
+      const source = event.currentTarget;
+      const rect = source.getBoundingClientRect();
+      const preview = source.cloneNode(true);
+      preview.classList.add('tasksDragPreview', 'tasksDragPreviewCard');
+      preview.style.width = `${rect.width}px`;
+      preview.style.height = `${rect.height}px`;
+      document.body.appendChild(preview);
+      dragPreviewRef.current = preview;
+
+      event.dataTransfer.setDragImage(preview, Math.min(24, rect.width / 2), 20);
+    }
+
     setDragColumnStatus(null);
     setDragOverColumnStatus('');
     setDragTaskId(taskId);
   };
 
   const handleDragEnd = () => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('tasksDragging');
+    }
+    if (dragPreviewRef.current) {
+      dragPreviewRef.current.remove();
+      dragPreviewRef.current = null;
+    }
     setDragTaskId(null);
     setDragOverStatus('');
   };
@@ -1095,6 +1133,13 @@ export default function TasksBoard() {
     setIsCreateOpen(true);
   };
   const handleColumnDragEnd = () => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('tasksDragging');
+    }
+    if (dragPreviewRef.current) {
+      dragPreviewRef.current.remove();
+      dragPreviewRef.current = null;
+    }
     setDragColumnStatus(null);
     setDragOverColumnStatus('');
   };
@@ -1503,7 +1548,7 @@ export default function TasksBoard() {
           />
         ) : (
         <div className="tasksBoardScroller">
-          <div className="tasksBoardGrid">
+          <div className={`tasksBoardGrid ${dragTaskId || dragColumnStatus ? 'isDragging' : ''}`}>
             {visibleStatuses.map((status) => {
               const statusMeta = STATUS_META[status] || {
                 label: formatStatus(status),
@@ -1521,6 +1566,7 @@ export default function TasksBoard() {
                   }`}
                   onDragOver={(event) => {
                     event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
                     if (dragColumnStatus) {
                       setDragOverColumnStatus(status);
                     } else if (dragTaskId) {
@@ -1542,11 +1588,29 @@ export default function TasksBoard() {
                   }}
                 >
                   <header
-                    className="tasksColumnHeader"
+                    className={`tasksColumnHeader ${dragColumnStatus === status ? 'isDragging' : ''}`}
                     draggable={!selectionMode}
                     onDragStart={(event) => {
                       event.stopPropagation();
+                      event.dataTransfer.setData('text/plain', status);
                       event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.dropEffect = 'move';
+
+                      if (typeof document !== 'undefined') {
+                        document.body.classList.add('tasksDragging');
+
+                        const source = event.currentTarget;
+                        const rect = source.getBoundingClientRect();
+                        const preview = source.cloneNode(true);
+                        preview.classList.add('tasksDragPreview', 'tasksDragPreviewColumn');
+                        preview.style.width = `${rect.width}px`;
+                        preview.style.height = `${rect.height}px`;
+                        document.body.appendChild(preview);
+                        dragPreviewRef.current = preview;
+
+                        event.dataTransfer.setDragImage(preview, Math.min(36, rect.width / 2), 18);
+                      }
+
                       setDragColumnStatus(status);
                       setDragTaskId(null);
                       setDragOverStatus('');
@@ -1584,7 +1648,9 @@ export default function TasksBoard() {
                           key={task.id}
                           className={`tasksCard ${
                             cardViewSettings.task_type && taskType ? 'hasTypeAccent' : ''
-                          } ${selectedTaskIds.has(task.id) ? 'selected' : ''}`}
+                          } ${selectedTaskIds.has(task.id) ? 'selected' : ''} ${
+                            dragTaskId === task.id ? 'isDragging' : ''
+                          }`}
                           style={
                             cardViewSettings.task_type && taskType
                               ? { '--task-type-color': taskTypeColor }
