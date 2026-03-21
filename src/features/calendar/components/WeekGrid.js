@@ -115,7 +115,7 @@ function isEventOnDay(event, dayDate) {
 
 function getMeetActionSize(height) {
   const safeHeight = Math.max(height || 0, 18);
-  return `${Math.min(Math.max(Math.round(safeHeight * 0.48), 12), 18)}px`;
+  return `${Math.min(Math.max(Math.round(safeHeight * 0.44), 12), 16)}px`;
 }
 
 function openCalendarItem(event, onEventClick, onTaskClick) {

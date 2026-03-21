@@ -295,7 +295,7 @@ export default function Calendar() {
   }, [isSettingsOpen]);
 
   // Event Handlers
-  const handleSaveEvent = async (eventData, calendarId, accountEmail) => {
+  const handleSaveEvent = async (eventData, calendarId, accountEmail, options = {}) => {
     const account = accounts.find(a => a.email === accountEmail);
     if (!account) {
       toast('Account not found', 'error');
@@ -311,8 +311,12 @@ export default function Calendar() {
       }
 
       if (editingEvent) {
-        await calendarApi.updateEvent(account, editingEvent.id, eventData, calendarId);
-        toast('Event updated successfully');
+        await calendarApi.updateEvent(account, editingEvent.id, eventData, calendarId, options);
+        if (options?.recurringEdit?.mode === 'future') {
+          toast('Updated this and future events');
+        } else {
+          toast('Event updated successfully');
+        }
       } else {
         await calendarApi.createEvent(account, eventData, calendarId);
         toast('Event created successfully');
@@ -394,9 +398,31 @@ export default function Calendar() {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (event) => {
+  const openEditModal = async (event) => {
     setEditingEvent(event);
     setIsModalOpen(true);
+
+    if (!event?.accountEmail || !event?.recurringEventId || event?.recurrence?.length) {
+      return;
+    }
+
+    const account = accounts.find((item) => item.email === event.accountEmail);
+    if (!account) return;
+
+    try {
+      const detailedEvent = await calendarApi.getEvent(
+        account,
+        event.id,
+        event.calendarId || 'primary',
+        { resolveRecurrence: true }
+      );
+
+      if (detailedEvent) {
+        setEditingEvent(detailedEvent);
+      }
+    } catch (err) {
+      console.error('Failed to load recurring event details:', err);
+    }
   };
 
   // Navigation
@@ -546,10 +572,12 @@ export default function Calendar() {
           {/* Left Sidebar */}
           <aside className="calSidebar">
             <MiniCalendar
+              key={`${selectedDate.getFullYear()}-${selectedDate.getMonth()}`}
               selectedDate={selectedDate}
               onDateSelect={handleDateSelect}
               events={events}
               enabledCalendarIds={enabledCalendarIds}
+              weekStartDay={settings.weekStart}
             />
 
             <div className="calCalendarToggles">

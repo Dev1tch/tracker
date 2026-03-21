@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -9,18 +9,55 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-export default function MiniCalendar({ selectedDate, onDateSelect, events = [], enabledCalendarIds }) {
+function parseEventDate(dateStr) {
+  if (!dateStr) return null;
+  if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  return new Date(dateStr);
+}
+
+function isEventOnDate(event, date) {
+  const start = parseEventDate(event.start);
+  const end = parseEventDate(event.end);
+  if (!start || !end) return false;
+
+  const dayStart = new Date(date);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(date);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  if (event.allDay) {
+    return dayStart >= start && dayStart < end;
+  }
+
+  return start <= dayEnd && end >= dayStart;
+}
+
+export default function MiniCalendar({
+  selectedDate,
+  onDateSelect,
+  events = [],
+  enabledCalendarIds,
+  weekStartDay = 0,
+}) {
   const [viewDate, setViewDate] = useState(new Date(selectedDate || new Date()));
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
 
   const firstDayOfMonth = new Date(year, month, 1).getDay();
+  const leadingDays = (firstDayOfMonth - weekStartDay + 7) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrevMonth = new Date(year, month, 0).getDate();
+  const orderedDays = useMemo(
+    () => [...DAYS.slice(weekStartDay), ...DAYS.slice(0, weekStartDay)],
+    [weekStartDay]
+  );
 
   const calendarDays = [];
-  for (let i = firstDayOfMonth - 1; i >= 0; i--) {
+  for (let i = leadingDays - 1; i >= 0; i--) {
     calendarDays.push({ day: daysInPrevMonth - i, isCurrentMonth: false, date: new Date(year, month - 1, daysInPrevMonth - i) });
   }
   for (let d = 1; d <= daysInMonth; d++) {
@@ -44,11 +81,9 @@ export default function MiniCalendar({ selectedDate, onDateSelect, events = [], 
     date.getFullYear() === selectedDate.getFullYear();
 
   const hasEvents = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
     return events.some(event => {
-      const eventDate = event.start?.substring(0, 10);
       const compositeId = `${event.accountEmail}-${event.calendarId}`;
-      return eventDate === dateStr && enabledCalendarIds?.has(compositeId);
+      return enabledCalendarIds?.has(compositeId) && isEventOnDate(event, date);
     });
   };
 
@@ -65,7 +100,7 @@ export default function MiniCalendar({ selectedDate, onDateSelect, events = [], 
         </div>
       </div>
       <div className="miniCalDays">
-        {DAYS.map((d, i) => <span key={i} className="miniCalDayName">{d}</span>)}
+        {orderedDays.map((d, i) => <span key={i} className="miniCalDayName">{d}</span>)}
       </div>
       <div className="miniCalGrid">
         {calendarDays.map((cell, i) => (

@@ -94,6 +94,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAccountPrompt, setShowAccountPrompt] = useState(false);
   const [pendingEventData, setPendingEventData] = useState(null);
+  const [pendingRecurringSaveData, setPendingRecurringSaveData] = useState(null);
+  const [showRecurringSavePrompt, setShowRecurringSavePrompt] = useState(false);
   const [colorId, setColorId] = useState('');
   const [recurrenceOptions, setRecurrenceOptions] = useState([
     { value: '', label: 'Does not repeat' },
@@ -163,7 +165,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       ];
 
       // Try to find a matching preset string or substring
-      const matchedPreset = presets.find(p => rrule === p.value || rrule.includes(p.match));
+      const matchedPreset = presets.find(p => rrule === p.value);
 
       if (rrule && !matchedPreset && !standardOptions.some(opt => opt.value === rrule)) {
         const freq = rrule.split('FREQ=')[1]?.split(';')[0];
@@ -186,12 +188,25 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     }
   }, [event, isOpen, accounts, availableCalendars]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    setShowDeleteConfirm(false);
+    setShowRecurringSavePrompt(false);
+    setPendingRecurringSaveData(null);
+    setPendingEventData(null);
+  }, [isOpen, event?.id]);
+
   if (!isOpen) return null;
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  const browserTimeZone =
+    (typeof window !== 'undefined'
+      ? window.Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone
+      : '') || undefined;
+  const isRecurringInstance = Boolean(
+    event?.id && event?.recurringEventId && event?.originalStart
+  );
 
+  const buildEventData = () => {
     const baseDate = event ? new Date(event.start) : (selectedDate || new Date());
     const year = baseDate.getFullYear();
     const month = baseDate.getMonth();
@@ -240,11 +255,11 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       if (isAllDay) {
         const oooStart = new Date(year, month, day, 0, 0, 0);
         const oooEnd = new Date(year, month, day, 23, 59, 59);
-        eventData.start = { dateTime: toLocalISOString(oooStart) };
-        eventData.end = { dateTime: toLocalISOString(oooEnd) };
+        eventData.start = { dateTime: toLocalISOString(oooStart), timeZone: browserTimeZone };
+        eventData.end = { dateTime: toLocalISOString(oooEnd), timeZone: browserTimeZone };
       } else {
-        eventData.start = { dateTime: toLocalISOString(start) };
-        eventData.end = { dateTime: toLocalISOString(end) };
+        eventData.start = { dateTime: toLocalISOString(start), timeZone: browserTimeZone };
+        eventData.end = { dateTime: toLocalISOString(end), timeZone: browserTimeZone };
       }
       
       eventData.outOfOfficeProperties = {
@@ -258,8 +273,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
         eventData.start = { date: formatDate(start) };
         eventData.end = { date: formatDate(new Date(end.getTime() + 86400000)) };
       } else {
-        eventData.start = { dateTime: toLocalISOString(start) };
-        eventData.end = { dateTime: toLocalISOString(end) };
+        eventData.start = { dateTime: toLocalISOString(start), timeZone: browserTimeZone };
+        eventData.end = { dateTime: toLocalISOString(end), timeZone: browserTimeZone };
       }
 
       eventData.description = description;
@@ -273,44 +288,61 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       };
     }
 
+    return eventData;
+  };
+
+  const persistEvent = async (eventData, saveOptions = {}) => {
+    let finalCalendarId = calendarId;
+    let accEmail = event?.accountEmail;
+
+    if (calendarId.includes(':')) {
+      const [email, id] = calendarId.split(':');
+      accEmail = email;
+      finalCalendarId = id;
+    } else if (!accEmail) {
+      const activeAccounts = accounts.filter(a => a.active);
+      if (activeAccounts.length === 1) {
+        accEmail = activeAccounts[0].email;
+      } else if (activeAccounts.length > 1) {
+        setPendingEventData({ eventData, saveOptions });
+        setShowAccountPrompt(true);
+        return { deferred: true };
+      } else {
+        const selectedCal = availableCalendars.find(c => c.id === calendarId);
+        accEmail = selectedCal?.accountEmail;
+      }
+    }
+
+    if (!accEmail) {
+      throw new Error('Please select an account');
+    }
+
+    await onSave(eventData, finalCalendarId, accEmail, saveOptions);
+    return { deferred: false };
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const eventData = buildEventData();
+
+    if (isRecurringInstance) {
+      setPendingRecurringSaveData(eventData);
+      setShowDeleteConfirm(false);
+      setShowRecurringSavePrompt(true);
+      return;
+    }
+
+    setLoading(true);
+    let result = { deferred: false };
+
     try {
-      let finalCalendarId = calendarId;
-      let accEmail = event?.accountEmail;
-
-      if (calendarId.includes(':')) {
-        const [email, id] = calendarId.split(':');
-        accEmail = email;
-        finalCalendarId = id;
-      } else if (!accEmail) {
-        const activeAccounts = accounts.filter(a => a.active);
-        if (activeAccounts.length === 1) {
-          accEmail = activeAccounts[0].email;
-        } else if (activeAccounts.length > 1) {
-          // Multiple accounts, no specific selected -> prompt
-          setPendingEventData(eventData);
-          setShowAccountPrompt(true);
-          setLoading(false);
-          return;
-        } else {
-          const selectedCal = availableCalendars.find(c => c.id === calendarId);
-          accEmail = selectedCal?.accountEmail;
-        }
-      }
-      
-      if (!accEmail) {
-        // This should theoretically not happen with the prompt above
-        toast('Please select an account', 'warning');
-        setLoading(false);
-        return;
-      }
-
-      await onSave(eventData, finalCalendarId, accEmail);
-      onClose();
+      result = await persistEvent(eventData);
+      if (!result.deferred) onClose();
     } catch (err) {
       console.error(err);
       toast(err.message || 'Failed to save event', 'error');
     } finally {
-      if (!showAccountPrompt) setLoading(false);
+      if (!result.deferred) setLoading(false);
     }
   };
 
@@ -318,7 +350,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     setShowAccountPrompt(false);
     setLoading(true);
     try {
-      await onSave(pendingEventData, 'primary', email);
+      await onSave(pendingEventData?.eventData, 'primary', email, pendingEventData?.saveOptions || {});
       onClose();
     } catch (err) {
       console.error(err);
@@ -326,6 +358,39 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     } finally {
       setLoading(false);
       setPendingEventData(null);
+    }
+  };
+
+  const handleRecurringSaveChoice = async (mode) => {
+    if (!pendingRecurringSaveData || !event) return;
+
+    setShowRecurringSavePrompt(false);
+    setLoading(true);
+    let result = { deferred: false };
+    const eventData =
+      mode === 'this'
+        ? { ...pendingRecurringSaveData, recurrence: undefined }
+        : pendingRecurringSaveData;
+
+    try {
+      result = await persistEvent(eventData, {
+        recurringEdit: {
+          mode,
+          recurringEventId: event.recurringEventId,
+          originalStart: event.originalStart,
+        },
+      });
+      if (!result.deferred) {
+        onClose();
+      }
+    } catch (err) {
+      console.error(err);
+      toast(err.message || 'Failed to save event', 'error');
+    } finally {
+      if (!result.deferred) {
+        setLoading(false);
+        setPendingRecurringSaveData(null);
+      }
     }
   };
 
@@ -646,6 +711,55 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
         accounts={accounts}
         onSelect={handleAccountSelect}
       />
+
+      {showRecurringSavePrompt && (
+        <div className="calScopeModalOverlay" onClick={() => setShowRecurringSavePrompt(false)}>
+          <div className="calScopeModal glass" onClick={(e) => e.stopPropagation()}>
+            <div className="calScopeModalHeader">
+              <h4>Save Recurring Changes</h4>
+              <button
+                type="button"
+                className="calModalClose"
+                onClick={() => setShowRecurringSavePrompt(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="calScopeModalText">
+              Choose how these changes should be applied to this recurring event.
+            </p>
+            <p className="calScopeModalNote">
+              Applying changes to future events can reset later exceptions in the series.
+            </p>
+            <div className="calScopeModalActions">
+              <button
+                type="button"
+                className="calScopeModalPrimary"
+                onClick={() => handleRecurringSaveChoice('this')}
+                disabled={loading}
+              >
+                Only this event
+              </button>
+              <button
+                type="button"
+                className="calScopeModalPrimary"
+                onClick={() => handleRecurringSaveChoice('future')}
+                disabled={loading}
+              >
+                This and all future events
+              </button>
+              <button
+                type="button"
+                className="calScopeModalSecondary"
+                onClick={() => setShowRecurringSavePrompt(false)}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

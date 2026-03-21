@@ -43,6 +43,30 @@ export class CalendarApi {
   }
 
   /**
+   * Fetch a single event with optional recurrence resolution for recurring instances.
+   */
+  async getEvent(account, eventId, calendarId = 'primary', options = {}) {
+    const params = new URLSearchParams();
+    params.set('access_token', account.tokens.access_token);
+    params.set('event_id', eventId);
+    params.set('calendar_id', calendarId);
+    if (account.tokens.refresh_token) params.set('refresh_token', account.tokens.refresh_token);
+    if (options.resolveRecurrence) params.set('resolve_recurrence', '1');
+
+    const response = await fetch(`/api/google/events?${params.toString()}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      const error = new Error(data.error || 'Failed to fetch event');
+      error.code = data.code;
+      error.status = response.status;
+      throw error;
+    }
+
+    return data.event ? { ...data.event, accountEmail: account.email } : null;
+  }
+
+  /**
    * Create a new calendar
    */
   async createCalendar(account, calendarData) {
@@ -84,12 +108,16 @@ export class CalendarApi {
   /**
    * Update an existing event
    */
-  async updateEvent(account, eventId, eventData, calendarId = 'primary') {
+  async updateEvent(account, eventId, eventData, calendarId = 'primary', options = {}) {
+    const recurringEdit = options?.recurringEdit || null;
     const params = new URLSearchParams();
     params.set('access_token', account.tokens.access_token);
     params.set('event_id', eventId);
     params.set('calendar_id', calendarId);
     if (account.tokens.refresh_token) params.set('refresh_token', account.tokens.refresh_token);
+    if (recurringEdit?.mode) params.set('recurring_edit_mode', recurringEdit.mode);
+    if (recurringEdit?.recurringEventId) params.set('recurring_event_id', recurringEdit.recurringEventId);
+    if (recurringEdit?.originalStart) params.set('original_start', recurringEdit.originalStart);
 
     const response = await fetch(`/api/google/events?${params.toString()}`, {
       method: 'PATCH',

@@ -18,12 +18,228 @@ function getGoogleMeetLink(event) {
   return isGoogleMeet ? candidate : '';
 }
 
+function normalizeCalendarEvent(event, calendarMetadata = {}, recurrenceOverride = null) {
+  let start = event.start?.dateTime || event.start?.date || '';
+  let end = event.end?.dateTime || event.end?.date || '';
+  let allDay = !event.start?.dateTime;
+
+  if (event.start?.dateTime && event.end?.dateTime) {
+    const startDT = event.start.dateTime;
+    const endDT = event.end.dateTime;
+
+    if (startDT.includes('T00:00:00')) {
+      const startDate = new Date(startDT);
+      const endDate = new Date(endDT);
+      const diffMs = endDate - startDate;
+      const diffHours = diffMs / (1000 * 60 * 60);
+
+      if (diffHours >= 23.9) {
+        allDay = true;
+        start = startDT.split('T')[0];
+
+        if (endDT.includes('T00:00:00') && diffHours >= 23.9) {
+          end = endDT.split('T')[0];
+        } else {
+          const nextDay = new Date(startDate);
+          nextDay.setDate(nextDay.getDate() + 1);
+          end = nextDay.toISOString().split('T')[0];
+        }
+      }
+    }
+  }
+
+  return {
+    id: event.id,
+    calendarId: event.calendarId || calendarMetadata.id,
+    title: event.summary || '(No title)',
+    description: event.description || '',
+    location: event.location || '',
+    start,
+    end,
+    allDay,
+    color: event.colorId || null,
+    calendarColor: event.calendarColor || calendarMetadata.backgroundColor || null,
+    htmlLink: event.htmlLink || '',
+    status: event.status,
+    calendarName: event.calendarSummary || calendarMetadata.summary,
+    recurrence: recurrenceOverride ?? event.recurrence ?? [],
+    attendees: event.attendees || [],
+    eventType: event.eventType || 'default',
+    outOfOfficeProperties: event.outOfOfficeProperties || null,
+    googleMeetLink: getGoogleMeetLink(event),
+    recurringEventId: event.recurringEventId || null,
+    originalStartTime: event.originalStartTime || null,
+    originalStart: getOriginalStartValue(event.originalStartTime),
+    startTimeZone: event.start?.timeZone || null,
+    endTimeZone: event.end?.timeZone || null,
+  };
+}
+
+function getOriginalStartValue(originalStartTime) {
+  return originalStartTime?.dateTime || originalStartTime?.date || '';
+}
+
+function isDateOnlyValue(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function parseDateOnlyUtc(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatRecurringUntil(originalStart) {
+  if (!originalStart) return '';
+
+  if (isDateOnlyValue(originalStart)) {
+    const cutoff = parseDateOnlyUtc(originalStart);
+    cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+    return cutoff.toISOString().slice(0, 10).replace(/-/g, '');
+  }
+
+  const cutoff = new Date(new Date(originalStart).getTime() - 1000);
+  return cutoff.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/u, 'Z');
+}
+
+function replaceRecurringRuleEnd(recurrence = [], untilValue) {
+  if (!Array.isArray(recurrence) || !untilValue) return recurrence;
+
+  return recurrence.map((line) => {
+    if (!line.startsWith('RRULE:')) return line;
+
+    const parts = line
+      .slice('RRULE:'.length)
+      .split(';')
+      .filter(Boolean)
+      .filter((part) => !part.startsWith('UNTIL=') && !part.startsWith('COUNT='));
+
+    parts.push(`UNTIL=${untilValue}`);
+    return `RRULE:${parts.join(';')}`;
+  });
+}
+
+function replaceRecurringRuleCount(recurrence = [], nextCount) {
+  if (!Array.isArray(recurrence) || !Number.isFinite(nextCount) || nextCount < 1) {
+    return recurrence;
+  }
+
+  return recurrence.map((line) => {
+    if (!line.startsWith('RRULE:')) return line;
+
+    const parts = line
+      .slice('RRULE:'.length)
+      .split(';')
+      .filter(Boolean)
+      .filter((part) => !part.startsWith('COUNT=') && !part.startsWith('UNTIL='));
+
+    parts.push(`COUNT=${nextCount}`);
+    return `RRULE:${parts.join(';')}`;
+  });
+}
+
+function recurrenceHasCount(recurrence = []) {
+  return recurrence.some((line) => line.startsWith('RRULE:') && line.includes('COUNT='));
+}
+
+function sameOriginalStart(a, b) {
+  if (!a || !b) return false;
+  if (isDateOnlyValue(a) || isDateOnlyValue(b)) return a === b;
+  return new Date(a).getTime() === new Date(b).getTime();
+}
+
+function isSameOrAfterOriginalStart(value, target) {
+  if (!value || !target) return false;
+  if (isDateOnlyValue(value) && isDateOnlyValue(target)) return value >= target;
+  return new Date(value).getTime() >= new Date(target).getTime();
+}
+
+function ensureTimedPayloadTimeZone(value, fallbackTimeZone) {
+  if (!value?.dateTime || !fallbackTimeZone) return value;
+  return {
+    ...value,
+    timeZone: value.timeZone || fallbackTimeZone,
+  };
+}
+
+function stripUndefinedEntries(object) {
+  return Object.fromEntries(
+    Object.entries(object).filter(([, value]) => value !== undefined)
+  );
+}
+
+function buildFutureRecurringEventBody(parentEvent, updatedEventData, fallbackTimeZone) {
+  const start = ensureTimedPayloadTimeZone(
+    updatedEventData.start || parentEvent.start,
+    fallbackTimeZone
+  );
+  const end = ensureTimedPayloadTimeZone(
+    updatedEventData.end || parentEvent.end,
+    fallbackTimeZone
+  );
+
+  return stripUndefinedEntries({
+    summary: updatedEventData.summary ?? parentEvent.summary ?? '(No title)',
+    description: updatedEventData.description ?? parentEvent.description,
+    location: updatedEventData.location ?? parentEvent.location,
+    start,
+    end,
+    colorId: updatedEventData.colorId ?? parentEvent.colorId,
+    attendees: updatedEventData.attendees ?? parentEvent.attendees,
+    recurrence: updatedEventData.recurrence ?? parentEvent.recurrence,
+    reminders: updatedEventData.reminders ?? parentEvent.reminders,
+    eventType: updatedEventData.eventType ?? parentEvent.eventType,
+    outOfOfficeProperties:
+      updatedEventData.outOfOfficeProperties ?? parentEvent.outOfOfficeProperties,
+    transparency: updatedEventData.transparency ?? parentEvent.transparency,
+    conferenceData: updatedEventData.conferenceData ?? parentEvent.conferenceData,
+    guestsCanInviteOthers: parentEvent.guestsCanInviteOthers,
+    guestsCanModify: parentEvent.guestsCanModify,
+    guestsCanSeeOtherGuests: parentEvent.guestsCanSeeOtherGuests,
+    anyoneCanAddSelf: parentEvent.anyoneCanAddSelf,
+    visibility: parentEvent.visibility,
+  });
+}
+
+async function countFutureInstances(calendar, calendarId, recurringEventId, targetOriginalStart) {
+  const timeMin = isDateOnlyValue(targetOriginalStart)
+    ? `${targetOriginalStart}T00:00:00.000Z`
+    : new Date(new Date(targetOriginalStart).getTime() - 1000).toISOString();
+
+  let total = 0;
+  let pageToken = undefined;
+
+  do {
+    const response = await calendar.events.instances({
+      calendarId,
+      eventId: recurringEventId,
+      timeMin,
+      maxResults: 2500,
+      pageToken,
+      showDeleted: false,
+    });
+
+    for (const instance of response.data.items || []) {
+      const originalStart = getOriginalStartValue(instance.originalStartTime);
+      if (isSameOrAfterOriginalStart(originalStart, targetOriginalStart)) {
+        total += 1;
+      }
+    }
+
+    pageToken = response.data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return total;
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const accessToken = searchParams.get('access_token');
   const refreshToken = searchParams.get('refresh_token');
   const timeMin = searchParams.get('time_min');
   const timeMax = searchParams.get('time_max');
+  const eventId = searchParams.get('event_id');
+  const calendarId = searchParams.get('calendar_id') || 'primary';
+  const resolveRecurrence = searchParams.get('resolve_recurrence') === '1';
 
   if (!accessToken) {
     return NextResponse.json({ error: 'No access token provided' }, { status: 401 });
@@ -45,6 +261,32 @@ export async function GET(request) {
     });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    if (eventId) {
+      const eventResponse = await calendar.events.get({
+        calendarId,
+        eventId,
+      });
+
+      const currentEvent = eventResponse.data;
+      let recurrenceOverride = currentEvent.recurrence || [];
+
+      if (
+        resolveRecurrence &&
+        !recurrenceOverride.length &&
+        currentEvent.recurringEventId
+      ) {
+        const masterResponse = await calendar.events.get({
+          calendarId,
+          eventId: currentEvent.recurringEventId,
+        });
+        recurrenceOverride = masterResponse.data.recurrence || [];
+      }
+
+      return NextResponse.json({
+        event: normalizeCalendarEvent(currentEvent, { id: calendarId }, recurrenceOverride),
+      });
+    }
     
     // 1. Get the list of all calendars the user has
     let calendars = [];
@@ -88,92 +330,7 @@ export async function GET(request) {
     
     const allInstances = results.flat();
 
-    // 4. Identify unique recurringEventIds to fetch their master event definitions
-    const uniqueRecurringKeys = new Set();
-    const recurringIds = [];
-    
-    allInstances.forEach(e => {
-      if (e.recurringEventId && !e.recurrence) {
-        const key = `${e.calendarId}-${e.recurringEventId}`;
-        if (!uniqueRecurringKeys.has(key)) {
-          uniqueRecurringKeys.add(key);
-          recurringIds.push({ id: e.recurringEventId, calendarId: e.calendarId });
-        }
-      }
-    });
-
-    const masterEventMap = new Map();
-    if (recurringIds.length > 0) {
-      await Promise.all(recurringIds.map(async ({ id, calendarId }) => {
-        try {
-          const master = await calendar.events.get({ calendarId, eventId: id });
-          masterEventMap.set(`${calendarId}-${id}`, master.data.recurrence || []);
-        } catch (err) {
-          console.error(`Error fetching master event ${id}:`, err);
-        }
-      }));
-    }
-
-    // 5. Build final event objects and merge recurrence from master events if needed
-    const allEvents = allInstances.map((event) => {
-      const masterRecurrence = event.recurringEventId ? masterEventMap.get(`${event.calendarId}-${event.recurringEventId}`) : null;
-      
-      let start = event.start?.dateTime || event.start?.date || '';
-      let end = event.end?.dateTime || event.end?.date || '';
-      let allDay = !event.start?.dateTime;
-
-      // Detect pseudo all-day events (e.g. 00:00 to 23:59 or 00:00 to next day 00:00)
-      if (event.start?.dateTime && event.end?.dateTime) {
-        const startDT = event.start.dateTime;
-        const endDT = event.end.dateTime;
-        
-        // If it starts at 00:00:00, check if it's a full day
-        if (startDT.includes('T00:00:00')) {
-          const startDate = new Date(startDT);
-          const endDate = new Date(endDT);
-          const diffMs = endDate - startDate;
-          const diffHours = diffMs / (1000 * 60 * 60);
-
-          // If it lasts ~24 hours, treat it as all-day
-          if (diffHours >= 23.9) {
-            allDay = true;
-            start = startDT.split('T')[0];
-            
-            // For all-day events, the end date must be the day AFTER the last full day (exclusive)
-            // If the timed end is already 00:00:00 of the next day, just use that date part
-            if (endDT.includes('T00:00:00') && diffHours >= 23.9) {
-               end = endDT.split('T')[0];
-            } else {
-               // Otherwise, calculate the next day from the start date to be safe
-               const nextDay = new Date(startDate);
-               nextDay.setDate(nextDay.getDate() + 1);
-               end = nextDay.toISOString().split('T')[0];
-            }
-          }
-        }
-      }
-      
-      return {
-        id: event.id,
-        calendarId: event.calendarId,
-        title: event.summary || '(No title)',
-        description: event.description || '',
-        location: event.location || '',
-        start,
-        end,
-        allDay,
-        color: event.colorId || null,
-        calendarColor: event.calendarColor || null,
-        htmlLink: event.htmlLink || '',
-        status: event.status,
-        calendarName: event.calendarSummary,
-        recurrence: event.recurrence || masterRecurrence || [],
-        attendees: event.attendees || [],
-        eventType: event.eventType || 'default',
-        outOfOfficeProperties: event.outOfOfficeProperties || null,
-        googleMeetLink: getGoogleMeetLink(event),
-      };
-    });
+    const allEvents = allInstances.map((event) => normalizeCalendarEvent(event));
     
     // Sort merged events by start time
     allEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
@@ -238,6 +395,7 @@ export async function POST(request) {
     const response = await calendar.events.insert({
       calendarId,
       requestBody: body,
+      conferenceDataVersion: 1,
     });
 
     return NextResponse.json(response.data);
@@ -262,7 +420,9 @@ export async function PATCH(request) {
   const refreshToken = searchParams.get('refresh_token');
   const eventId = searchParams.get('event_id');
   const calendarId = searchParams.get('calendar_id') || 'primary';
-
+  const recurringEditMode = searchParams.get('recurring_edit_mode') || 'this';
+  const recurringEventId = searchParams.get('recurring_event_id');
+  const originalStart = searchParams.get('original_start');
 
   if (!accessToken || !eventId) {
     return NextResponse.json({ error: 'Missing access token or event ID' }, { status: 400 });
@@ -281,10 +441,77 @@ export async function PATCH(request) {
     });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    if (recurringEditMode === 'future') {
+      if (!recurringEventId || !originalStart) {
+        return NextResponse.json(
+          { error: 'Recurring update is missing its series context' },
+          { status: 400 }
+        );
+      }
+
+      const parentResponse = await calendar.events.get({
+        calendarId,
+        eventId: recurringEventId,
+      });
+      const parentEvent = parentResponse.data;
+      const parentStart = parentEvent.start?.dateTime || parentEvent.start?.date || '';
+      const fallbackTimeZone =
+        body.start?.timeZone ||
+        body.end?.timeZone ||
+        parentEvent.start?.timeZone ||
+        parentEvent.end?.timeZone;
+      const nextSeriesBody = buildFutureRecurringEventBody(parentEvent, body, fallbackTimeZone);
+
+      if (recurrenceHasCount(nextSeriesBody.recurrence)) {
+        const remainingCount = await countFutureInstances(
+          calendar,
+          calendarId,
+          recurringEventId,
+          originalStart
+        );
+        nextSeriesBody.recurrence = replaceRecurringRuleCount(
+          nextSeriesBody.recurrence,
+          Math.max(remainingCount, 1)
+        );
+      }
+
+      if (sameOriginalStart(parentStart, originalStart)) {
+        const response = await calendar.events.patch({
+          calendarId,
+          eventId: recurringEventId,
+          requestBody: nextSeriesBody,
+          conferenceDataVersion: 1,
+        });
+        return NextResponse.json(response.data);
+      }
+
+      const trimmedRecurrence = replaceRecurringRuleEnd(
+        parentEvent.recurrence || [],
+        formatRecurringUntil(originalStart)
+      );
+
+      await calendar.events.patch({
+        calendarId,
+        eventId: recurringEventId,
+        requestBody: { recurrence: trimmedRecurrence },
+        conferenceDataVersion: 1,
+      });
+
+      const response = await calendar.events.insert({
+        calendarId,
+        requestBody: nextSeriesBody,
+        conferenceDataVersion: 1,
+      });
+
+      return NextResponse.json(response.data);
+    }
+
     const response = await calendar.events.patch({
       calendarId,
       eventId,
       requestBody: body,
+      conferenceDataVersion: 1,
     });
 
     return NextResponse.json(response.data);
