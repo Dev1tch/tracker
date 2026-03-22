@@ -1,12 +1,17 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
+import {
+  appendGoogleAuth,
+  createGoogleOAuthClient,
+  isGoogleAuthError,
+  parseGoogleCredentials,
+} from '@/lib/googleAuth';
 
 export async function POST(request) {
   const { searchParams } = new URL(request.url);
-  const accessToken = searchParams.get('access_token');
-  const refreshToken = searchParams.get('refresh_token');
+  const credentials = parseGoogleCredentials(searchParams);
 
-  if (!accessToken) {
+  if (!credentials.access_token) {
     return NextResponse.json({ error: 'No access token provided' }, { status: 401 });
   }
 
@@ -17,19 +22,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Calendar summary is required' }, { status: 400 });
     }
 
-    const origin = new URL(request.url).origin;
-    const redirectUri = `${origin}/api/google/callback`;
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      redirectUri
-    );
-
-    oauth2Client.setCredentials({
-      access_token: accessToken,
-      refresh_token: refreshToken || undefined,
-    });
+    const oauth2Client = createGoogleOAuthClient(request, credentials);
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
     
@@ -63,11 +56,11 @@ export async function POST(request) {
       }
     }
 
-    return NextResponse.json(newCalendar);
+    return NextResponse.json(appendGoogleAuth(newCalendar, oauth2Client));
   } catch (err) {
     console.error('Google Calendar creation error:', err);
 
-    if (err.code === 401 || err.response?.status === 401) {
+    if (isGoogleAuthError(err)) {
       return NextResponse.json({ error: 'Token expired', code: 'TOKEN_EXPIRED' }, { status: 401 });
     }
 

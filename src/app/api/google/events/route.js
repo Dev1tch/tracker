@@ -1,5 +1,13 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
+import {
+  appendGoogleAuth,
+  createGoogleOAuthClient,
+  isGoogleAccessError,
+  isGoogleAuthError,
+  isGoogleForbiddenError,
+  parseGoogleCredentials,
+} from '@/lib/googleAuth';
 
 function getGoogleMeetLink(event) {
   const hangoutLink = typeof event?.hangoutLink === 'string' ? event.hangoutLink : '';
@@ -233,32 +241,19 @@ async function countFutureInstances(calendar, calendarId, recurringEventId, targ
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const accessToken = searchParams.get('access_token');
-  const refreshToken = searchParams.get('refresh_token');
+  const credentials = parseGoogleCredentials(searchParams);
   const timeMin = searchParams.get('time_min');
   const timeMax = searchParams.get('time_max');
   const eventId = searchParams.get('event_id');
   const calendarId = searchParams.get('calendar_id') || 'primary';
   const resolveRecurrence = searchParams.get('resolve_recurrence') === '1';
 
-  if (!accessToken) {
+  if (!credentials.access_token) {
     return NextResponse.json({ error: 'No access token provided' }, { status: 401 });
   }
 
   try {
-    const origin = new URL(request.url).origin;
-    const redirectUri = `${origin}/api/google/callback`;
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      redirectUri
-    );
-
-    oauth2Client.setCredentials({
-      access_token: accessToken,
-      refresh_token: refreshToken || undefined,
-    });
+    const oauth2Client = createGoogleOAuthClient(request, credentials);
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
@@ -283,9 +278,14 @@ export async function GET(request) {
         recurrenceOverride = masterResponse.data.recurrence || [];
       }
 
-      return NextResponse.json({
-        event: normalizeCalendarEvent(currentEvent, { id: calendarId }, recurrenceOverride),
-      });
+      return NextResponse.json(
+        appendGoogleAuth(
+          {
+            event: normalizeCalendarEvent(currentEvent, { id: calendarId }, recurrenceOverride),
+          },
+          oauth2Client
+        )
+      );
     }
     
     // 1. Get the list of all calendars the user has
@@ -296,6 +296,10 @@ export async function GET(request) {
       });
       calendars = calendarListResponse.data.items || [];
     } catch (listErr) {
+      if (isGoogleAccessError(listErr)) {
+        throw listErr;
+      }
+
       console.error('Error fetching calendar list, falling back to primary:', listErr);
       // Fallback: if we can't list calendars, just use 'primary'
       calendars = [{ id: 'primary', summary: 'Primary Calendar', backgroundColor: '#4285f4', accessRole: 'owner' }];
@@ -321,6 +325,10 @@ export async function GET(request) {
           calendarColor: cal.backgroundColor
         }));
       } catch (err) {
+        if (isGoogleAccessError(err)) {
+          throw err;
+        }
+
         console.error(`Error fetching events for calendar ${cal.id}:`, err);
         return [];
       }
@@ -335,26 +343,31 @@ export async function GET(request) {
     // Sort merged events by start time
     allEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
 
-    return NextResponse.json({ 
-      events: allEvents,
-      calendars: calendars.map(c => ({
-        id: c.id,
-        summary: c.summary,
-        backgroundColor: c.backgroundColor,
-        foregroundColor: c.foregroundColor,
-        primary: c.primary || false,
-        selected: c.selected || false,
-        accessRole: c.accessRole
-      }))
-    });
+    return NextResponse.json(
+      appendGoogleAuth(
+        {
+          events: allEvents,
+          calendars: calendars.map(c => ({
+            id: c.id,
+            summary: c.summary,
+            backgroundColor: c.backgroundColor,
+            foregroundColor: c.foregroundColor,
+            primary: c.primary || false,
+            selected: c.selected || false,
+            accessRole: c.accessRole
+          }))
+        },
+        oauth2Client
+      )
+    );
   } catch (err) {
     console.error('Google Calendar events error:', err);
 
-    if (err.code === 401 || err.response?.status === 401) {
+    if (isGoogleAuthError(err)) {
       return NextResponse.json({ error: 'Token expired', code: 'TOKEN_EXPIRED' }, { status: 401 });
     }
 
-    if (err.code === 403 || err.response?.status === 403) {
+    if (isGoogleForbiddenError(err)) {
       return NextResponse.json(
         { error: 'Google Calendar access is not available. Please try reconnecting.', code: 'FORBIDDEN' },
         { status: 403 }
@@ -370,25 +383,16 @@ export async function GET(request) {
 
 export async function POST(request) {
   const { searchParams } = new URL(request.url);
-  const accessToken = searchParams.get('access_token');
-  const refreshToken = searchParams.get('refresh_token');
+  const credentials = parseGoogleCredentials(searchParams);
   const calendarId = searchParams.get('calendar_id') || 'primary';
 
-  if (!accessToken) {
+  if (!credentials.access_token) {
     return NextResponse.json({ error: 'No access token provided' }, { status: 401 });
   }
 
   try {
     const body = await request.json();
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
-
-    oauth2Client.setCredentials({
-      access_token: accessToken,
-      refresh_token: refreshToken || undefined,
-    });
+    const oauth2Client = createGoogleOAuthClient(request, credentials);
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
     console.log('Sending to Google Calendar API:', JSON.stringify(body, null, 2));
@@ -398,7 +402,7 @@ export async function POST(request) {
       conferenceDataVersion: 1,
     });
 
-    return NextResponse.json(response.data);
+    return NextResponse.json(appendGoogleAuth(response.data, oauth2Client));
   } catch (err) {
     console.error('Google Calendar create event error:', err);
     if (err.response) {
@@ -416,29 +420,20 @@ export async function POST(request) {
 
 export async function PATCH(request) {
   const { searchParams } = new URL(request.url);
-  const accessToken = searchParams.get('access_token');
-  const refreshToken = searchParams.get('refresh_token');
+  const credentials = parseGoogleCredentials(searchParams);
   const eventId = searchParams.get('event_id');
   const calendarId = searchParams.get('calendar_id') || 'primary';
   const recurringEditMode = searchParams.get('recurring_edit_mode') || 'this';
   const recurringEventId = searchParams.get('recurring_event_id');
   const originalStart = searchParams.get('original_start');
 
-  if (!accessToken || !eventId) {
+  if (!credentials.access_token || !eventId) {
     return NextResponse.json({ error: 'Missing access token or event ID' }, { status: 400 });
   }
 
   try {
     const body = await request.json();
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
-
-    oauth2Client.setCredentials({
-      access_token: accessToken,
-      refresh_token: refreshToken || undefined,
-    });
+    const oauth2Client = createGoogleOAuthClient(request, credentials);
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
@@ -483,7 +478,7 @@ export async function PATCH(request) {
           requestBody: nextSeriesBody,
           conferenceDataVersion: 1,
         });
-        return NextResponse.json(response.data);
+        return NextResponse.json(appendGoogleAuth(response.data, oauth2Client));
       }
 
       const trimmedRecurrence = replaceRecurringRuleEnd(
@@ -504,7 +499,7 @@ export async function PATCH(request) {
         conferenceDataVersion: 1,
       });
 
-      return NextResponse.json(response.data);
+      return NextResponse.json(appendGoogleAuth(response.data, oauth2Client));
     }
 
     const response = await calendar.events.patch({
@@ -514,7 +509,7 @@ export async function PATCH(request) {
       conferenceDataVersion: 1,
     });
 
-    return NextResponse.json(response.data);
+    return NextResponse.json(appendGoogleAuth(response.data, oauth2Client));
   } catch (err) {
     console.error('Google Calendar update event error:', err);
     return NextResponse.json(
@@ -526,26 +521,17 @@ export async function PATCH(request) {
 
 export async function DELETE(request) {
   const { searchParams } = new URL(request.url);
-  const accessToken = searchParams.get('access_token');
-  const refreshToken = searchParams.get('refresh_token');
+  const credentials = parseGoogleCredentials(searchParams);
   const eventId = searchParams.get('event_id');
   const calendarId = searchParams.get('calendar_id') || 'primary';
 
 
-  if (!accessToken || !eventId) {
+  if (!credentials.access_token || !eventId) {
     return NextResponse.json({ error: 'Missing access token or event ID' }, { status: 400 });
   }
 
   try {
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
-
-    oauth2Client.setCredentials({
-      access_token: accessToken,
-      refresh_token: refreshToken || undefined,
-    });
+    const oauth2Client = createGoogleOAuthClient(request, credentials);
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
     await calendar.events.delete({
@@ -553,7 +539,7 @@ export async function DELETE(request) {
       eventId,
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json(appendGoogleAuth({ success: true }, oauth2Client));
   } catch (err) {
     console.error('Google Calendar delete event error:', err);
     return NextResponse.json(
