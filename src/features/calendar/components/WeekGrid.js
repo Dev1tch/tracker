@@ -350,38 +350,50 @@ export default function WeekGrid({
             const dayAllDay = getEventsForDay(day, allDayEvents);
             return (
               <div key={i} className="weekGridAllDayCell">
-                {dayAllDay.map(event => (
-                  <div
-                    key={event.eventType === 'task' ? event.id : `${event.accountEmail}-${event.calendarId}-${event.id || event.start}`}
-                    className="weekGridAllDayEventWrap"
-                    style={
-                      event.googleMeetLink && event.eventType !== 'task'
-                        ? { '--meet-action-size': getMeetActionSize(28) }
-                        : undefined
-                    }
-                  >
-                    <button
-                      type="button"
-                      className={`weekGridAllDayEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''} ${event.eventType === 'task' ? 'weekGridEventTask' : ''} ${event.googleMeetLink ? 'hasMeetLink' : ''}`}
-                      style={{ '--event-bg': getEventColor(event) }}
-                      data-card-style={eventCardStyle}
-                      onClick={() => openCalendarItem(event, onEventClick, onTaskClick)}
+                {dayAllDay.map(event => {
+                  const showCalendarDot = eventCardStyle === 'frame' && event.eventType !== 'task';
+                  const eventColor = getEventColor(event);
+                  const calendarColor = event.calendarColor || eventColor;
+
+                  return (
+                    <div
+                      key={event.eventType === 'task' ? event.id : `${event.accountEmail}-${event.calendarId}-${event.id || event.start}`}
+                      className="weekGridAllDayEventWrap"
+                      style={
+                        event.googleMeetLink && event.eventType !== 'task'
+                          ? { '--meet-action-size': getMeetActionSize(28) }
+                          : undefined
+                      }
                     >
-                      {event.title}
-                    </button>
-                    {event.googleMeetLink && event.eventType !== 'task' && (
                       <button
                         type="button"
-                        className="weekGridMeetAction weekGridMeetActionAllDay"
-                        title="Open Google Meet in a new tab"
-                        aria-label="Open Google Meet in a new tab"
-                        onClick={(nativeEvent) => handleMeetClick(event.googleMeetLink, nativeEvent)}
+                        className={`weekGridAllDayEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''} ${event.eventType === 'task' ? 'weekGridEventTask' : ''} ${event.googleMeetLink ? 'hasMeetLink' : ''} ${showCalendarDot ? 'hasCalendarDot' : ''}`}
+                        style={{
+                          '--event-bg': eventColor,
+                          '--calendar-color': calendarColor,
+                        }}
+                        data-card-style={eventCardStyle}
+                        onClick={() => openCalendarItem(event, onEventClick, onTaskClick)}
                       >
-                        <Video className="weekGridMeetActionIcon" size={10} strokeWidth={2} />
+                        {showCalendarDot && (
+                          <span className="weekGridEventCalendarDot" aria-hidden="true" />
+                        )}
+                        <span className="weekGridAllDayEventTitle">{event.title}</span>
                       </button>
-                    )}
-                  </div>
-                ))}
+                      {event.googleMeetLink && event.eventType !== 'task' && (
+                        <button
+                          type="button"
+                          className="weekGridMeetAction weekGridMeetActionAllDay"
+                          title="Open Google Meet in a new tab"
+                          aria-label="Open Google Meet in a new tab"
+                          onClick={(nativeEvent) => handleMeetClick(event.googleMeetLink, nativeEvent)}
+                        >
+                          <Video className="weekGridMeetActionIcon" size={10} strokeWidth={2} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -444,6 +456,7 @@ export default function WeekGrid({
                   {layoutEvents.map(({ event, pos, column, totalColumns }) => {
                     const eventColor = getEventColor(event);
                     const calendarColor = event.calendarColor || eventColor;
+                    const showCalendarDot = eventCardStyle === 'frame' && event.eventType !== 'task';
                     
                     // Stacking strategy: offset each column to the right and stack with z-index
                     const isOOO = event.eventType === 'outOfOffice';
@@ -497,13 +510,16 @@ export default function WeekGrid({
                       >
                         <button
                           type="button"
-                          className={`weekGridEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''} ${event.eventType === 'task' ? 'weekGridEventTask' : ''} ${isClamped ? 'weekGridEventSticky' : ''} ${event.googleMeetLink ? 'hasMeetLink' : ''}`}
+                          className={`weekGridEvent ${event.eventType === 'outOfOffice' ? 'weekGridEventOOO' : ''} ${event.eventType === 'task' ? 'weekGridEventTask' : ''} ${isClamped ? 'weekGridEventSticky' : ''} ${event.googleMeetLink ? 'hasMeetLink' : ''} ${showCalendarDot ? 'hasCalendarDot' : ''}`}
                           data-card-style={eventCardStyle}
                           onClick={(nativeEvent) => { 
                             nativeEvent.stopPropagation();
                             openCalendarItem(event, onEventClick, onTaskClick);
                           }}
                         >
+                          {showCalendarDot && (
+                            <span className="weekGridEventCalendarDot" aria-hidden="true" />
+                          )}
                           <span className="weekGridEventTitle">{event.title}</span>
                           {pos.height >= 35 && event.eventType !== 'task' && (
                             <span className="weekGridEventTime">

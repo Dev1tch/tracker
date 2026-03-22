@@ -209,10 +209,19 @@ export class CalendarApi {
   /**
    * Delete an event
    */
-  async deleteEvent(account, eventId, calendarId = 'primary') {
+  async deleteEvent(account, eventId, calendarId = 'primary', options = {}) {
     const params = this.buildAuthParams(account);
     params.set('event_id', eventId);
     params.set('calendar_id', calendarId);
+    if (options?.recurringDelete?.mode) {
+      params.set('recurring_delete_mode', options.recurringDelete.mode);
+    }
+    if (options?.recurringDelete?.recurringEventId) {
+      params.set('recurring_event_id', options.recurringDelete.recurringEventId);
+    }
+    if (options?.recurringDelete?.originalStart) {
+      params.set('original_start', options.recurringDelete.originalStart);
+    }
     return await this.requestJson(`/api/google/events?${params.toString()}`, account, {
       method: 'DELETE',
     });

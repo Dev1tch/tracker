@@ -20,6 +20,43 @@ const GOOGLE_EVENT_COLORS = [
   { id: '11', name: 'Tomato', hex: '#d50000' },
 ];
 
+function formatDateInputValue(value) {
+  if (!value) {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  }
+
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  }
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function parseDateInputValue(value) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function buildGoogleMeetRequestId() {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return `meet-${globalThis.crypto.randomUUID()}`;
+  }
+
+  return `meet-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function TimeSelect({ value, onChange, disabled }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -78,6 +115,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const toast = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [eventDate, setEventDate] = useState(formatDateInputValue(selectedDate));
   const [calendarId, setCalendarId] = useState('primary');
   const [location, setLocation] = useState('');
   const [startTime, setStartTime] = useState('09:00');
@@ -91,12 +129,16 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const [eventType, setEventType] = useState('default');
   const [autoDecline, setAutoDecline] = useState(true);
   const [declineMessage, setDeclineMessage] = useState('Declined as I am currently out of office.');
+  const [hasGoogleMeet, setHasGoogleMeet] = useState(false);
+  const [refreshGoogleMeet, setRefreshGoogleMeet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAccountPrompt, setShowAccountPrompt] = useState(false);
   const [pendingEventData, setPendingEventData] = useState(null);
   const [pendingRecurringSaveData, setPendingRecurringSaveData] = useState(null);
   const [showRecurringSavePrompt, setShowRecurringSavePrompt] = useState(false);
+  const [showRecurringDeletePrompt, setShowRecurringDeletePrompt] = useState(false);
   const [colorId, setColorId] = useState('');
+  const [initialColorId, setInitialColorId] = useState('');
   const [recurrenceOptions, setRecurrenceOptions] = useState([
     { value: '', label: 'Does not repeat' },
     { value: 'RRULE:FREQ=DAILY', label: 'Daily' },
@@ -109,8 +151,11 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     if (event) {
       setTitle(event.title || '');
       setDescription(event.description || '');
+      setEventDate(formatDateInputValue(event.start));
       setLocation(event.location || '');
       setIsAllDay(event.allDay || false);
+      setHasGoogleMeet(Boolean(event.googleMeetLink));
+      setRefreshGoogleMeet(false);
       
       if (event.start) {
         const start = new Date(event.start);
@@ -124,6 +169,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     } else {
       setTitle('');
       setDescription('');
+      setEventDate(formatDateInputValue(selectedDate));
       
       const activeAccounts = accounts.filter(a => a.active);
       if (activeAccounts.length === 1) {
@@ -136,10 +182,13 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       setStartTime('09:00');
       setEndTime('10:00');
       setIsAllDay(false);
+      setHasGoogleMeet(false);
+      setRefreshGoogleMeet(false);
       setGuests([]);
       setRecurrence('');
       setReminders([{ method: 'popup', minutes: 30 }]);
       setColorId('');
+      setInitialColorId('');
     }
     
     if (event) {
@@ -183,15 +232,18 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       setReminders(event.reminders?.overrides || [{ method: 'popup', minutes: 30 }]);
       // Extract colorId — could be a number string like '1'-'11' or empty
       const evtColor = event.color || '';
-      setColorId(evtColor.startsWith('#') ? '' : evtColor);
+      const normalizedColorId = evtColor.startsWith('#') ? '' : evtColor;
+      setColorId(normalizedColorId);
+      setInitialColorId(normalizedColorId);
       setCalendarId(event.accountEmail ? `${event.accountEmail}:${event.calendarId || 'primary'}` : (event.calendarId || 'primary'));
     }
-  }, [event, isOpen, accounts, availableCalendars]);
+  }, [event, isOpen, accounts, availableCalendars, selectedDate]);
 
   useEffect(() => {
     if (!isOpen) return;
     setShowDeleteConfirm(false);
     setShowRecurringSavePrompt(false);
+    setShowRecurringDeletePrompt(false);
     setPendingRecurringSaveData(null);
     setPendingEventData(null);
   }, [isOpen, event?.id]);
@@ -202,12 +254,17 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     (typeof window !== 'undefined'
       ? window.Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone
       : '') || undefined;
-  const isRecurringInstance = Boolean(
-    event?.id && event?.recurringEventId && event?.originalStart
+  const recurringOriginalStart = event?.originalStart || event?.start || '';
+  const recurringSeriesId = event?.recurringEventId || (event?.recurrence?.length ? event?.id : '');
+  const canShowRecurringSavePrompt = Boolean(
+    event?.id && recurringSeriesId && recurringOriginalStart
+  );
+  const canShowRecurringDeletePrompt = Boolean(
+    event?.id && (event?.recurringEventId || event?.recurrence?.length)
   );
 
   const buildEventData = () => {
-    const baseDate = event ? new Date(event.start) : (selectedDate || new Date());
+    const baseDate = parseDateInputValue(eventDate);
     const year = baseDate.getFullYear();
     const month = baseDate.getMonth();
     const day = baseDate.getDate();
@@ -279,13 +336,34 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
 
       eventData.description = description;
       eventData.location = location;
-      eventData.colorId = colorId || undefined;
+
+      if (event?.id) {
+        if (colorId) {
+          eventData.colorId = colorId;
+        } else if (initialColorId) {
+          eventData.colorId = null;
+        }
+      } else if (colorId) {
+        eventData.colorId = colorId;
+      }
+
       eventData.attendees = guests.map(email => ({ email }));
       eventData.recurrence = recurrence ? [recurrence] : undefined;
       eventData.reminders = {
         useDefault: false,
         overrides: reminders
       };
+
+      if (hasGoogleMeet && (!event?.googleMeetLink || refreshGoogleMeet)) {
+        eventData.conferenceData = {
+          createRequest: {
+            requestId: buildGoogleMeetRequestId(),
+            conferenceSolutionKey: { type: 'hangoutsMeet' },
+          },
+        };
+      } else if (!hasGoogleMeet && event?.googleMeetLink) {
+        eventData.conferenceData = null;
+      }
     }
 
     return eventData;
@@ -325,7 +403,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     e.preventDefault();
     const eventData = buildEventData();
 
-    if (isRecurringInstance) {
+    if (canShowRecurringSavePrompt) {
       setPendingRecurringSaveData(eventData);
       setShowDeleteConfirm(false);
       setShowRecurringSavePrompt(true);
@@ -376,8 +454,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       result = await persistEvent(eventData, {
         recurringEdit: {
           mode,
-          recurringEventId: event.recurringEventId,
-          originalStart: event.originalStart,
+          recurringEventId: recurringSeriesId,
+          originalStart: recurringOriginalStart,
         },
       });
       if (!result.deferred) {
@@ -407,6 +485,38 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       }
       
       await onDelete(event.id, finalCalendarId, event.accountEmail);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast(err.message || 'Failed to delete event', 'error');
+    } finally {
+      setLoading(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleRecurringDeleteChoice = async (mode) => {
+    if (!event?.accountEmail) {
+      toast('No account associated with this event', 'error');
+      return;
+    }
+
+    setShowRecurringDeletePrompt(false);
+    setLoading(true);
+
+    try {
+      let finalCalendarId = calendarId;
+      if (calendarId.includes(':')) {
+        finalCalendarId = calendarId.split(':')[1];
+      }
+
+      await onDelete(event.id, finalCalendarId, event.accountEmail, {
+        recurringDelete: {
+          mode,
+          recurringEventId: event.recurringEventId,
+          originalStart: recurringOriginalStart,
+        },
+      });
       onClose();
     } catch (err) {
       console.error(err);
@@ -456,46 +566,16 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             />
           </div>
 
-          {googleMeetLink && (
-            <div className="calMeetRow">
-              <a
-                href={googleMeetLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="calMeetLink"
-                title="Join Google Meet"
-              >
-                <Video size={14} />
-                <span>Google Meet</span>
-                <ExternalLink size={12} />
-              </a>
-            </div>
-          )}
-
           <div className="calFormRow">
             <div className="calFormGroup">
-              <label><Palette size={16} /> Type</label>
-              <div className="calEventTypeTabs">
-                <button 
-                  type="button" 
-                  className={`calTypeTab ${eventType === 'default' ? 'active' : ''}`}
-                  onClick={() => setEventType('default')}
-                  disabled={event && event.id && event.eventType !== 'default'}
-                >
-                  Event
-                </button>
-                <button 
-                  type="button" 
-                  className={`calTypeTab ${eventType === 'outOfOffice' ? 'active' : ''}`}
-                  onClick={() => {
-                    setEventType('outOfOffice');
-                    setIsAllDay(true); // OOO is usually all day
-                  }}
-                  disabled={event && event.id && event.eventType !== 'outOfOffice'}
-                >
-                  Out of Office
-                </button>
-              </div>
+              <label><CalIcon size={16} /> Day</label>
+              <input
+                type="date"
+                className="authInput"
+                value={eventDate}
+                onChange={(e) => setEventDate(e.target.value)}
+                required
+              />
             </div>
             <div className="calFormGroup">
               <label><Clock size={16} /> Time</label>
@@ -523,6 +603,35 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
             </div>
           </div>
 
+          <div className="calFormRow">
+            <div className="calFormGroup">
+              <label><Palette size={16} /> Type</label>
+              <div className="calEventTypeTabs">
+                <button 
+                  type="button" 
+                  className={`calTypeTab ${eventType === 'default' ? 'active' : ''}`}
+                  onClick={() => setEventType('default')}
+                  disabled={event && event.id && event.eventType !== 'default'}
+                >
+                  Event
+                </button>
+                <button 
+                  type="button" 
+                  className={`calTypeTab ${eventType === 'outOfOffice' ? 'active' : ''}`}
+                  onClick={() => {
+                    setEventType('outOfOffice');
+                    setIsAllDay(true); // OOO is usually all day
+                    setHasGoogleMeet(false);
+                    setRefreshGoogleMeet(false);
+                  }}
+                  disabled={event && event.id && event.eventType !== 'outOfOffice'}
+                >
+                  Out of Office
+                </button>
+              </div>
+            </div>
+          </div>
+
           {eventType === 'outOfOffice' && (
             <div className="calOOOSection glass">
               <label className="calCheckboxLabel">
@@ -542,6 +651,68 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
                   rows={2}
                 />
               )}
+            </div>
+          )}
+
+          {eventType === 'default' && (
+            <div className="calFormRow">
+              <div className="calFormGroup">
+                <label><Video size={16} /> Google Meet</label>
+                <div className="calMeetControls">
+                  <label className="calCheckboxLabel">
+                    <input
+                      type="checkbox"
+                      checked={hasGoogleMeet}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setHasGoogleMeet(checked);
+                        if (!checked) {
+                          setRefreshGoogleMeet(false);
+                        }
+                      }}
+                    />
+                    Use Google Meet
+                  </label>
+
+                  {hasGoogleMeet && googleMeetLink && (
+                    <>
+                      <div className="calMeetRow">
+                        <a
+                          href={googleMeetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="calMeetLink"
+                          title="Open current Google Meet link"
+                        >
+                          <Video size={14} />
+                          <span>Google Meet Link</span>
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+                      <label className="calCheckboxLabel">
+                        <input
+                          type="checkbox"
+                          checked={refreshGoogleMeet}
+                          onChange={(e) => setRefreshGoogleMeet(e.target.checked)}
+                        />
+                        Generate a new Meet link on save
+                      </label>
+                    </>
+                  )}
+
+                  {hasGoogleMeet && !googleMeetLink && (
+                    <p className="calMeetHint">
+                      A Google Meet link will be created when you save this event.
+                    </p>
+                  )}
+
+                  {!hasGoogleMeet && googleMeetLink && (
+                    <p className="calMeetHint">
+                      Saving will remove the current Google Meet link from this event.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -672,7 +843,15 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
               <button
                 type="button"
                 className="calDeleteBtn"
-                onClick={() => setShowDeleteConfirm(true)}
+                onClick={() => {
+                  if (canShowRecurringDeletePrompt) {
+                    setShowDeleteConfirm(false);
+                    setShowRecurringDeletePrompt(true);
+                    return;
+                  }
+
+                  setShowDeleteConfirm(true);
+                }}
                 disabled={loading}
               >
                 <Trash2 size={16} />
@@ -752,6 +931,55 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
                 type="button"
                 className="calScopeModalSecondary"
                 onClick={() => setShowRecurringSavePrompt(false)}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRecurringDeletePrompt && (
+        <div className="calScopeModalOverlay" onClick={() => setShowRecurringDeletePrompt(false)}>
+          <div className="calScopeModal glass" onClick={(e) => e.stopPropagation()}>
+            <div className="calScopeModalHeader">
+              <h4>Delete Recurring Event</h4>
+              <button
+                type="button"
+                className="calModalClose"
+                onClick={() => setShowRecurringDeletePrompt(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="calScopeModalText">
+              Choose how this recurring event should be deleted.
+            </p>
+            <p className="calScopeModalNote">
+              Deleting future events will trim the series starting from this occurrence.
+            </p>
+            <div className="calScopeModalActions">
+              <button
+                type="button"
+                className="calScopeModalDanger"
+                onClick={() => handleRecurringDeleteChoice('this')}
+                disabled={loading}
+              >
+                Only this event
+              </button>
+              <button
+                type="button"
+                className="calScopeModalDanger"
+                onClick={() => handleRecurringDeleteChoice('future')}
+                disabled={loading}
+              >
+                This and all future events
+              </button>
+              <button
+                type="button"
+                className="calScopeModalSecondary"
+                onClick={() => setShowRecurringDeletePrompt(false)}
                 disabled={loading}
               >
                 Cancel

@@ -175,6 +175,18 @@ function stripUndefinedEntries(object) {
   );
 }
 
+function hasOwnProperty(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function removeConferenceDataIfRequested(requestBody, updatedEventData) {
+  if (hasOwnProperty(updatedEventData, 'conferenceData') && updatedEventData.conferenceData === null) {
+    delete requestBody.conferenceData;
+  }
+
+  return requestBody;
+}
+
 function buildFutureRecurringEventBody(parentEvent, updatedEventData, fallbackTimeZone) {
   const start = ensureTimedPayloadTimeZone(
     updatedEventData.start || parentEvent.start,
@@ -191,7 +203,9 @@ function buildFutureRecurringEventBody(parentEvent, updatedEventData, fallbackTi
     location: updatedEventData.location ?? parentEvent.location,
     start,
     end,
-    colorId: updatedEventData.colorId ?? parentEvent.colorId,
+    colorId: hasOwnProperty(updatedEventData, 'colorId')
+      ? updatedEventData.colorId
+      : parentEvent.colorId,
     attendees: updatedEventData.attendees ?? parentEvent.attendees,
     recurrence: updatedEventData.recurrence ?? parentEvent.recurrence,
     reminders: updatedEventData.reminders ?? parentEvent.reminders,
@@ -199,7 +213,9 @@ function buildFutureRecurringEventBody(parentEvent, updatedEventData, fallbackTi
     outOfOfficeProperties:
       updatedEventData.outOfOfficeProperties ?? parentEvent.outOfOfficeProperties,
     transparency: updatedEventData.transparency ?? parentEvent.transparency,
-    conferenceData: updatedEventData.conferenceData ?? parentEvent.conferenceData,
+    conferenceData: hasOwnProperty(updatedEventData, 'conferenceData')
+      ? updatedEventData.conferenceData
+      : parentEvent.conferenceData,
     guestsCanInviteOthers: parentEvent.guestsCanInviteOthers,
     guestsCanModify: parentEvent.guestsCanModify,
     guestsCanSeeOtherGuests: parentEvent.guestsCanSeeOtherGuests,
@@ -208,12 +224,99 @@ function buildFutureRecurringEventBody(parentEvent, updatedEventData, fallbackTi
   });
 }
 
+async function resolveRecurringSeriesContext(calendar, calendarId, recurringEventId) {
+  const initialResponse = await calendar.events.get({
+    calendarId,
+    eventId: recurringEventId,
+  });
+  const initialEvent = initialResponse.data;
+
+  // If the client accidentally passed an instance id here, follow it back to the master series.
+  if (initialEvent?.recurringEventId && !(initialEvent?.recurrence || []).length) {
+    const masterResponse = await calendar.events.get({
+      calendarId,
+      eventId: initialEvent.recurringEventId,
+    });
+
+    return {
+      seriesEventId: initialEvent.recurringEventId,
+      seriesEvent: masterResponse.data,
+      requestedEvent: initialEvent,
+    };
+  }
+
+  return {
+    seriesEventId: recurringEventId,
+    seriesEvent: initialEvent,
+    requestedEvent: initialEvent,
+  };
+}
+
+function buildRecurringInstanceUpdateBody(instanceEvent, updatedEventData, fallbackTimeZone) {
+  const start = ensureTimedPayloadTimeZone(
+    updatedEventData.start || instanceEvent.start,
+    fallbackTimeZone
+  );
+  const end = ensureTimedPayloadTimeZone(
+    updatedEventData.end || instanceEvent.end,
+    fallbackTimeZone
+  );
+
+  return stripUndefinedEntries({
+    summary: updatedEventData.summary ?? instanceEvent.summary ?? '(No title)',
+    description: updatedEventData.description ?? instanceEvent.description,
+    location: updatedEventData.location ?? instanceEvent.location,
+    start,
+    end,
+    colorId: hasOwnProperty(updatedEventData, 'colorId')
+      ? updatedEventData.colorId
+      : instanceEvent.colorId,
+    attendees: updatedEventData.attendees ?? instanceEvent.attendees,
+    reminders: updatedEventData.reminders ?? instanceEvent.reminders,
+    eventType: updatedEventData.eventType ?? instanceEvent.eventType,
+    outOfOfficeProperties:
+      updatedEventData.outOfOfficeProperties ?? instanceEvent.outOfOfficeProperties,
+    transparency: updatedEventData.transparency ?? instanceEvent.transparency,
+    conferenceData: hasOwnProperty(updatedEventData, 'conferenceData')
+      ? updatedEventData.conferenceData
+      : instanceEvent.conferenceData,
+    guestsCanInviteOthers: instanceEvent.guestsCanInviteOthers,
+    guestsCanModify: instanceEvent.guestsCanModify,
+    guestsCanSeeOtherGuests: instanceEvent.guestsCanSeeOtherGuests,
+    anyoneCanAddSelf: instanceEvent.anyoneCanAddSelf,
+    visibility: instanceEvent.visibility,
+    source: instanceEvent.source,
+    status: instanceEvent.status,
+  });
+}
+
 async function countFutureInstances(calendar, calendarId, recurringEventId, targetOriginalStart) {
+  const instances = await listFutureInstances(
+    calendar,
+    calendarId,
+    recurringEventId,
+    targetOriginalStart
+  );
+  return instances.length;
+}
+
+function getFutureInstancesTimeMin(targetOriginalStart) {
   const timeMin = isDateOnlyValue(targetOriginalStart)
     ? `${targetOriginalStart}T00:00:00.000Z`
     : new Date(new Date(targetOriginalStart).getTime() - 1000).toISOString();
 
-  let total = 0;
+  return timeMin;
+}
+
+async function listFutureInstances(
+  calendar,
+  calendarId,
+  recurringEventId,
+  targetOriginalStart,
+  options = {}
+) {
+  const timeMin = getFutureInstancesTimeMin(targetOriginalStart);
+  const items = [];
   let pageToken = undefined;
 
   do {
@@ -223,20 +326,51 @@ async function countFutureInstances(calendar, calendarId, recurringEventId, targ
       timeMin,
       maxResults: 2500,
       pageToken,
-      showDeleted: false,
+      showDeleted: options.showDeleted ?? false,
     });
 
     for (const instance of response.data.items || []) {
       const originalStart = getOriginalStartValue(instance.originalStartTime);
       if (isSameOrAfterOriginalStart(originalStart, targetOriginalStart)) {
-        total += 1;
+        items.push(instance);
       }
     }
 
     pageToken = response.data.nextPageToken || undefined;
   } while (pageToken);
 
-  return total;
+  return items;
+}
+
+function chunkItems(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function deleteInstances(calendar, calendarId, instances = []) {
+  const chunks = chunkItems(instances, 10);
+
+  for (const chunk of chunks) {
+    const results = await Promise.allSettled(
+      chunk.map((instance) =>
+        calendar.events.delete({
+          calendarId,
+          eventId: instance.id,
+        })
+      )
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') continue;
+
+      const status = result.reason?.response?.status ?? result.reason?.code;
+      if (status === 404 || status === 410) continue;
+      throw result.reason;
+    }
+  }
 }
 
 export async function GET(request) {
@@ -445,24 +579,26 @@ export async function PATCH(request) {
         );
       }
 
-      const parentResponse = await calendar.events.get({
-        calendarId,
-        eventId: recurringEventId,
-      });
-      const parentEvent = parentResponse.data;
+      const {
+        seriesEventId,
+        seriesEvent: parentEvent,
+      } = await resolveRecurringSeriesContext(calendar, calendarId, recurringEventId);
       const parentStart = parentEvent.start?.dateTime || parentEvent.start?.date || '';
       const fallbackTimeZone =
         body.start?.timeZone ||
         body.end?.timeZone ||
         parentEvent.start?.timeZone ||
         parentEvent.end?.timeZone;
-      const nextSeriesBody = buildFutureRecurringEventBody(parentEvent, body, fallbackTimeZone);
+      const nextSeriesBody = removeConferenceDataIfRequested(
+        buildFutureRecurringEventBody(parentEvent, body, fallbackTimeZone),
+        body
+      );
 
       if (recurrenceHasCount(nextSeriesBody.recurrence)) {
         const remainingCount = await countFutureInstances(
           calendar,
           calendarId,
-          recurringEventId,
+          seriesEventId,
           originalStart
         );
         nextSeriesBody.recurrence = replaceRecurringRuleCount(
@@ -472,9 +608,9 @@ export async function PATCH(request) {
       }
 
       if (sameOriginalStart(parentStart, originalStart)) {
-        const response = await calendar.events.patch({
+        const response = await calendar.events.update({
           calendarId,
-          eventId: recurringEventId,
+          eventId: seriesEventId,
           requestBody: nextSeriesBody,
           conferenceDataVersion: 1,
         });
@@ -485,17 +621,84 @@ export async function PATCH(request) {
         parentEvent.recurrence || [],
         formatRecurringUntil(originalStart)
       );
+      const trimmedSeriesBody = buildFutureRecurringEventBody(
+        parentEvent,
+        { recurrence: trimmedRecurrence },
+        fallbackTimeZone
+      );
 
-      await calendar.events.patch({
+      await calendar.events.update({
         calendarId,
-        eventId: recurringEventId,
-        requestBody: { recurrence: trimmedRecurrence },
+        eventId: seriesEventId,
+        requestBody: trimmedSeriesBody,
         conferenceDataVersion: 1,
       });
+
+      const remainingOldInstances = await listFutureInstances(
+        calendar,
+        calendarId,
+        seriesEventId,
+        originalStart
+      );
+      if (remainingOldInstances.length > 0) {
+        await deleteInstances(calendar, calendarId, remainingOldInstances);
+      }
 
       const response = await calendar.events.insert({
         calendarId,
         requestBody: nextSeriesBody,
+        conferenceDataVersion: 1,
+      });
+
+      return NextResponse.json(appendGoogleAuth(response.data, oauth2Client));
+    }
+
+    if (recurringEventId && originalStart) {
+      const currentResponse = await calendar.events.get({
+        calendarId,
+        eventId,
+      });
+      const currentEvent = currentResponse.data;
+      const fallbackTimeZone =
+        body.start?.timeZone ||
+        body.end?.timeZone ||
+        currentEvent.start?.timeZone ||
+        currentEvent.end?.timeZone;
+      const requestBody = removeConferenceDataIfRequested(
+        buildRecurringInstanceUpdateBody(currentEvent, body, fallbackTimeZone),
+        body
+      );
+
+      const response = await calendar.events.update({
+        calendarId,
+        eventId,
+        requestBody,
+        conferenceDataVersion: 1,
+      });
+
+      return NextResponse.json(appendGoogleAuth(response.data, oauth2Client));
+    }
+
+    if (hasOwnProperty(body, 'conferenceData')) {
+      const currentResponse = await calendar.events.get({
+        calendarId,
+        eventId,
+      });
+      const currentEvent = currentResponse.data;
+      const fallbackTimeZone =
+        body.start?.timeZone ||
+        body.end?.timeZone ||
+        currentEvent.start?.timeZone ||
+        currentEvent.end?.timeZone;
+      const requestBody = removeConferenceDataIfRequested(
+        buildFutureRecurringEventBody(currentEvent, body, fallbackTimeZone),
+        body
+      );
+
+      const response = await calendar.events.update({
+        calendarId,
+        eventId,
+        requestBody,
         conferenceDataVersion: 1,
       });
 
@@ -524,6 +727,9 @@ export async function DELETE(request) {
   const credentials = parseGoogleCredentials(searchParams);
   const eventId = searchParams.get('event_id');
   const calendarId = searchParams.get('calendar_id') || 'primary';
+  const recurringDeleteMode = searchParams.get('recurring_delete_mode') || 'this';
+  const recurringEventId = searchParams.get('recurring_event_id');
+  const originalStart = searchParams.get('original_start');
 
 
   if (!credentials.access_token || !eventId) {
@@ -534,10 +740,55 @@ export async function DELETE(request) {
     const oauth2Client = createGoogleOAuthClient(request, credentials);
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-    await calendar.events.delete({
-      calendarId,
-      eventId,
-    });
+
+    if (recurringDeleteMode === 'future') {
+      if (!recurringEventId || !originalStart) {
+        return NextResponse.json(
+          { error: 'Recurring delete is missing its series context' },
+          { status: 400 }
+        );
+      }
+
+      const {
+        seriesEventId,
+        seriesEvent: parentEvent,
+      } = await resolveRecurringSeriesContext(calendar, calendarId, recurringEventId);
+      const parentStart = parentEvent.start?.dateTime || parentEvent.start?.date || '';
+
+      if (sameOriginalStart(parentStart, originalStart)) {
+        await calendar.events.delete({
+          calendarId,
+          eventId: seriesEventId,
+        });
+      } else {
+        const trimmedRecurrence = replaceRecurringRuleEnd(
+          parentEvent.recurrence || [],
+          formatRecurringUntil(originalStart)
+        );
+
+        await calendar.events.patch({
+          calendarId,
+          eventId: seriesEventId,
+          requestBody: { recurrence: trimmedRecurrence },
+          conferenceDataVersion: 1,
+        });
+
+        const remainingOldInstances = await listFutureInstances(
+          calendar,
+          calendarId,
+          seriesEventId,
+          originalStart
+        );
+        if (remainingOldInstances.length > 0) {
+          await deleteInstances(calendar, calendarId, remainingOldInstances);
+        }
+      }
+    } else {
+      await calendar.events.delete({
+        calendarId,
+        eventId,
+      });
+    }
 
     return NextResponse.json(appendGoogleAuth({ success: true }, oauth2Client));
   } catch (err) {

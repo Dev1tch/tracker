@@ -328,7 +328,7 @@ export default function Calendar() {
     }
   };
 
-  const handleDeleteEvent = async (eventId, calendarId, accountEmail) => {
+  const handleDeleteEvent = async (eventId, calendarId, accountEmail, options = {}) => {
     const account = accounts.find(a => a.email === accountEmail);
     if (!account) {
       toast('Account not found', 'error');
@@ -343,8 +343,12 @@ export default function Calendar() {
         return;
       }
 
-      await calendarApi.deleteEvent(account, eventId, calendarId);
-      toast('Event deleted successfully');
+      await calendarApi.deleteEvent(account, eventId, calendarId, options);
+      if (options?.recurringDelete?.mode === 'future') {
+        toast('Deleted this and future events');
+      } else {
+        toast('Event deleted successfully');
+      }
       fetchEvents();
     } catch (err) {
       console.error(err);
