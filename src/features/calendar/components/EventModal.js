@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette, ChevronDown, ExternalLink, Video } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -19,6 +19,75 @@ const GOOGLE_EVENT_COLORS = [
   { id: '10', name: 'Basil', hex: '#0b8043' },
   { id: '11', name: 'Tomato', hex: '#d50000' },
 ];
+
+const EVENT_COLOR_PRESETS = [
+  '#94a3b8', '#60a5fa', '#9ca3af', '#fbbf24', '#34d399', '#f87171',
+  '#6b7280', '#e879f9', '#a78bfa', '#2dd4bf', '#4ade80', '#f97316',
+];
+
+function isValidHexColor(value) {
+  return /^#([0-9a-f]{6})$/i.test(value);
+}
+
+function normalizeHexColor(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  const candidate = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  if (!isValidHexColor(candidate)) return null;
+  return candidate.toLowerCase();
+}
+
+function hexToRgb(hex) {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) return { r: 255, g: 255, b: 255 };
+  const value = normalized.slice(1);
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  const clamp = (c) => Math.max(0, Math.min(255, c));
+  const toHex = (c) => clamp(c).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function hsvToRgb({ h, s, v }) {
+  const sat = Math.max(0, Math.min(100, s)) / 100;
+  const val = Math.max(0, Math.min(100, v)) / 100;
+  const c = val * sat;
+  const seg = (h % 360) / 60;
+  const x = c * (1 - Math.abs((seg % 2) - 1));
+  const m = val - c;
+  let r = 0, g = 0, b = 0;
+  if (seg >= 0 && seg < 1) { r = c; g = x; }
+  else if (seg >= 1 && seg < 2) { r = x; g = c; }
+  else if (seg >= 2 && seg < 3) { g = c; b = x; }
+  else if (seg >= 3 && seg < 4) { g = x; b = c; }
+  else if (seg >= 4 && seg < 5) { r = x; b = c; }
+  else { r = c; b = x; }
+  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
+}
+
+function rgbToHsv({ r, g, b }) {
+  const red = r / 255, green = g / 255, blue = b / 255;
+  const max = Math.max(red, green, blue), min = Math.min(red, green, blue);
+  const delta = max - min;
+  let h = 0;
+  if (delta !== 0) {
+    if (max === red) h = 60 * (((green - blue) / delta) % 6);
+    else if (max === green) h = 60 * (((blue - red) / delta) + 2);
+    else h = 60 * (((red - green) / delta) + 4);
+  }
+  if (h < 0) h += 360;
+  return { h, s: max === 0 ? 0 : (delta / max) * 100, v: max * 100 };
+}
+
+function isGooglePresetId(id) {
+  return /^(1[01]?|[2-9])$/.test(id);
+}
 
 function formatDateInputValue(value) {
   if (!value) {
@@ -139,6 +208,11 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const [showRecurringDeletePrompt, setShowRecurringDeletePrompt] = useState(false);
   const [colorId, setColorId] = useState('');
   const [initialColorId, setInitialColorId] = useState('');
+  const [isEventColorPickerOpen, setIsEventColorPickerOpen] = useState(false);
+  const [isEventColorWheelDragging, setIsEventColorWheelDragging] = useState(false);
+  const [eventColorInput, setEventColorInput] = useState('');
+  const eventColorPickerRef = useRef(null);
+  const eventColorWheelRef = useRef(null);
   const [recurrenceOptions, setRecurrenceOptions] = useState([
     { value: '', label: 'Does not repeat' },
     { value: 'RRULE:FREQ=DAILY', label: 'Daily' },
@@ -230,11 +304,18 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       }
       
       setReminders(event.reminders?.overrides || [{ method: 'popup', minutes: 30 }]);
-      // Extract colorId — could be a number string like '1'-'11' or empty
+      // Extract colorId — could be a number string like '1'-'11', a custom hex, or empty
       const evtColor = event.color || '';
-      const normalizedColorId = evtColor.startsWith('#') ? '' : evtColor;
-      setColorId(normalizedColorId);
-      setInitialColorId(normalizedColorId);
+      const customHex = event.customColor || '';
+      if (customHex) {
+        // Event has a custom color stored in extendedProperties
+        setColorId(customHex);
+        setInitialColorId(customHex);
+      } else {
+        const normalizedColorId = evtColor.startsWith('#') ? '' : evtColor;
+        setColorId(normalizedColorId);
+        setInitialColorId(normalizedColorId);
+      }
       setCalendarId(event.accountEmail ? `${event.accountEmail}:${event.calendarId || 'primary'}` : (event.calendarId || 'primary'));
     }
   }, [event, isOpen, accounts, availableCalendars, selectedDate]);
@@ -246,7 +327,97 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     setShowRecurringDeletePrompt(false);
     setPendingRecurringSaveData(null);
     setPendingEventData(null);
+    setIsEventColorPickerOpen(false);
+    setIsEventColorWheelDragging(false);
   }, [isOpen, event?.id]);
+
+  // Sync color input text with current color selection
+  useEffect(() => {
+    if (colorId && colorId.startsWith('#')) {
+      setEventColorInput(colorId);
+    } else {
+      const matched = GOOGLE_EVENT_COLORS.find(c => c.id === colorId);
+      setEventColorInput(matched ? matched.hex : '');
+    }
+  }, [colorId]);
+
+  // Close color picker on outside click
+  useEffect(() => {
+    if (!isEventColorPickerOpen) return undefined;
+    function handleOutsideClick(e) {
+      if (eventColorPickerRef.current && !eventColorPickerRef.current.contains(e.target)) {
+        setIsEventColorPickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isEventColorPickerOpen]);
+
+  // Color wheel drag
+  useEffect(() => {
+    if (!isEventColorWheelDragging) return undefined;
+    function handleMove(e) {
+      const wheel = eventColorWheelRef.current;
+      if (!wheel) return;
+      const rect = wheel.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      const radius = rect.width / 2;
+      const dist = Math.min(Math.sqrt(dx ** 2 + dy ** 2), radius);
+      const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+      const sat = (dist / radius) * 100;
+      const hex = rgbToHex(hsvToRgb({ h: hue, s: sat, v: 100 }));
+      setColorId(hex);
+      setEventColorInput(hex);
+    }
+    function handleUp() { setIsEventColorWheelDragging(false); }
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+  }, [isEventColorWheelDragging]);
+
+  const handleEventColorWheelPointerDown = useCallback((e) => {
+    const wheel = eventColorWheelRef.current;
+    if (!wheel) return;
+    const rect = wheel.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    const radius = rect.width / 2;
+    const dist = Math.min(Math.sqrt(dx ** 2 + dy ** 2), radius);
+    const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+    const sat = (dist / radius) * 100;
+    const hex = rgbToHex(hsvToRgb({ h: hue, s: sat, v: 100 }));
+    setColorId(hex);
+    setEventColorInput(hex);
+    setIsEventColorWheelDragging(true);
+  }, []);
+
+  const currentColorHex = useMemo(() => {
+    if (colorId && colorId.startsWith('#')) return normalizeHexColor(colorId) || '#34d399';
+    const matched = GOOGLE_EVENT_COLORS.find(c => c.id === colorId);
+    return matched ? matched.hex : '#34d399';
+  }, [colorId]);
+
+  const colorWheelPointerStyle = useMemo(() => {
+    const hsv = rgbToHsv(hexToRgb(currentColorHex));
+    const angle = (hsv.h * Math.PI) / 180;
+    const radius = (hsv.s / 100) * 50;
+    const x = 50 + radius * Math.cos(angle);
+    const y = 50 + radius * Math.sin(angle);
+    return {
+      left: `${Math.max(0, Math.min(100, x))}%`,
+      top: `${Math.max(0, Math.min(100, y))}%`,
+    };
+  }, [currentColorHex]);
+
+  const isCustomColor = colorId && colorId.startsWith('#');
 
   if (!isOpen) return null;
 
@@ -338,13 +509,22 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       eventData.location = location;
 
       if (event?.id) {
-        if (colorId) {
+        if (colorId && isGooglePresetId(colorId)) {
           eventData.colorId = colorId;
-        } else if (initialColorId) {
+          // Clear any previous custom color
+          eventData.extendedProperties = { private: { customColor: '' } };
+        } else if (colorId && colorId.startsWith('#')) {
+          // Custom hex — store in extendedProperties
+          eventData.extendedProperties = { private: { customColor: colorId } };
+        } else if (initialColorId && !colorId) {
+          // User cleared colour → reset to calendar default
           eventData.colorId = null;
+          eventData.extendedProperties = { private: { customColor: '' } };
         }
-      } else if (colorId) {
+      } else if (colorId && isGooglePresetId(colorId)) {
         eventData.colorId = colorId;
+      } else if (colorId && colorId.startsWith('#')) {
+        eventData.extendedProperties = { private: { customColor: colorId } };
       }
 
       eventData.attendees = guests.map(email => ({ email }));
@@ -747,26 +927,82 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
 
             <div className="calFormGroup">
               <label><Palette size={16} /> Event Color</label>
-              <div className="calEventColorPicker">
-                <button
-                  type="button"
-                  className={`calEventColorSwatch calEventColorDefault ${!colorId ? 'active' : ''}`}
-                  onClick={() => setColorId('')}
-                  title="Calendar default"
-                >
-                  <span style={{ background: 'linear-gradient(135deg, #34d399, #60a5fa)' }} />
-                </button>
-                {GOOGLE_EVENT_COLORS.map(c => (
+              <div className="calEventColorPickerWrap" ref={eventColorPickerRef}>
+                <div className="calEventColorPicker">
                   <button
-                    key={c.id}
                     type="button"
-                    className={`calEventColorSwatch ${colorId === c.id ? 'active' : ''}`}
-                    onClick={() => setColorId(c.id)}
-                    title={c.name}
+                    className={`calEventColorSwatch calEventColorDefault ${!colorId ? 'active' : ''}`}
+                    onClick={() => { setColorId(''); setIsEventColorPickerOpen(false); }}
+                    title="Calendar default"
                   >
-                    <span style={{ backgroundColor: c.hex }} />
+                    <span style={{ background: 'linear-gradient(135deg, #34d399, #60a5fa)' }} />
                   </button>
-                ))}
+                  {GOOGLE_EVENT_COLORS.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`calEventColorSwatch ${colorId === c.id ? 'active' : ''}`}
+                      onClick={() => { setColorId(c.id); setIsEventColorPickerOpen(false); }}
+                      title={c.name}
+                    >
+                      <span style={{ backgroundColor: c.hex }} />
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={`calEventColorSwatch calEventColorCustomTrigger ${isCustomColor ? 'active' : ''}`}
+                    onClick={() => setIsEventColorPickerOpen(prev => !prev)}
+                    title="Custom color"
+                  >
+                    <span style={{ backgroundColor: isCustomColor ? colorId : undefined }} />
+                  </button>
+                </div>
+
+                {isEventColorPickerOpen && (
+                  <div className="calEventColorPopover">
+                    <div
+                      ref={eventColorWheelRef}
+                      className="tasksStatusColorWheel"
+                      onPointerDown={handleEventColorWheelPointerDown}
+                      role="presentation"
+                    >
+                      <span
+                        className="tasksStatusColorWheelPointer"
+                        style={colorWheelPointerStyle}
+                      />
+                    </div>
+
+                    <div className="tasksStatusConfigSwatches">
+                      {EVENT_COLOR_PRESETS.map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`tasksStatusConfigSwatch ${colorId === color ? 'isActive' : ''}`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => { setColorId(color); setEventColorInput(color); }}
+                          aria-label={`Set color ${color}`}
+                        />
+                      ))}
+                    </div>
+
+                    <div className="tasksStatusConfigHexRow">
+                      <label>Hex</label>
+                      <input
+                        type="text"
+                        value={eventColorInput}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEventColorInput(val);
+                          const norm = normalizeHexColor(val);
+                          if (norm) setColorId(norm);
+                        }}
+                        onBlur={() => setEventColorInput(currentColorHex)}
+                        placeholder="#ffffff"
+                        maxLength={7}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

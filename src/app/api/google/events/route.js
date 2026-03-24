@@ -80,6 +80,7 @@ function normalizeCalendarEvent(event, calendarMetadata = {}, recurrenceOverride
     originalStart: getOriginalStartValue(event.originalStartTime),
     startTimeZone: event.start?.timeZone || null,
     endTimeZone: event.end?.timeZone || null,
+    customColor: event.extendedProperties?.private?.customColor || null,
   };
 }
 
@@ -221,6 +222,9 @@ function buildFutureRecurringEventBody(parentEvent, updatedEventData, fallbackTi
     guestsCanSeeOtherGuests: parentEvent.guestsCanSeeOtherGuests,
     anyoneCanAddSelf: parentEvent.anyoneCanAddSelf,
     visibility: parentEvent.visibility,
+    extendedProperties: hasOwnProperty(updatedEventData, 'extendedProperties')
+      ? updatedEventData.extendedProperties
+      : parentEvent.extendedProperties,
   });
 }
 
@@ -287,6 +291,9 @@ function buildRecurringInstanceUpdateBody(instanceEvent, updatedEventData, fallb
     visibility: instanceEvent.visibility,
     source: instanceEvent.source,
     status: instanceEvent.status,
+    extendedProperties: hasOwnProperty(updatedEventData, 'extendedProperties')
+      ? updatedEventData.extendedProperties
+      : instanceEvent.extendedProperties,
   });
 }
 

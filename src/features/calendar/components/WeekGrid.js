@@ -64,6 +64,7 @@ function getEventPosition(event, dayDate) {
 }
 
 function getEventColor(event) {
+  if (event.customColor) return event.customColor;
   const color = event.color;
   if (!color) return event.calendarColor || '#34d399';
   return GOOGLE_EVENT_COLORS[color] || color;
