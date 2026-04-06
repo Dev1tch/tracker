@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { Video } from 'lucide-react';
 import {
   createTaskCalendarEvents,
@@ -85,6 +85,14 @@ export default function WeekGrid({
   const [containerHeight, setContainerHeight] = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
 
+  const updateScrollMetrics = useCallback(() => {
+    if (!scrollRef.current) return;
+
+    setScrollTop(scrollRef.current.scrollTop);
+    setContainerHeight(scrollRef.current.clientHeight);
+    setScrollbarWidth(scrollRef.current.offsetWidth - scrollRef.current.clientWidth);
+  }, []);
+
   const weekDays = useMemo(() => {
     return getWeekDays(weekStart);
   }, [weekStart]);
@@ -93,40 +101,36 @@ export default function WeekGrid({
 
   // Scroll to ~7AM on mount and setup scroll listener
   useEffect(() => {
-    const updateScrollMetrics = () => {
-      if (!scrollRef.current) return;
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
 
-      setScrollTop(scrollRef.current.scrollTop);
-      setContainerHeight(scrollRef.current.clientHeight);
-      setScrollbarWidth(scrollRef.current.offsetWidth - scrollRef.current.clientWidth);
-    };
-
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = 7 * HOUR_HEIGHT;
-      updateScrollMetrics();
-    }
+    scrollEl.scrollTop = 7 * HOUR_HEIGHT;
+    updateScrollMetrics();
 
     const handleScroll = () => {
-      if (scrollRef.current) {
-        setScrollTop(scrollRef.current.scrollTop);
-      }
+      setScrollTop(scrollEl.scrollTop);
     };
 
     const handleResize = () => {
       updateScrollMetrics();
     };
 
-    const scrollEl = scrollRef.current;
-    if (scrollEl) {
-      scrollEl.addEventListener('scroll', handleScroll);
-    }
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+          updateScrollMetrics();
+        })
+      : null;
+
+    scrollEl.addEventListener('scroll', handleScroll);
+    resizeObserver?.observe(scrollEl);
     window.addEventListener('resize', handleResize);
 
     return () => {
-      if (scrollEl) scrollEl.removeEventListener('scroll', handleScroll);
+      scrollEl.removeEventListener('scroll', handleScroll);
+      resizeObserver?.disconnect();
       window.removeEventListener('resize', handleResize);
     };
-  }, []);
+  }, [updateScrollMetrics]);
 
   // Transform unfinished tasks with due dates into events
   const taskEvents = useMemo(() => {
