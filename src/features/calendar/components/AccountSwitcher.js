@@ -98,7 +98,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
         .account-dropdown-container {
           position: relative;
           margin-bottom: 20px;
-          z-index: 1000;
+          z-index: 20;
         }
         .account-trigger {
           display: flex;
@@ -146,7 +146,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.42);
           border-radius: 0;
           animation: slideDown 0.2s ease-out;
-          z-index: 1001;
+          z-index: 21;
         }
         @keyframes slideDown {
           from { opacity: 0; transform: translateY(-10px); }
