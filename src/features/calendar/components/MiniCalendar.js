@@ -2,38 +2,16 @@
 
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  isCalendarEventOnDay,
+  isSameCalendarDay,
+} from '../utils/calendar-view.utils';
 
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-
-function parseEventDate(dateStr) {
-  if (!dateStr) return null;
-  if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    const [year, month, day] = dateStr.split('-').map(Number);
-    return new Date(year, month - 1, day);
-  }
-  return new Date(dateStr);
-}
-
-function isEventOnDate(event, date) {
-  const start = parseEventDate(event.start);
-  const end = parseEventDate(event.end);
-  if (!start || !end) return false;
-
-  const dayStart = new Date(date);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(date);
-  dayEnd.setHours(23, 59, 59, 999);
-
-  if (event.allDay) {
-    return dayStart >= start && dayStart < end;
-  }
-
-  return start <= dayEnd && end >= dayStart;
-}
 
 export default function MiniCalendar({
   selectedDate,
@@ -69,21 +47,14 @@ export default function MiniCalendar({
   }
 
   const today = new Date();
-  const isToday = (date) =>
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear();
+  const isToday = (date) => isSameCalendarDay(date, today);
 
-  const isSelected = (date) =>
-    selectedDate &&
-    date.getDate() === selectedDate.getDate() &&
-    date.getMonth() === selectedDate.getMonth() &&
-    date.getFullYear() === selectedDate.getFullYear();
+  const isSelected = (date) => selectedDate && isSameCalendarDay(date, selectedDate);
 
   const hasEvents = (date) => {
     return events.some(event => {
       const compositeId = `${event.accountEmail}-${event.calendarId}`;
-      return enabledCalendarIds?.has(compositeId) && isEventOnDate(event, date);
+      return enabledCalendarIds?.has(compositeId) && isCalendarEventOnDay(event, date);
     });
   };
 

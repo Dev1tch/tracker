@@ -2,22 +2,16 @@
 
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { Video } from 'lucide-react';
+import {
+  createTaskCalendarEvents,
+  getCalendarEventColor,
+  getWeekDays,
+  isCalendarEventOnDay,
+  isSameCalendarDay,
+  parseCalendarDate,
+} from '../utils/calendar-view.utils';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-
-const GOOGLE_EVENT_COLORS = {
-  '1': '#7986cb', // Lavender
-  '2': '#33b679', // Sage
-  '3': '#8e24aa', // Grape
-  '4': '#e67c73', // Flamingo
-  '5': '#f6bf26', // Banana
-  '6': '#f4511e', // Tangerine
-  '7': '#039be5', // Peacock
-  '8': '#616161', // Graphite
-  '9': '#3f51b5', // Blueberry
-  '10': '#0b8043', // Basil
-  '11': '#d50000', // Tomato
-};
 
 const HOUR_HEIGHT = 44; // Reduced from 60 for more density
 
@@ -31,8 +25,8 @@ function formatHour(h) {
 function getEventPosition(event, dayDate) {
   if (event.allDay && event.eventType !== 'outOfOffice') return null;
 
-  const start = parseEventDate(event.start);
-  const end = parseEventDate(event.end);
+  const start = parseCalendarDate(event.start);
+  const end = parseCalendarDate(event.end);
   if (!start || !end) return null;
 
   const dayStart = new Date(dayDate);
@@ -61,57 +55,6 @@ function getEventPosition(event, dayDate) {
     top: (startMinutes / 60) * HOUR_HEIGHT,
     height: (duration / 60) * HOUR_HEIGHT,
   };
-}
-
-function getEventColor(event) {
-  if (event.customColor) return event.customColor;
-  const color = event.color;
-  if (!color) return event.calendarColor || '#34d399';
-  return GOOGLE_EVENT_COLORS[color] || color;
-}
-
-function parseEventDate(dateStr) {
-  if (!dateStr) return null;
-  // If it's just YYYY-MM-DD, parse it as local date to avoid UTC shifts
-  if (typeof dateStr === 'string' && dateStr.length === 10 && dateStr.includes('-')) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  }
-  return new Date(dateStr);
-}
-
-function isSameDay(d1, d2) {
-  const date1 = parseEventDate(d1);
-  const date2 = parseEventDate(d2);
-  if (!date1 || !date2) return false;
-  return date1.getDate() === date2.getDate() &&
-    date1.getMonth() === date2.getMonth() &&
-    date1.getFullYear() === date2.getFullYear();
-}
-
-function isEventOnDay(event, dayDate) {
-  const start = parseEventDate(event.start);
-  const end = parseEventDate(event.end);
-  if (!start || !end) return false;
-
-  const d = new Date(dayDate);
-  d.setHours(0, 0, 0, 0);
-
-  if (event.allDay) {
-    // Google's all-day 'end' is exclusive
-    // example: start "2024-01-01", end "2024-01-02" means ONLY Jan 1st.
-    return d >= start && d < end;
-  }
-
-  // For timed events, we check if they overlap with the day
-  // An event covers a day if it starts before the end of the day 
-  // AND ends after the start of the day.
-  const dayStart = new Date(dayDate);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayDate);
-  dayEnd.setHours(23, 59, 59, 999);
-
-  return start <= dayEnd && end >= dayStart;
 }
 
 function getMeetActionSize(height) {
@@ -143,11 +86,7 @@ export default function WeekGrid({
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
 
   const weekDays = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(weekStart);
-      d.setDate(d.getDate() + i);
-      return d;
-    });
+    return getWeekDays(weekStart);
   }, [weekStart]);
 
   const today = new Date();
@@ -191,20 +130,7 @@ export default function WeekGrid({
 
   // Transform unfinished tasks with due dates into events
   const taskEvents = useMemo(() => {
-    return tasks
-      .filter(task => 
-        task.due_date && 
-        !['completed', 'cancelled', 'archived'].includes(task.status?.toLowerCase())
-      )
-      .map(task => ({
-        id: `task-${task.id}`,
-        title: task.title,
-        start: task.due_date,
-        end: new Date(new Date(task.due_date).getTime() + 30 * 60 * 1000).toISOString(), // 30 min duration
-        color: '#ef4444', // Red
-        eventType: 'task',
-        originalTask: task
-      }));
+    return createTaskCalendarEvents(tasks);
   }, [tasks]);
 
   // Separate all-day and timed events
@@ -235,7 +161,7 @@ export default function WeekGrid({
 
   // Get events for a specific day
   const getEventsForDay = (date, eventsList) => {
-    return eventsList.filter(event => isEventOnDay(event, date));
+    return eventsList.filter(event => isCalendarEventOnDay(event, date));
   };
 
   // Handle overlapping events in a day column using cluster-based layout
@@ -327,7 +253,7 @@ export default function WeekGrid({
       <div className="weekGridHeaderRow">
         <div className="weekGridTimeGutterHeader" />
         {weekDays.map((day, i) => {
-          const isToday = isSameDay(day, today);
+          const isToday = isSameCalendarDay(day, today);
           const dayNames = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
           return (
             <div key={i} className={`weekGridDayHeader ${isToday ? 'weekGridDayHeaderToday' : ''}`}>
@@ -353,7 +279,7 @@ export default function WeekGrid({
               <div key={i} className="weekGridAllDayCell">
                 {dayAllDay.map(event => {
                   const showCalendarDot = eventCardStyle === 'frame' && event.eventType !== 'task';
-                  const eventColor = getEventColor(event);
+                  const eventColor = getCalendarEventColor(event);
                   const calendarColor = event.calendarColor || eventColor;
 
                   return (
@@ -436,7 +362,7 @@ export default function WeekGrid({
                 })),
                 ...layoutEventsForDay(day, dayStandard)
               ];
-              const isToday = isSameDay(day, today);
+              const isToday = isSameCalendarDay(day, today);
 
               return (
                 <div
@@ -455,7 +381,7 @@ export default function WeekGrid({
 
                   {/* Event blocks */}
                   {layoutEvents.map(({ event, pos, column, totalColumns }) => {
-                    const eventColor = getEventColor(event);
+                    const eventColor = getCalendarEventColor(event);
                     const calendarColor = event.calendarColor || eventColor;
                     const showCalendarDot = eventCardStyle === 'frame' && event.eventType !== 'task';
                     

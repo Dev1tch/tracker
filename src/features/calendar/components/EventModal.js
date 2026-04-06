@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette, ChevronDown, ExternalLink, Video } from 'lucide-react';
+import { X, Clock, MapPin, AlignLeft, Calendar as CalIcon, Trash2, Users, Repeat, Bell, Palette, ChevronDown, Video } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { useToast } from '@/components/ui/ToastProvider';
 import AccountPromptModal from './AccountPromptModal';
+import TasksDatePicker from '@/features/tasks/components/TasksBoard/components/TasksDatePicker';
 
 const GOOGLE_EVENT_COLORS = [
   { id: '1', name: 'Lavender', hex: '#7986cb' },
@@ -331,6 +332,13 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     setIsEventColorWheelDragging(false);
   }, [isOpen, event?.id]);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    document.body.classList.add('modal-open');
+    return () => document.body.classList.remove('modal-open');
+  }, [isOpen]);
+
   // Sync color input text with current color selection
   useEffect(() => {
     if (colorId && colorId.startsWith('#')) {
@@ -433,6 +441,13 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const canShowRecurringDeletePrompt = Boolean(
     event?.id && (event?.recurringEventId || event?.recurrence?.length)
   );
+  const eventPageDateLabel = parseDateInputValue(eventDate).toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const eventFormId = 'cal-event-form';
 
   const buildEventData = () => {
     const baseDate = parseDateInputValue(eventDate);
@@ -724,361 +739,32 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
   const googleMeetLink = event?.googleMeetLink || '';
 
   return (
-    <div className="calModalOverlay" onClick={onClose}>
-      <div className="calModal glass" onClick={(e) => e.stopPropagation()}>
-        <header className="calModalHeader">
-          <h3>{event ? 'Edit Event' : 'New Event'}</h3>
-          <button className="calModalClose" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </header>
-
-        <form onSubmit={handleSubmit} className="calModalForm">
-          <div className="calFormGroup">
-            <input
-              type="text"
-              className="authInput calTitleInput"
-              placeholder="Event Title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              autoFocus
-            />
+    <div className="calEventPageOverlay" onClick={onClose}>
+      <div className="calEventPage" onClick={(e) => e.stopPropagation()}>
+        <header className="calModalHeader calEventPageHeader">
+          <div className="calEventPageHeading">
+            <h2 className="calEventPageTitle">{event ? 'Edit Event' : 'New Event'}</h2>
+            <p className="calEventPageMeta">{eventPageDateLabel}</p>
           </div>
 
-          <div className="calFormRow">
-            <div className="calFormGroup">
-              <label><CalIcon size={16} /> Day</label>
-              <input
-                type="date"
-                className="authInput"
-                value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-                required
-              />
-            </div>
-            <div className="calFormGroup">
-              <label><Clock size={16} /> Time</label>
-              <div className="calTimeInputs">
-                <TimeSelect
-                  value={startTime}
-                  onChange={setStartTime}
-                  disabled={isAllDay}
-                />
-                <span className="calTimeSeparator">to</span>
-                <TimeSelect
-                  value={endTime}
-                  onChange={setEndTime}
-                  disabled={isAllDay}
-                />
-              </div>
-              <label className="calCheckboxLabel">
-                <input
-                  type="checkbox"
-                  checked={isAllDay}
-                  onChange={(e) => setIsAllDay(e.target.checked)}
-                />
-                All Day
-              </label>
-            </div>
-          </div>
+          <div className="calEventPageHeaderActions">
+            {hasGoogleMeet && googleMeetLink ? (
+              <a
+                href={googleMeetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="calEventPageMeetBtn"
+                title="Open Google Meet"
+                aria-label="Open Google Meet in a new tab"
+              >
+                <Video size={16} />
+              </a>
+            ) : null}
 
-          <div className="calFormRow">
-            <div className="calFormGroup">
-              <label><Palette size={16} /> Type</label>
-              <div className="calEventTypeTabs">
-                <button 
-                  type="button" 
-                  className={`calTypeTab ${eventType === 'default' ? 'active' : ''}`}
-                  onClick={() => setEventType('default')}
-                  disabled={event && event.id && event.eventType !== 'default'}
-                >
-                  Event
-                </button>
-                <button 
-                  type="button" 
-                  className={`calTypeTab ${eventType === 'outOfOffice' ? 'active' : ''}`}
-                  onClick={() => {
-                    setEventType('outOfOffice');
-                    setIsAllDay(true); // OOO is usually all day
-                    setHasGoogleMeet(false);
-                    setRefreshGoogleMeet(false);
-                  }}
-                  disabled={event && event.id && event.eventType !== 'outOfOffice'}
-                >
-                  Out of Office
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {eventType === 'outOfOffice' && (
-            <div className="calOOOSection glass">
-              <label className="calCheckboxLabel">
-                <input
-                  type="checkbox"
-                  checked={autoDecline}
-                  onChange={(e) => setAutoDecline(e.target.checked)}
-                />
-                Automatically decline meetings
-              </label>
-              {autoDecline && (
-                <textarea
-                  className="authInput calOOOMessage"
-                  placeholder="Decline message"
-                  value={declineMessage}
-                  onChange={(e) => setDeclineMessage(e.target.value)}
-                  rows={2}
-                />
-              )}
-            </div>
-          )}
-
-          {eventType === 'default' && (
-            <div className="calFormRow">
-              <div className="calFormGroup">
-                <label><Video size={16} /> Google Meet</label>
-                <div className="calMeetControls">
-                  <label className="calCheckboxLabel">
-                    <input
-                      type="checkbox"
-                      checked={hasGoogleMeet}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setHasGoogleMeet(checked);
-                        if (!checked) {
-                          setRefreshGoogleMeet(false);
-                        }
-                      }}
-                    />
-                    Use Google Meet
-                  </label>
-
-                  {hasGoogleMeet && googleMeetLink && (
-                    <>
-                      <div className="calMeetRow">
-                        <a
-                          href={googleMeetLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="calMeetLink"
-                          title="Open current Google Meet link"
-                        >
-                          <Video size={14} />
-                          <span>Google Meet Link</span>
-                          <ExternalLink size={12} />
-                        </a>
-                      </div>
-                      <label className="calCheckboxLabel">
-                        <input
-                          type="checkbox"
-                          checked={refreshGoogleMeet}
-                          onChange={(e) => setRefreshGoogleMeet(e.target.checked)}
-                        />
-                        Generate a new Meet link on save
-                      </label>
-                    </>
-                  )}
-
-                  {hasGoogleMeet && !googleMeetLink && (
-                    <p className="calMeetHint">
-                      A Google Meet link will be created when you save this event.
-                    </p>
-                  )}
-
-                  {!hasGoogleMeet && googleMeetLink && (
-                    <p className="calMeetHint">
-                      Saving will remove the current Google Meet link from this event.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="calFormRow">
-            <div className="calFormGroup" style={{ flex: 1 }}>
-              <label><Repeat size={16} /> Repeat</label>
-              <CustomSelect
-                options={recurrenceOptions}
-                value={recurrence}
-                onChange={setRecurrence}
-              />
-            </div>
-          </div>
-
-          <div className="calFormRow">
-            <div className="calFormGroup">
-              <label><CalIcon size={16} /> Calendar</label>
-              <CustomSelect
-                options={[
-                  { value: 'primary', label: 'Default (Primary)', color: 'rgba(255,255,255,0.2)' },
-                  ...availableCalendars.map(cal => ({
-                    value: `${cal.accountEmail}:${cal.id}`,
-                    label: `${cal.summary}${cal.primary ? ' (Primary)' : ''} (${cal.accountEmail})`,
-                    color: cal.backgroundColor
-                  }))
-                ]}
-                value={calendarId.includes(':') ? calendarId : availableCalendars.find(c => c.id === calendarId)?.accountEmail ? `${availableCalendars.find(c => c.id === calendarId).accountEmail}:${calendarId}` : calendarId}
-                onChange={setCalendarId}
-                disabled={event && !!event.id}
-              />
-            </div>
-
-            <div className="calFormGroup">
-              <label><Palette size={16} /> Event Color</label>
-              <div className="calEventColorPickerWrap" ref={eventColorPickerRef}>
-                <div className="calEventColorPicker">
-                  <button
-                    type="button"
-                    className={`calEventColorSwatch calEventColorDefault ${!colorId ? 'active' : ''}`}
-                    onClick={() => { setColorId(''); setIsEventColorPickerOpen(false); }}
-                    title="Calendar default"
-                  >
-                    <span style={{ background: 'linear-gradient(135deg, #34d399, #60a5fa)' }} />
-                  </button>
-                  {GOOGLE_EVENT_COLORS.map(c => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className={`calEventColorSwatch ${colorId === c.id ? 'active' : ''}`}
-                      onClick={() => { setColorId(c.id); setIsEventColorPickerOpen(false); }}
-                      title={c.name}
-                    >
-                      <span style={{ backgroundColor: c.hex }} />
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className={`calEventColorSwatch calEventColorCustomTrigger ${isCustomColor ? 'active' : ''}`}
-                    onClick={() => setIsEventColorPickerOpen(prev => !prev)}
-                    title="Custom color"
-                  >
-                    <span style={{ backgroundColor: isCustomColor ? colorId : undefined }} />
-                  </button>
-                </div>
-
-                {isEventColorPickerOpen && (
-                  <div className="calEventColorPopover">
-                    <div
-                      ref={eventColorWheelRef}
-                      className="tasksStatusColorWheel"
-                      onPointerDown={handleEventColorWheelPointerDown}
-                      role="presentation"
-                    >
-                      <span
-                        className="tasksStatusColorWheelPointer"
-                        style={colorWheelPointerStyle}
-                      />
-                    </div>
-
-                    <div className="tasksStatusConfigSwatches">
-                      {EVENT_COLOR_PRESETS.map(color => (
-                        <button
-                          key={color}
-                          type="button"
-                          className={`tasksStatusConfigSwatch ${colorId === color ? 'isActive' : ''}`}
-                          style={{ backgroundColor: color }}
-                          onClick={() => { setColorId(color); setEventColorInput(color); }}
-                          aria-label={`Set color ${color}`}
-                        />
-                      ))}
-                    </div>
-
-                    <div className="tasksStatusConfigHexRow">
-                      <label>Hex</label>
-                      <input
-                        type="text"
-                        value={eventColorInput}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setEventColorInput(val);
-                          const norm = normalizeHexColor(val);
-                          if (norm) setColorId(norm);
-                        }}
-                        onBlur={() => setEventColorInput(currentColorHex)}
-                        placeholder="#ffffff"
-                        maxLength={7}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="calFormRow">
-            <div className="calFormGroup">
-              <label><MapPin size={16} /> Location</label>
-              <input
-                type="text"
-                className="authInput"
-                placeholder="Add location"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-              />
-            </div>
-
-            <div className="calFormGroup">
-              <label><Bell size={16} /> Reminder</label>
-              <CustomSelect
-                options={[
-                  { value: '10', label: '10 minutes before' },
-                  { value: '30', label: '30 minutes before' },
-                  { value: '60', label: '1 hour before' },
-                  { value: '1440', label: '1 day before' }
-                ]}
-                value={getReminderValue()}
-                onChange={handleReminderChange}
-              />
-            </div>
-          </div>
-
-          <div className="calFormGroup">
-            <label><Users size={16} /> Guests</label>
-            <div className="calGuestInputWrapper">
-              <input
-                type="email"
-                className="authInput"
-                placeholder="Add guest email and press Enter"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddGuest(e.target.value);
-                    e.target.value = '';
-                  }
-                }}
-              />
-            </div>
-            {guests.length > 0 && (
-              <div className="calGuestChips">
-                {guests.map((email, i) => (
-                  <div key={i} className="calGuestChip">
-                    <span>{email}</span>
-                    <button type="button" onClick={() => setGuests(guests.filter((_, idx) => idx !== i))}>
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="calFormGroup">
-            <label><AlignLeft size={16} /> Description</label>
-            <textarea
-              className="authInput calTextarea"
-              placeholder="Add description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <footer className="calModalFooter">
-            {event && !showDeleteConfirm && (
+            {event && !showDeleteConfirm ? (
               <button
                 type="button"
-                className="calDeleteBtn"
+                className="calDeleteBtn calEventPageDeleteBtn"
                 onClick={() => {
                   if (canShowRecurringDeletePrompt) {
                     setShowDeleteConfirm(false);
@@ -1089,12 +775,14 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
                   setShowDeleteConfirm(true);
                 }}
                 disabled={loading}
+                title="Delete event"
               >
                 <Trash2 size={16} />
               </button>
-            )}
-            {event && showDeleteConfirm && (
-              <div className="calDeleteConfirm">
+            ) : null}
+
+            {event && showDeleteConfirm ? (
+              <div className="calEventPageDeleteConfirm">
                 <span className="calDeleteConfirmText">Delete this event?</span>
                 <div className="calDeleteConfirmActions">
                   <button type="button" className="calDeleteConfirmYes" onClick={handleDelete} disabled={loading}>
@@ -1105,19 +793,355 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
                   </button>
                 </div>
               </div>
-            )}
-            {!showDeleteConfirm && (
-              <div className="calModalActions">
-                <button type="button" className="btn-secondary" onClick={onClose}>
+            ) : (
+              <div className="calEventPagePrimaryActions">
+                <button type="button" className="btn-secondary calEventPageActionBtn" onClick={onClose}>
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary" disabled={loading}>
-                  {loading ? 'Saving...' : 'Save Event'}
+                <button
+                  type="submit"
+                  form={eventFormId}
+                  className="btn-primary calEventPageActionBtn"
+                  disabled={loading}
+                >
+                  {loading ? 'Saving...' : event ? 'Save Event' : 'Create Event'}
                 </button>
               </div>
             )}
-          </footer>
-        </form>
+          </div>
+        </header>
+
+        <div className="calEventPageBody">
+          <form id={eventFormId} onSubmit={handleSubmit} className="calModalForm calEventPageForm">
+            <div className="calFormGroup">
+              <input
+                type="text"
+                className="authInput calTitleInput"
+                placeholder="Event Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="calFormRow">
+              <div className="calFormGroup">
+                <label><CalIcon size={16} /> Day</label>
+                <TasksDatePicker
+                  value={eventDate}
+                  onChange={setEventDate}
+                  placeholder="Select day"
+                  className="calEventDatePicker"
+                />
+              </div>
+
+              <div className="calFormGroup">
+                <label><Clock size={16} /> Time</label>
+                <div className="calTimeInputs">
+                  <TimeSelect
+                    value={startTime}
+                    onChange={setStartTime}
+                    disabled={isAllDay}
+                  />
+                  <span className="calTimeSeparator">to</span>
+                  <TimeSelect
+                    value={endTime}
+                    onChange={setEndTime}
+                    disabled={isAllDay}
+                  />
+                </div>
+                <label className="calCheckboxLabel">
+                  <input
+                    type="checkbox"
+                    checked={isAllDay}
+                    onChange={(e) => setIsAllDay(e.target.checked)}
+                  />
+                  All Day
+                </label>
+              </div>
+            </div>
+
+            <div className="calFormRow">
+              <div className="calFormGroup">
+                <label><Palette size={16} /> Type</label>
+                <div className="calEventTypeTabs">
+                  <button
+                    type="button"
+                    className={`calTypeTab ${eventType === 'default' ? 'active' : ''}`}
+                    onClick={() => setEventType('default')}
+                    disabled={event && event.id && event.eventType !== 'default'}
+                  >
+                    Event
+                  </button>
+                  <button
+                    type="button"
+                    className={`calTypeTab ${eventType === 'outOfOffice' ? 'active' : ''}`}
+                    onClick={() => {
+                      setEventType('outOfOffice');
+                      setIsAllDay(true);
+                      setHasGoogleMeet(false);
+                      setRefreshGoogleMeet(false);
+                    }}
+                    disabled={event && event.id && event.eventType !== 'outOfOffice'}
+                  >
+                    Out of Office
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {eventType === 'outOfOffice' && (
+              <div className="calOOOSection glass">
+                <label className="calCheckboxLabel">
+                  <input
+                    type="checkbox"
+                    checked={autoDecline}
+                    onChange={(e) => setAutoDecline(e.target.checked)}
+                  />
+                  Automatically decline meetings
+                </label>
+                {autoDecline && (
+                  <textarea
+                    className="authInput calOOOMessage"
+                    placeholder="Decline message"
+                    value={declineMessage}
+                    onChange={(e) => setDeclineMessage(e.target.value)}
+                    rows={2}
+                  />
+                )}
+              </div>
+            )}
+
+            {eventType === 'default' && (
+              <div className="calFormRow">
+                <div className="calFormGroup">
+                  <label><Video size={16} /> Google Meet</label>
+                  <div className="calMeetControls">
+                    <label className="calCheckboxLabel">
+                      <input
+                        type="checkbox"
+                        checked={hasGoogleMeet}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setHasGoogleMeet(checked);
+                          if (!checked) {
+                            setRefreshGoogleMeet(false);
+                          }
+                        }}
+                      />
+                      Use Google Meet
+                    </label>
+
+                    {hasGoogleMeet && googleMeetLink && (
+                      <>
+                        <label className="calCheckboxLabel">
+                          <input
+                            type="checkbox"
+                            checked={refreshGoogleMeet}
+                            onChange={(e) => setRefreshGoogleMeet(e.target.checked)}
+                          />
+                          Generate a new Meet link on save
+                        </label>
+                      </>
+                    )}
+
+                    {hasGoogleMeet && !googleMeetLink && (
+                      <p className="calMeetHint">
+                        A Google Meet link will be created when you save this event.
+                      </p>
+                    )}
+
+                    {!hasGoogleMeet && googleMeetLink && (
+                      <p className="calMeetHint">
+                        Saving will remove the current Google Meet link from this event.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="calFormRow">
+              <div className="calFormGroup" style={{ flex: 1 }}>
+                <label><Repeat size={16} /> Repeat</label>
+                <CustomSelect
+                  options={recurrenceOptions}
+                  value={recurrence}
+                  onChange={setRecurrence}
+                />
+              </div>
+            </div>
+
+            <div className="calFormRow">
+              <div className="calFormGroup">
+                <label><CalIcon size={16} /> Calendar</label>
+                <CustomSelect
+                  options={[
+                    { value: 'primary', label: 'Default (Primary)', color: 'rgba(255,255,255,0.2)' },
+                    ...availableCalendars.map(cal => ({
+                      value: `${cal.accountEmail}:${cal.id}`,
+                      label: `${cal.summary}${cal.primary ? ' (Primary)' : ''} (${cal.accountEmail})`,
+                      color: cal.backgroundColor
+                    }))
+                  ]}
+                  value={calendarId.includes(':') ? calendarId : availableCalendars.find(c => c.id === calendarId)?.accountEmail ? `${availableCalendars.find(c => c.id === calendarId).accountEmail}:${calendarId}` : calendarId}
+                  onChange={setCalendarId}
+                  disabled={event && !!event.id}
+                />
+              </div>
+
+              <div className="calFormGroup">
+                <label><Palette size={16} /> Event Color</label>
+                <div className="calEventColorPickerWrap" ref={eventColorPickerRef}>
+                  <div className="calEventColorPicker">
+                    <button
+                      type="button"
+                      className={`calEventColorSwatch calEventColorDefault ${!colorId ? 'active' : ''}`}
+                      onClick={() => { setColorId(''); setIsEventColorPickerOpen(false); }}
+                      title="Calendar default"
+                    >
+                      <span style={{ background: 'linear-gradient(135deg, #34d399, #60a5fa)' }} />
+                    </button>
+                    {GOOGLE_EVENT_COLORS.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`calEventColorSwatch ${colorId === c.id ? 'active' : ''}`}
+                        onClick={() => { setColorId(c.id); setIsEventColorPickerOpen(false); }}
+                        title={c.name}
+                      >
+                        <span style={{ backgroundColor: c.hex }} />
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={`calEventColorSwatch calEventColorCustomTrigger ${isCustomColor ? 'active' : ''}`}
+                      onClick={() => setIsEventColorPickerOpen(prev => !prev)}
+                      title="Custom color"
+                    >
+                      <span style={{ backgroundColor: isCustomColor ? colorId : undefined }} />
+                    </button>
+                  </div>
+
+                  {isEventColorPickerOpen && (
+                    <div className="calEventColorPopover">
+                      <div
+                        ref={eventColorWheelRef}
+                        className="tasksStatusColorWheel"
+                        onPointerDown={handleEventColorWheelPointerDown}
+                        role="presentation"
+                      >
+                        <span
+                          className="tasksStatusColorWheelPointer"
+                          style={colorWheelPointerStyle}
+                        />
+                      </div>
+
+                      <div className="tasksStatusConfigSwatches">
+                        {EVENT_COLOR_PRESETS.map(color => (
+                          <button
+                            key={color}
+                            type="button"
+                            className={`tasksStatusConfigSwatch ${colorId === color ? 'isActive' : ''}`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => { setColorId(color); setEventColorInput(color); }}
+                            aria-label={`Set color ${color}`}
+                          />
+                        ))}
+                      </div>
+
+                      <div className="tasksStatusConfigHexRow">
+                        <label>Hex</label>
+                        <input
+                          type="text"
+                          value={eventColorInput}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEventColorInput(val);
+                            const norm = normalizeHexColor(val);
+                            if (norm) setColorId(norm);
+                          }}
+                          onBlur={() => setEventColorInput(currentColorHex)}
+                          placeholder="#ffffff"
+                          maxLength={7}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="calFormRow">
+              <div className="calFormGroup">
+                <label><MapPin size={16} /> Location</label>
+                <input
+                  type="text"
+                  className="authInput"
+                  placeholder="Add location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                />
+              </div>
+
+              <div className="calFormGroup">
+                <label><Bell size={16} /> Reminder</label>
+                <CustomSelect
+                  options={[
+                    { value: '10', label: '10 minutes before' },
+                    { value: '30', label: '30 minutes before' },
+                    { value: '60', label: '1 hour before' },
+                    { value: '1440', label: '1 day before' }
+                  ]}
+                  value={getReminderValue()}
+                  onChange={handleReminderChange}
+                />
+              </div>
+            </div>
+
+            <div className="calFormGroup">
+              <label><Users size={16} /> Guests</label>
+              <div className="calGuestInputWrapper">
+                <input
+                  type="email"
+                  className="authInput"
+                  placeholder="Add guest email and press Enter"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddGuest(e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </div>
+              {guests.length > 0 && (
+                <div className="calGuestChips">
+                  {guests.map((email, i) => (
+                    <div key={i} className="calGuestChip">
+                      <span>{email}</span>
+                      <button type="button" onClick={() => setGuests(guests.filter((_, idx) => idx !== i))}>
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="calFormGroup">
+              <label><AlignLeft size={16} /> Description</label>
+              <textarea
+                className="authInput calTextarea"
+                placeholder="Add description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+
+          </form>
+        </div>
       </div>
 
       <AccountPromptModal

@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalIcon, RefreshCw, Plus, ChevronDown, Settings2 } from 'lucide-react';
-import { calendarApi, tasksApi, authApi, TASK_STATUS } from '@/lib/api';
+import { ChevronLeft, ChevronRight, Calendar as CalIcon, RefreshCw, Plus, ChevronDown, Settings2, X, Menu } from 'lucide-react';
+import { calendarApi, tasksApi, authApi } from '@/lib/api';
 import AccountSwitcher from './components/AccountSwitcher';
 import EventModal from './components/EventModal';
 import CreateCalendarModal from './components/CreateCalendarModal';
 import MiniCalendar from './components/MiniCalendar';
+import CalendarToggles from './components/CalendarToggles';
+import CalendarMobileView from './components/CalendarMobileView';
 import WeekGrid from './components/WeekGrid';
 import TaskDetailModal from '@/features/tasks/components/TasksBoard/components/TaskDetailModal';
 import CustomSelect from '@/components/ui/CustomSelect';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/ToastProvider';
+import useIsMobile from '@/hooks/useIsMobile';
 import './Calendar.css';
 
 const MONTHS = [
@@ -50,6 +53,57 @@ function formatWeekRange(weekStart) {
     return `${startMonth} – ${endMonth} ${startYear}`;
   }
   return `${startMonth} ${startYear}`;
+}
+
+const MOBILE_AGENDA_INITIAL_PAST_DAYS = 7;
+const MOBILE_AGENDA_INITIAL_FUTURE_DAYS = 21;
+const MOBILE_AGENDA_LOAD_MORE_DAYS = 14;
+
+function startOfDay(date) {
+  const nextDate = new Date(date);
+  nextDate.setHours(0, 0, 0, 0);
+  return nextDate;
+}
+
+function endOfDay(date) {
+  const nextDate = new Date(date);
+  nextDate.setHours(23, 59, 59, 999);
+  return nextDate;
+}
+
+function addDays(date, amount) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + amount);
+  return nextDate;
+}
+
+function getEventKey(event) {
+  return [
+    event.accountEmail || '',
+    event.calendarId || '',
+    event.id || '',
+    event.recurringEventId || '',
+    event.start || '',
+    event.end || '',
+  ].join(':');
+}
+
+function getCalendarKey(calendar) {
+  return `${calendar.accountEmail || ''}:${calendar.id || ''}`;
+}
+
+function mergeByKey(existingItems = [], incomingItems = [], getKey) {
+  const merged = new Map();
+
+  existingItems.forEach((item) => {
+    merged.set(getKey(item), item);
+  });
+
+  incomingItems.forEach((item) => {
+    merged.set(getKey(item), item);
+  });
+
+  return Array.from(merged.values());
 }
 
 const SETTINGS_STORAGE_KEY = 'calendar.settings';
@@ -131,6 +185,7 @@ function saveSettings(settings) {
 
 export default function Calendar() {
   const toast = useToast();
+  const isMobile = useIsMobile(1024);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [settings, setSettings] = useState(loadSettings);
   const [statusColors, setStatusColors] = useState(loadStatusConfig);
@@ -145,6 +200,14 @@ export default function Calendar() {
   const [enabledCalendarIds, setEnabledCalendarIds] = useState(new Set());
   const [isMyCalendarsOpen, setIsMyCalendarsOpen] = useState(true);
   const [isOtherCalendarsOpen, setIsOtherCalendarsOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [mobileAgendaStart, setMobileAgendaStart] = useState(() =>
+    startOfDay(addDays(new Date(), -MOBILE_AGENDA_INITIAL_PAST_DAYS))
+  );
+  const [mobileAgendaEnd, setMobileAgendaEnd] = useState(() =>
+    endOfDay(addDays(new Date(), MOBILE_AGENDA_INITIAL_FUTURE_DAYS))
+  );
+  const [isMobileAgendaLoadingMore, setIsMobileAgendaLoadingMore] = useState(false);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -155,6 +218,7 @@ export default function Calendar() {
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [accountToDisconnect, setAccountToDisconnect] = useState(null);
   const settingsRef = useRef(null);
+  const previousIsMobileRef = useRef(isMobile);
 
   // Check for stored tokens on mount & handle OAuth callback params
   useEffect(() => {
@@ -190,89 +254,167 @@ export default function Calendar() {
     }
   }, []);
 
-  // Fetch events when connected or week changes
+  const initializeEnabledCalendars = useCallback((calendars) => {
+    if (enabledCalendarIds.size !== 0 || calendars.length === 0) return;
+
+    const selectedIds = calendars
+      .filter((calendar) => calendar.selected)
+      .map((calendar) => `${calendar.accountEmail}-${calendar.id}`);
+
+    setEnabledCalendarIds(
+      new Set(
+        selectedIds.length > 0
+          ? selectedIds
+          : calendars.map((calendar) => `${calendar.accountEmail}-${calendar.id}`)
+      )
+    );
+  }, [enabledCalendarIds.size]);
+
+  const loadCalendarRange = useCallback(async (startDate, endDate) => {
+    const activeAccounts = accounts.filter((account) => account.active);
+
+    if (activeAccounts.length === 0) {
+      return { events: [], calendars: [], errors: [] };
+    }
+
+    const calendarResults = await Promise.allSettled(
+      activeAccounts.map((account) =>
+        calendarApi
+          .getEvents(account, startDate.toISOString(), endDate.toISOString())
+          .then((response) => ({ accountEmail: account.email, ...response }))
+      )
+    );
+
+    let allEvents = [];
+    let allCalendars = [];
+    let errors = [];
+
+    calendarResults.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        allEvents = [...allEvents, ...result.value.events];
+        allCalendars = [...allCalendars, ...result.value.calendars];
+        return;
+      }
+
+      console.error('Failed to fetch calendar data:', result.reason);
+      if (result.reason?.email) {
+        errors.push(result.reason.email);
+      }
+    });
+
+    return {
+      events: allEvents.sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
+      calendars: allCalendars,
+      errors,
+    };
+  }, [accounts]);
+
+  const loadTaskData = useCallback(async () => {
+    if (!settings.syncTasks) {
+      return { tasks: [], taskTypes: [] };
+    }
+
+    const [tasksResult, taskTypesResult] = await Promise.allSettled([
+      tasksApi.getTasks(),
+      tasksApi.getTaskTypes(),
+    ]);
+
+    if (tasksResult.status === 'rejected') {
+      console.error('Failed to fetch tasks:', tasksResult.reason);
+    }
+
+    if (taskTypesResult.status === 'rejected') {
+      console.error('Failed to fetch task types:', taskTypesResult.reason);
+    }
+
+    return {
+      tasks: tasksResult.status === 'fulfilled' ? tasksResult.value : [],
+      taskTypes: taskTypesResult.status === 'fulfilled' ? taskTypesResult.value : [],
+    };
+  }, [settings.syncTasks]);
+
   const fetchEvents = useCallback(async () => {
-    const activeAccounts = accounts.filter(a => a.active);
-    
+    const rangeStart = isMobile
+      ? startOfDay(mobileAgendaStart)
+      : addDays(startOfDay(weekStart), -7);
+    const rangeEnd = isMobile
+      ? endOfDay(mobileAgendaEnd)
+      : endOfDay(addDays(getWeekEnd(weekStart, settings.weekStart), 7));
+
     setLoading(true);
     setError(null);
 
     try {
-      const startDate = new Date(weekStart);
-      startDate.setDate(startDate.getDate() - 7); 
-      const endDate = getWeekEnd(weekStart, settings.weekStart);
-      endDate.setDate(endDate.getDate() + 7);
+      const [calendarData, taskData] = await Promise.all([
+        loadCalendarRange(rangeStart, rangeEnd),
+        loadTaskData(),
+      ]);
 
-      const promises = [];
-      
-      // Google Calendar Events
-      if (activeAccounts.length > 0) {
-        activeAccounts.forEach(account => {
-          promises.push(
-            calendarApi.getEvents(
-              account,
-              startDate.toISOString(),
-              endDate.toISOString()
-            ).then(res => ({ type: 'calendar', accountEmail: account.email, ...res }))
-          );
-        });
+      if (calendarData.errors.length > 0) {
+        setError(`Failed to sync calendar: ${calendarData.errors.join(', ')}. Try reconnecting these accounts.`);
       }
 
-      // Tasks
-      const shouldSyncTasks = settings.syncTasks;
-      if (shouldSyncTasks) {
-        promises.push(tasksApi.getTasks().then(res => ({ type: 'tasks', tasks: res })));
-        promises.push(tasksApi.getTaskTypes().then(res => ({ type: 'taskTypes', taskTypes: res })));
-      }
-
-      const results = await Promise.allSettled(promises);
-      
-      let allEvents = [];
-      let allCalendars = [];
-      let allTasks = [];
-      let allTaskTypes = [];
-      let errors = [];
-
-      results.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          const data = result.value;
-          if (data.type === 'calendar') {
-            allEvents = [...allEvents, ...data.events];
-            allCalendars = [...allCalendars, ...data.calendars];
-          } else if (data.type === 'tasks') {
-            allTasks = data.tasks;
-          } else if (data.type === 'taskTypes') {
-            allTaskTypes = data.taskTypes;
-          }
-        } else {
-          console.error('Failed to fetch data:', result.reason);
-          if (result.reason.email) {
-            errors.push(result.reason.email);
-          }
-        }
-      });
-
-      if (errors.length > 0) {
-        setError(`Failed to sync calendar: ${errors.join(', ')}. Try reconnecting these accounts.`);
-      }
-
-      setEvents(allEvents);
-      setAvailableCalendars(allCalendars);
-      setTasks(allTasks);
-      setTaskTypes(allTaskTypes);
-
-      // Initialize enabled calendars if not set
-      if (enabledCalendarIds.size === 0 && allCalendars.length > 0) {
-        const selectedIds = allCalendars.filter(c => c.selected).map(c => `${c.accountEmail}-${c.id}`);
-        setEnabledCalendarIds(new Set(selectedIds.length > 0 ? selectedIds : allCalendars.map(c => `${c.accountEmail}-${c.id}`)));
-      }
+      setEvents(calendarData.events);
+      setAvailableCalendars(calendarData.calendars);
+      setTasks(taskData.tasks);
+      setTaskTypes(taskData.taskTypes);
+      initializeEnabledCalendars(calendarData.calendars);
     } catch (err) {
       console.error('Failed to fetch calendar data:', err);
       setError('Failed to load. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [weekStart, accounts, enabledCalendarIds.size, settings.syncTasks, settings.weekStart]);
+  }, [
+    isMobile,
+    mobileAgendaEnd,
+    mobileAgendaStart,
+    weekStart,
+    settings.weekStart,
+    loadCalendarRange,
+    loadTaskData,
+    initializeEnabledCalendars,
+  ]);
+
+  const loadMoreMobileAgenda = useCallback(async () => {
+    if (!isMobile || loading || isMobileAgendaLoadingMore) return;
+
+    const nextRangeStart = startOfDay(addDays(mobileAgendaEnd, 1));
+    const nextRangeEnd = endOfDay(addDays(nextRangeStart, MOBILE_AGENDA_LOAD_MORE_DAYS - 1));
+
+    setIsMobileAgendaLoadingMore(true);
+
+    try {
+      const calendarData = await loadCalendarRange(nextRangeStart, nextRangeEnd);
+
+      if (calendarData.errors.length > 0) {
+        setError(`Failed to sync calendar: ${calendarData.errors.join(', ')}. Try reconnecting these accounts.`);
+      }
+
+      setEvents((currentEvents) =>
+        mergeByKey(currentEvents, calendarData.events, getEventKey).sort(
+          (left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()
+        )
+      );
+      setAvailableCalendars((currentCalendars) =>
+        mergeByKey(currentCalendars, calendarData.calendars, getCalendarKey)
+      );
+      initializeEnabledCalendars(calendarData.calendars);
+      setMobileAgendaEnd(nextRangeEnd);
+    } catch (err) {
+      console.error('Failed to extend mobile agenda:', err);
+      setError('Failed to load more events. Please try again.');
+    } finally {
+      setIsMobileAgendaLoadingMore(false);
+    }
+  }, [
+    isMobile,
+    loading,
+    isMobileAgendaLoadingMore,
+    mobileAgendaEnd,
+    loadCalendarRange,
+    initializeEnabledCalendars,
+  ]);
 
   useEffect(() => {
     fetchEvents();
@@ -293,6 +435,38 @@ export default function Calendar() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isSettingsOpen]);
+
+  const resetMobileAgendaWindow = useCallback((anchorDate) => {
+    const nextStart = startOfDay(addDays(anchorDate, -MOBILE_AGENDA_INITIAL_PAST_DAYS));
+    const nextEnd = endOfDay(addDays(anchorDate, MOBILE_AGENDA_INITIAL_FUTURE_DAYS));
+    setMobileAgendaStart(nextStart);
+    setMobileAgendaEnd(nextEnd);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile && !previousIsMobileRef.current) {
+      resetMobileAgendaWindow(selectedDate);
+    }
+
+    if (!isMobile) {
+      setIsMobileSidebarOpen(false);
+    }
+
+    previousIsMobileRef.current = isMobile;
+  }, [isMobile, resetMobileAgendaWindow, selectedDate]);
+
+  useEffect(() => {
+    if (!isMobileSidebarOpen) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        setIsMobileSidebarOpen(false);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileSidebarOpen]);
 
   // Event Handlers
   const handleSaveEvent = async (eventData, calendarId, accountEmail, options = {}) => {
@@ -434,23 +608,45 @@ export default function Calendar() {
     const newStart = new Date(weekStart);
     newStart.setDate(newStart.getDate() - 7);
     setWeekStart(newStart);
+    setSelectedDate((current) => {
+      const nextDate = new Date(current);
+      nextDate.setDate(nextDate.getDate() - 7);
+      if (isMobile) {
+        resetMobileAgendaWindow(nextDate);
+      }
+      return nextDate;
+    });
   };
 
   const goToNextWeek = () => {
     const newStart = new Date(weekStart);
     newStart.setDate(newStart.getDate() + 7);
     setWeekStart(newStart);
+    setSelectedDate((current) => {
+      const nextDate = new Date(current);
+      nextDate.setDate(nextDate.getDate() + 7);
+      if (isMobile) {
+        resetMobileAgendaWindow(nextDate);
+      }
+      return nextDate;
+    });
   };
 
   const goToToday = () => {
     const today = new Date();
     setSelectedDate(today);
     setWeekStart(getWeekStart(today, settings.weekStart));
+    if (isMobile) {
+      resetMobileAgendaWindow(today);
+    }
   };
 
   const handleDateSelect = (date) => {
     setSelectedDate(date);
     setWeekStart(getWeekStart(date, settings.weekStart));
+    if (isMobile) {
+      resetMobileAgendaWindow(date);
+    }
   };
 
   const handleConnect = () => {
@@ -483,6 +679,15 @@ export default function Calendar() {
         </div>
 
         <div className="calHeaderRight">
+          {isMobile && accounts.length > 0 && (
+            <button
+              className="calTodayBtn calSidebarToggleBtn"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              aria-label="Open sidebar"
+            >
+              <Menu size={16} />
+            </button>
+          )}
           {accounts.length > 0 && (
             <button className="calBookBtn" onClick={() => openCreateModal()}>
               <Plus size={16} />
@@ -572,87 +777,114 @@ export default function Calendar() {
           </p>
         </div>
       ) : (
-        <div className="calLayout">
-          {/* Left Sidebar */}
-          <aside className="calSidebar">
-            <MiniCalendar
-              key={`${selectedDate.getFullYear()}-${selectedDate.getMonth()}`}
-              selectedDate={selectedDate}
-              onDateSelect={handleDateSelect}
-              events={events}
-              enabledCalendarIds={enabledCalendarIds}
-              weekStartDay={settings.weekStart}
-            />
-
-            <div className="calCalendarToggles">
-              <div className="calTogglesHeader" onClick={() => setIsMyCalendarsOpen(!isMyCalendarsOpen)}>
-                <h4 className="calTogglesTitle">My Calendars</h4>
-                <div className="calTogglesActions">
-                  <button
-                    className="calAddCalendarBtn"
-                    onClick={(e) => { e.stopPropagation(); setIsCreateCalendarModalOpen(true); }}
-                    title="Add calendar (primary account)"
-                  >
-                    <Plus size={14} />
-                  </button>
-                  <ChevronDown size={14} style={{ transform: isMyCalendarsOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
-                </div>
-              </div>
-
-              {isMyCalendarsOpen && availableCalendars
-                .filter(cal => cal.accessRole === 'owner' || cal.accessRole === 'writer')
-                .map(cal => (
-                  <label key={`${cal.accountEmail}-${cal.id}`} className="calToggleItem" style={{ '--toggle-color': cal.backgroundColor }}>
-                    <input
-                      type="checkbox"
-                      checked={enabledCalendarIds.has(`${cal.accountEmail}-${cal.id}`)}
-                      onChange={() => toggleCalendar(`${cal.accountEmail}-${cal.id}`)}
-                    />
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span className="calToggleSummary">{cal.summary}</span>
-                      <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)' }}>{cal.accountEmail}</span>
-                    </div>
-                  </label>
-                ))}
-
-              <div className="calTogglesHeader" onClick={() => setIsOtherCalendarsOpen(!isOtherCalendarsOpen)} style={{ marginTop: '15px' }}>
-                <h4 className="calTogglesTitle">Other Calendars</h4>
-                <ChevronDown size={14} style={{ transform: isOtherCalendarsOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
-              </div>
-
-              {isOtherCalendarsOpen && availableCalendars
-                .filter(cal => cal.accessRole !== 'owner' && cal.accessRole !== 'writer')
-                .map(cal => (
-                  <label key={`${cal.accountEmail}-${cal.id}`} className="calToggleItem" style={{ '--toggle-color': cal.backgroundColor }}>
-                    <input
-                      type="checkbox"
-                      checked={enabledCalendarIds.has(`${cal.accountEmail}-${cal.id}`)}
-                      onChange={() => toggleCalendar(`${cal.accountEmail}-${cal.id}`)}
-                    />
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span className="calToggleSummary">{cal.summary}</span>
-                      <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)' }}>{cal.accountEmail}</span>
-                    </div>
-                  </label>
-                ))}
-            </div>
-
-          </aside>
-
-          {/* Main Week Grid */}
-          <main className="calMain">
-            <WeekGrid
-              weekStart={weekStart}
+        isMobile ? (
+          <div className="calMobileLayout">
+            <CalendarMobileView
+              agendaStart={mobileAgendaStart}
+              agendaEnd={mobileAgendaEnd}
               events={events}
               tasks={settings.syncTasks ? tasks : []}
               enabledCalendarIds={enabledCalendarIds}
               eventCardStyle={settings.eventCardStyle}
+              isLoadingMore={isMobileAgendaLoadingMore}
+              onLoadMore={loadMoreMobileAgenda}
               onEventClick={openEditModal}
-              onSlotClick={handleSlotClick}
               onTaskClick={(task) => setDetailTaskId(task.id)}
+              onCreateForDate={openCreateModal}
             />
-          </main>
-        </div>
+
+            <div
+              className={`calMobileSidebarOverlay ${isMobileSidebarOpen ? 'isOpen' : ''}`}
+              onClick={() => setIsMobileSidebarOpen(false)}
+              aria-hidden={isMobileSidebarOpen ? 'false' : 'true'}
+            >
+              <aside
+                className={`calMobileSidebar glass ${isMobileSidebarOpen ? 'isOpen' : ''}`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="calMobileSidebarHeader">
+                  <div>
+                    <span className="calMobileSidebarLabel">Calendar Panel</span>
+                    <h2 className="calMobileSidebarTitle">Schedule sources</h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="calMobileSidebarClose"
+                    onClick={() => setIsMobileSidebarOpen(false)}
+                    aria-label="Close sidebar"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="calMobileSidebarBody">
+                  <MiniCalendar
+                    key={`${selectedDate.getFullYear()}-${selectedDate.getMonth()}`}
+                    selectedDate={selectedDate}
+                    onDateSelect={(date) => {
+                      handleDateSelect(date);
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    events={events}
+                    enabledCalendarIds={enabledCalendarIds}
+                    weekStartDay={settings.weekStart}
+                  />
+
+                  <CalendarToggles
+                    availableCalendars={availableCalendars}
+                    enabledCalendarIds={enabledCalendarIds}
+                    isMyCalendarsOpen={isMyCalendarsOpen}
+                    isOtherCalendarsOpen={isOtherCalendarsOpen}
+                    onToggleCalendar={toggleCalendar}
+                    onToggleMyCalendars={() => setIsMyCalendarsOpen((current) => !current)}
+                    onToggleOtherCalendars={() => setIsOtherCalendarsOpen((current) => !current)}
+                    onOpenCreateCalendar={() => {
+                      setIsCreateCalendarModalOpen(true);
+                      setIsMobileSidebarOpen(false);
+                    }}
+                  />
+                </div>
+              </aside>
+            </div>
+          </div>
+        ) : (
+          <div className="calLayout">
+            <aside className="calSidebar">
+              <MiniCalendar
+                key={`${selectedDate.getFullYear()}-${selectedDate.getMonth()}`}
+                selectedDate={selectedDate}
+                onDateSelect={handleDateSelect}
+                events={events}
+                enabledCalendarIds={enabledCalendarIds}
+                weekStartDay={settings.weekStart}
+              />
+
+              <CalendarToggles
+                availableCalendars={availableCalendars}
+                enabledCalendarIds={enabledCalendarIds}
+                isMyCalendarsOpen={isMyCalendarsOpen}
+                isOtherCalendarsOpen={isOtherCalendarsOpen}
+                onToggleCalendar={toggleCalendar}
+                onToggleMyCalendars={() => setIsMyCalendarsOpen((current) => !current)}
+                onToggleOtherCalendars={() => setIsOtherCalendarsOpen((current) => !current)}
+                onOpenCreateCalendar={() => setIsCreateCalendarModalOpen(true)}
+              />
+            </aside>
+
+            <main className="calMain">
+              <WeekGrid
+                weekStart={weekStart}
+                events={events}
+                tasks={settings.syncTasks ? tasks : []}
+                enabledCalendarIds={enabledCalendarIds}
+                eventCardStyle={settings.eventCardStyle}
+                onEventClick={openEditModal}
+                onSlotClick={handleSlotClick}
+                onTaskClick={(task) => setDetailTaskId(task.id)}
+              />
+            </main>
+          </div>
+        )
       )}
 
       {detailTaskId && (

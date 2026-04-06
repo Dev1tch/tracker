@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Clock, MapPin, ExternalLink, Video } from 'lucide-react';
+import { Clock, MapPin, Video } from 'lucide-react';
 
 const EVENT_COLORS = [
   '#94a3b8', // todo (slate)
@@ -32,15 +32,16 @@ export default function EventCard({ event }) {
     <div className="calEventCard" style={{ '--event-color': color }}>
       <div className="calEventHeader">
         <h4 className="calEventTitle">{event.title}</h4>
-        {event.htmlLink && (
+        {event.googleMeetLink && (
           <a
-            href={event.htmlLink}
+            href={event.googleMeetLink}
             target="_blank"
             rel="noopener noreferrer"
             className="calEventLink"
-            title="Open in Google Calendar"
+            title="Open Google Meet"
+            aria-label="Open Google Meet in a new tab"
           >
-            <ExternalLink size={14} strokeWidth={1.5} />
+            <Video size={14} strokeWidth={1.5} />
           </a>
         )}
       </div>
@@ -64,19 +65,6 @@ export default function EventCard({ event }) {
             <MapPin size={12} strokeWidth={1.5} />
             {event.location}
           </span>
-        )}
-
-        {event.googleMeetLink && (
-          <a
-            href={event.googleMeetLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="calEventMeetingLink"
-            title="Join Google Meet"
-          >
-            <Video size={12} strokeWidth={1.5} />
-            Join Google Meet
-          </a>
         )}
       </div>
     </div>
