@@ -12,7 +12,12 @@ function normaliseDateValue(value) {
   return Number.isNaN(nextDate.getTime()) ? null : nextDate;
 }
 
-export default function DateTimeField({ label, value, onChange }) {
+export default function DateTimeField({
+  label,
+  value,
+  onChange,
+  placeholder = 'Choose date and time',
+}) {
   const [isVisible, setIsVisible] = useState(false);
   const selectedDate = useMemo(() => normaliseDateValue(value), [value]);
 
@@ -21,7 +26,7 @@ export default function DateTimeField({ label, value, onChange }) {
       <Text style={styles.label}>{label}</Text>
       <Pressable onPress={() => setIsVisible(true)} style={styles.button}>
         <Text style={styles.buttonLabel}>
-          {selectedDate ? formatDateTime(selectedDate) : 'Choose date and time'}
+          {selectedDate ? formatDateTime(selectedDate) : placeholder}
         </Text>
       </Pressable>
 
@@ -30,6 +35,11 @@ export default function DateTimeField({ label, value, onChange }) {
           value={selectedDate || new Date()}
           mode="datetime"
           display={Platform.select({ ios: 'inline', android: 'default' })}
+          accentColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
+          textColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
+          themeVariant={Platform.OS === 'ios' ? 'dark' : undefined}
+          positiveButton={Platform.OS === 'android' ? { label: 'Done', textColor: theme.colors.text } : undefined}
+          negativeButton={Platform.OS === 'android' ? { label: 'Cancel', textColor: theme.colors.text } : undefined}
           onChange={(_, nextValue) => {
             if (Platform.OS !== 'ios') {
               setIsVisible(false);

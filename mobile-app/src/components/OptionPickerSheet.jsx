@@ -38,7 +38,6 @@ export default function OptionPickerSheet({
     <ModalSheet
       visible={visible}
       title={title}
-      subtitle={multiple ? 'Select one or more options.' : 'Choose one option.'}
       onClose={onClose}
       footer={onClear ? (
         <View style={styles.footer}>

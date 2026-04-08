@@ -3,7 +3,6 @@ import {
   Alert,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -123,20 +122,55 @@ function HabitStatusPill({ label, active, color, onPress }) {
   );
 }
 
-function CategoryChip({ label, active, color, onPress }) {
+function getCategoryLabel(categoryId, categories) {
+  if (!categoryId) return 'No category';
+
+  return categories.find((category) => String(category.id) === String(categoryId))?.name || '';
+}
+
+function InlineSelectMenu({
+  visible,
+  options,
+  selectedValue,
+  onSelect,
+}) {
+  if (!visible) return null;
+
   return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.categoryChip,
-        active && styles.categoryChipActive,
-      ]}
-    >
-      {color ? <View style={[styles.categoryChipDot, { backgroundColor: color }]} /> : null}
-      <Text style={[styles.categoryChipLabel, active && styles.categoryChipLabelActive]}>
-        {label}
-      </Text>
-    </Pressable>
+    <View style={styles.inlineSelectMenu}>
+      {options.map((option, index) => {
+        const selected = selectedValue === option.value;
+
+        return (
+          <Pressable
+            key={String(option.value)}
+            onPress={() => onSelect(option.value)}
+            style={[
+              styles.inlineSelectRow,
+              index === options.length - 1 ? styles.inlineSelectRowLast : null,
+              selected ? styles.inlineSelectRowSelected : null,
+            ]}
+          >
+            <View style={styles.inlineSelectMain}>
+              {option.color ? (
+                <View style={[styles.inlineSelectDot, { backgroundColor: option.color }]} />
+              ) : null}
+              <Text
+                style={[
+                  styles.inlineSelectLabel,
+                  selected ? styles.inlineSelectLabelSelected : null,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </View>
+            {selected ? (
+              <Check color={theme.colors.text} size={12} strokeWidth={2} />
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -158,6 +192,37 @@ function HabitFormModal({
   onShowCreateCategory,
   onDelete,
 }) {
+  const [activePicker, setActivePicker] = useState('');
+  const priorityOptions = useMemo(
+    () => PRIORITY_OPTIONS.map((priority) => ({
+      value: priority,
+      label: priority,
+      color: priority === 'High'
+        ? theme.colors.danger
+        : priority === 'Medium'
+          ? theme.colors.warning
+          : theme.colors.text,
+    })),
+    []
+  );
+  const categoryOptions = useMemo(
+    () => [
+      { value: '', label: 'No category' },
+      ...categories.map((category) => ({
+        value: category.id,
+        label: category.name,
+        color: category.color,
+      })),
+    ],
+    [categories]
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      setActivePicker('');
+    }
+  }, [visible]);
+
   return (
     <ModalSheet
       visible={visible}
@@ -193,53 +258,62 @@ function HabitFormModal({
         multiline
       />
 
-      <View style={styles.formSection}>
+      <View style={styles.formFieldGroup}>
         <Text style={styles.formSectionLabel}>Priority</Text>
-        <View style={styles.inlineWrap}>
-          {PRIORITY_OPTIONS.map((priority) => (
-            <HabitStatusPill
-              key={priority}
-              label={priority}
-              active={form.priority === priority}
-              color={theme.colors.accent}
-              onPress={() => onChange('priority', priority)}
-            />
-          ))}
-        </View>
+        <InlinePickerField
+          placeholder="Select priority"
+          valueLabel={form.priority || ''}
+          onPress={() => setActivePicker((current) => (current === 'priority' ? '' : 'priority'))}
+        />
+        <InlineSelectMenu
+          visible={activePicker === 'priority'}
+          options={priorityOptions}
+          selectedValue={form.priority}
+          onSelect={(value) => {
+            onChange('priority', value);
+            setActivePicker('');
+          }}
+        />
       </View>
 
-      <View style={styles.formSection}>
+      <View style={styles.formFieldGroup}>
         <View style={styles.formSectionHeader}>
           <Text style={styles.formSectionLabel}>Category</Text>
-          <Pressable onPress={onShowCreateCategory} style={styles.linkButton}>
+          <Pressable
+            onPress={() => {
+              setActivePicker('');
+              onShowCreateCategory();
+            }}
+            style={styles.linkButton}
+          >
             <Text style={styles.linkButtonText}>+ New Category</Text>
           </Pressable>
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.inlineWrap}
-        >
-          <CategoryChip
-            label="No category"
-            active={!form.category_id}
-            onPress={() => onChange('category_id', '')}
-          />
-          {categories.map((category) => (
-            <CategoryChip
-              key={category.id}
-              label={category.name}
-              color={category.color}
-              active={form.category_id === category.id}
-              onPress={() => onChange('category_id', category.id)}
-            />
-          ))}
-        </ScrollView>
+        <InlinePickerField
+          placeholder="Select category"
+          valueLabel={getCategoryLabel(form.category_id, categories)}
+          onPress={() => setActivePicker((current) => (current === 'category' ? '' : 'category'))}
+        />
+        <InlineSelectMenu
+          visible={activePicker === 'category'}
+          options={categoryOptions}
+          selectedValue={form.category_id || ''}
+          onSelect={(value) => {
+            onChange('category_id', value);
+            setActivePicker('');
+          }}
+        />
         {categoryDraftVisible ? (
           <View style={styles.inlineCategoryComposer}>
             <View style={styles.inlineCategoryHeader}>
               <Text style={styles.inlineCategoryTitle}>Create New Category</Text>
-              <Pressable onPress={onHideCreateCategory} style={styles.linkButton}>
+              <Pressable
+                onPress={() => {
+                  setActivePicker('');
+                  onHideCreateCategory();
+                }}
+                style={styles.linkButton}
+              >
                 <Text style={styles.linkButtonText}>Hide</Text>
               </Pressable>
             </View>
@@ -1238,6 +1312,52 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.12)',
     backgroundColor: 'transparent',
   },
+  inlineSelectMenu: {
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    backgroundColor: theme.colors.surfaceSoft,
+    marginTop: 2,
+  },
+  inlineSelectRow: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  inlineSelectRowLast: {
+    borderBottomWidth: 0,
+  },
+  inlineSelectRowSelected: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  inlineSelectMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  inlineSelectDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    flexShrink: 0,
+  },
+  inlineSelectLabel: {
+    color: theme.colors.secondary,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  inlineSelectLabelSelected: {
+    color: theme.colors.text,
+  },
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1320,6 +1440,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 1.4,
     textTransform: 'uppercase',
+  },
+  formFieldGroup: {
+    marginTop: 4,
+    marginBottom: 4,
+    gap: 6,
   },
   formSection: {
     marginTop: 4,
