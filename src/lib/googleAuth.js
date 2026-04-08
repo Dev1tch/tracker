@@ -20,6 +20,59 @@ export function getGoogleRedirectUri(request) {
   return `${origin}/api/google/callback`;
 }
 
+export function encodeGoogleState(value) {
+  try {
+    return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+  } catch {
+    return '';
+  }
+}
+
+export function decodeGoogleState(value) {
+  if (!value) return {};
+
+  try {
+    const decoded = Buffer.from(value, 'base64url').toString('utf8');
+    const parsed = JSON.parse(decoded);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getSafeGoogleReturnTarget(request, candidate) {
+  const fallback = request?.nextUrl?.origin || new URL(request.url).origin;
+  if (!candidate) return fallback;
+
+  try {
+    const url = new URL(candidate);
+
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin === fallback) {
+      return candidate;
+    }
+
+    if (['exp:', 'exps:', 'tracker-mobile:'].includes(url.protocol)) {
+      return candidate;
+    }
+  } catch {
+    return fallback;
+  }
+
+  return fallback;
+}
+
+export function appendQueryParamsToUrl(urlString, params = {}) {
+  const url = new URL(urlString);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  });
+
+  return url.toString();
+}
+
 export function sanitizeGoogleCredentials(credentials = {}) {
   return stripUndefinedEntries({
     access_token: normalizeTokenValue(credentials.access_token),

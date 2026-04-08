@@ -40,12 +40,11 @@ export default function OptionPickerSheet({
       title={title}
       subtitle={multiple ? 'Select one or more options.' : 'Choose one option.'}
       onClose={onClose}
-      footer={(
+      footer={onClear ? (
         <View style={styles.footer}>
-          <ActionButton label="Close" variant="ghost" onPress={onClose} />
-          {onClear ? <ActionButton label="Clear" variant="ghost" onPress={onClear} /> : null}
+          <ActionButton label="Clear" variant="ghost" onPress={onClear} />
         </View>
-      )}
+      ) : null}
     >
       <View style={styles.list}>
         {options.map((option) => {
@@ -118,7 +117,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     gap: 10,
   },
 });

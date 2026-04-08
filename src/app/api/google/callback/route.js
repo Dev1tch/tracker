@@ -1,5 +1,10 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
+import {
+  appendQueryParamsToUrl,
+  decodeGoogleState,
+  getSafeGoogleReturnTarget,
+} from '@/lib/googleAuth';
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -8,14 +13,20 @@ export async function GET(request) {
 
   const appUrl = request.nextUrl.origin;
   const redirectUri = `${appUrl}/api/google/callback`;
+  const state = decodeGoogleState(searchParams.get('state'));
+  const returnTo = getSafeGoogleReturnTarget(request, state.returnTo);
 
   if (error) {
     // User denied access — redirect back with error
-    return NextResponse.redirect(`${appUrl}?google_error=${encodeURIComponent(error)}`);
+    return NextResponse.redirect(
+      appendQueryParamsToUrl(returnTo, { google_error: error })
+    );
   }
 
   if (!code) {
-    return NextResponse.redirect(`${appUrl}?google_error=no_code`);
+    return NextResponse.redirect(
+      appendQueryParamsToUrl(returnTo, { google_error: 'no_code' })
+    );
   }
 
   try {
@@ -43,9 +54,13 @@ export async function GET(request) {
     if (userInfo.data.email) params.set('google_email', userInfo.data.email);
     if (userInfo.data.picture) params.set('google_picture', userInfo.data.picture);
 
-    return NextResponse.redirect(`${appUrl}?${params.toString()}`);
+    return NextResponse.redirect(
+      appendQueryParamsToUrl(returnTo, Object.fromEntries(params.entries()))
+    );
   } catch (err) {
     console.error('Google OAuth callback error:', err);
-    return NextResponse.redirect(`${appUrl}?google_error=token_exchange_failed`);
+    return NextResponse.redirect(
+      appendQueryParamsToUrl(returnTo, { google_error: 'token_exchange_failed' })
+    );
   }
 }

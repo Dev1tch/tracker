@@ -280,8 +280,7 @@ function TaskTypeManagerModal({
       subtitle="Reuse the task type backend and keep color-coded grouping on mobile."
       onClose={onClose}
       footer={(
-        <View style={styles.modalFooter}>
-          <ActionButton label="Close" variant="ghost" onPress={onClose} />
+        <View style={styles.modalFooterEnd}>
           <ActionButton
             label={loading ? 'Saving...' : (form.id ? 'Update' : 'Create')}
             icon={form.id ? 'checkmark' : 'add'}
@@ -344,8 +343,7 @@ function DateRangeModal({ visible, dueFrom, dueTo, onChange, onClose, onClear })
       subtitle="Filter tasks by due date."
       onClose={onClose}
       footer={(
-        <View style={styles.modalFooter}>
-          <ActionButton label="Close" variant="ghost" onPress={onClose} />
+        <View style={styles.modalFooterEnd}>
           <ActionButton label="Clear" variant="ghost" onPress={onClear} />
         </View>
       )}
@@ -1170,6 +1168,12 @@ const styles = StyleSheet.create({
   modalFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalFooterEnd: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 12,
   },

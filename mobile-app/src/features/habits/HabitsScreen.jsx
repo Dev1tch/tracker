@@ -18,6 +18,7 @@ import {
 } from 'lucide-react-native';
 
 import ActionButton from '../../components/ActionButton';
+import ColorField from '../../components/ColorField';
 import InlinePickerField from '../../components/InlinePickerField';
 import ModalSheet from '../../components/ModalSheet';
 import OptionPickerSheet from '../../components/OptionPickerSheet';
@@ -144,29 +145,31 @@ function HabitFormModal({
   categories,
   form,
   loading,
+  categoryDraft,
+  categoryDraftVisible,
+  categorySaving,
   title,
   onChange,
+  onCategoryDraftChange,
   onClose,
-  onManageCategories,
+  onCreateCategory,
+  onHideCreateCategory,
   onSave,
+  onShowCreateCategory,
   onDelete,
 }) {
   return (
     <ModalSheet
       visible={visible}
       title={title}
-      subtitle="Keep the web habit structure, but make it faster to update from your phone."
       onClose={onClose}
+      headerActions={onDelete ? (
+        <Pressable hitSlop={10} onPress={onDelete} style={styles.modalHeaderIconButton}>
+          <Trash2 size={18} color={theme.colors.danger} strokeWidth={1.7} />
+        </Pressable>
+      ) : null}
       footer={(
-        <View style={styles.modalFooter}>
-          {onDelete ? (
-            <ActionButton
-              label="Delete"
-              variant="ghost"
-              icon="trash-outline"
-              onPress={onDelete}
-            />
-          ) : <View />}
+        <View style={styles.modalFooterEnd}>
           <ActionButton
             label={loading ? 'Saving...' : 'Save habit'}
             icon="checkmark"
@@ -208,8 +211,8 @@ function HabitFormModal({
       <View style={styles.formSection}>
         <View style={styles.formSectionHeader}>
           <Text style={styles.formSectionLabel}>Category</Text>
-          <Pressable onPress={onManageCategories} style={styles.linkButton}>
-            <Text style={styles.linkButtonText}>Manage</Text>
+          <Pressable onPress={onShowCreateCategory} style={styles.linkButton}>
+            <Text style={styles.linkButtonText}>+ New Category</Text>
           </Pressable>
         </View>
         <ScrollView
@@ -232,6 +235,36 @@ function HabitFormModal({
             />
           ))}
         </ScrollView>
+        {categoryDraftVisible ? (
+          <View style={styles.inlineCategoryComposer}>
+            <View style={styles.inlineCategoryHeader}>
+              <Text style={styles.inlineCategoryTitle}>Create New Category</Text>
+              <Pressable onPress={onHideCreateCategory} style={styles.linkButton}>
+                <Text style={styles.linkButtonText}>Hide</Text>
+              </Pressable>
+            </View>
+            <TextField
+              label="Category Name"
+              placeholder="Health"
+              value={categoryDraft.name}
+              onChangeText={(value) => onCategoryDraftChange('name', value)}
+            />
+            <ColorField
+              label="Category Color"
+              value={categoryDraft.color}
+              onChange={(value) => onCategoryDraftChange('color', value)}
+              presetColors={CATEGORY_COLOR_PRESETS}
+            />
+            <View style={styles.modalFooterEnd}>
+              <ActionButton
+                label={categorySaving ? 'Saving...' : 'Save category'}
+                icon="checkmark"
+                onPress={onCreateCategory}
+                disabled={categorySaving || !categoryDraft.name.trim()}
+              />
+            </View>
+          </View>
+        ) : null}
       </View>
     </ModalSheet>
   );
@@ -255,8 +288,7 @@ function CategoryManagerModal({
       subtitle="Organize the same category model used on the web app."
       onClose={onClose}
       footer={(
-        <View style={styles.modalFooter}>
-          <ActionButton label="Close" variant="ghost" onPress={onClose} />
+        <View style={styles.modalFooterEnd}>
           <ActionButton
             label={loading ? 'Saving...' : (form.id ? 'Update' : 'Create')}
             icon={form.id ? 'checkmark' : 'add'}
@@ -272,26 +304,12 @@ function CategoryManagerModal({
         value={form.name}
         onChangeText={(value) => onChange('name', value)}
       />
-      <TextField
-        label="Color"
-        placeholder="#60a5fa"
-        autoCapitalize="none"
+      <ColorField
+        label="Category Color"
         value={form.color}
-        onChangeText={(value) => onChange('color', value)}
+        onChange={(value) => onChange('color', value)}
+        presetColors={CATEGORY_COLOR_PRESETS}
       />
-      <View style={styles.inlineWrap}>
-        {CATEGORY_COLOR_PRESETS.map((color) => (
-          <Pressable
-            key={color}
-            onPress={() => onChange('color', color)}
-            style={[
-              styles.colorSwatch,
-              { backgroundColor: color },
-              form.color === color ? styles.colorSwatchActive : null,
-            ]}
-          />
-        ))}
-      </View>
 
       <View style={styles.categoryList}>
         {categories.map((category) => (
@@ -334,8 +352,7 @@ function LogModal({
       subtitle={date ? formatFullDate(date) : 'Choose how the habit went today.'}
       onClose={onClose}
       footer={(
-        <View style={styles.modalFooter}>
-          <ActionButton label="Cancel" variant="ghost" onPress={onClose} />
+        <View style={styles.modalFooterEnd}>
           <ActionButton
             label={loading ? 'Saving...' : 'Save log'}
             icon="checkmark"
@@ -386,6 +403,7 @@ export default function HabitsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [savingHabit, setSavingHabit] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
+  const [savingInlineCategory, setSavingInlineCategory] = useState(false);
   const [savingLog, setSavingLog] = useState(false);
   const [habitFormVisible, setHabitFormVisible] = useState(false);
   const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
@@ -395,9 +413,11 @@ export default function HabitsScreen() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [habitForm, setHabitForm] = useState(EMPTY_HABIT_FORM);
   const [categoryForm, setCategoryForm] = useState(EMPTY_CATEGORY_FORM);
+  const [inlineCategoryForm, setInlineCategoryForm] = useState(EMPTY_CATEGORY_FORM);
   const [logForm, setLogForm] = useState({ status: '', comment: '' });
   const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
+  const [isInlineCategoryVisible, setIsInlineCategoryVisible] = useState(false);
 
   const displayDates = useMemo(() => getDisplayDates(currentDisplayDate), [currentDisplayDate]);
   const rangeLabel = useMemo(() => getHeaderLabel(displayDates), [displayDates]);
@@ -468,6 +488,8 @@ export default function HabitsScreen() {
   const openCreateHabit = () => {
     setEditingHabit(null);
     setHabitForm(EMPTY_HABIT_FORM);
+    setInlineCategoryForm(EMPTY_CATEGORY_FORM);
+    setIsInlineCategoryVisible(false);
     setHabitFormVisible(true);
   };
 
@@ -479,6 +501,8 @@ export default function HabitsScreen() {
       priority: habit.priority || 'Normal',
       category_id: habit.category_id || '',
     });
+    setInlineCategoryForm(EMPTY_CATEGORY_FORM);
+    setIsInlineCategoryVisible(false);
     setHabitFormVisible(true);
   };
 
@@ -626,6 +650,35 @@ export default function HabitsScreen() {
       addToast(error?.message || 'Failed to save category.', 'error');
     } finally {
       setSavingCategory(false);
+    }
+  };
+
+  const handleInlineCategoryChange = (field, value) => {
+    setInlineCategoryForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleCreateInlineCategory = async () => {
+    if (!inlineCategoryForm.name.trim()) return;
+
+    setSavingInlineCategory(true);
+
+    try {
+      const createdCategory = await categoriesApi.createCategory({
+        name: inlineCategoryForm.name.trim(),
+        color: inlineCategoryForm.color.trim() || '#60a5fa',
+        icon: 'circle',
+      });
+
+      setCategories((current) => [...current, createdCategory]);
+      setHabitForm((current) => ({ ...current, category_id: createdCategory.id }));
+      setInlineCategoryForm(EMPTY_CATEGORY_FORM);
+      setIsInlineCategoryVisible(false);
+      addToast('Category created.');
+    } catch (error) {
+      console.error('Failed to create category', error);
+      addToast(error?.message || 'Failed to create category.', 'error');
+    } finally {
+      setSavingInlineCategory(false);
     }
   };
 
@@ -894,10 +947,26 @@ export default function HabitsScreen() {
         categories={categories}
         form={habitForm}
         loading={savingHabit}
+        categoryDraft={inlineCategoryForm}
+        categoryDraftVisible={isInlineCategoryVisible}
+        categorySaving={savingInlineCategory}
         onChange={(field, value) => setHabitForm((current) => ({ ...current, [field]: value }))}
-        onClose={() => setHabitFormVisible(false)}
-        onManageCategories={() => setCategoryManagerVisible(true)}
+        onCategoryDraftChange={handleInlineCategoryChange}
+        onClose={() => {
+          setHabitFormVisible(false);
+          setInlineCategoryForm(EMPTY_CATEGORY_FORM);
+          setIsInlineCategoryVisible(false);
+        }}
+        onCreateCategory={handleCreateInlineCategory}
+        onHideCreateCategory={() => {
+          setInlineCategoryForm(EMPTY_CATEGORY_FORM);
+          setIsInlineCategoryVisible(false);
+        }}
         onSave={handleSaveHabit}
+        onShowCreateCategory={() => {
+          setInlineCategoryForm(EMPTY_CATEGORY_FORM);
+          setIsInlineCategoryVisible(true);
+        }}
         onDelete={editingHabit ? handleDeleteHabit : null}
       />
 
@@ -1221,6 +1290,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  modalFooterEnd: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalHeaderIconButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 2,
+  },
+  inlineCategoryComposer: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderDim,
+    gap: 12,
+  },
+  inlineCategoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  inlineCategoryTitle: {
+    color: theme.colors.text,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
   formSection: {
     marginTop: 4,
     marginBottom: 4,
@@ -1247,16 +1347,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 1.4,
     textTransform: 'uppercase',
-  },
-  colorSwatch: {
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  colorSwatchActive: {
-    borderColor: theme.colors.text,
   },
   categoryList: {
     marginTop: 8,

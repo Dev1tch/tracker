@@ -55,12 +55,11 @@ export default function TabLayout() {
         name="habits"
         options={{
           title: 'Habits',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color }) => (
             <CheckCircle2
               size={24}
               color={color}
               strokeWidth={1.5}
-              style={focused ? { transform: [{ translateY: -3 }] } : null}
             />
           ),
         }}
@@ -69,12 +68,11 @@ export default function TabLayout() {
         name="tasks"
         options={{
           title: 'Tasks',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color }) => (
             <ListTodo
               size={24}
               color={color}
               strokeWidth={1.5}
-              style={focused ? { transform: [{ translateY: -3 }] } : null}
             />
           ),
         }}
@@ -83,12 +81,11 @@ export default function TabLayout() {
         name="calendar"
         options={{
           title: 'Calendar',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color }) => (
             <CalendarDays
               size={24}
               color={color}
               strokeWidth={1.5}
-              style={focused ? { transform: [{ translateY: -3 }] } : null}
             />
           ),
         }}
@@ -97,12 +94,11 @@ export default function TabLayout() {
         name="finance"
         options={{
           title: 'Finance',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color }) => (
             <LineChart
               size={24}
               color={color}
               strokeWidth={1.5}
-              style={focused ? { transform: [{ translateY: -3 }] } : null}
             />
           ),
         }}

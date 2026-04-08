@@ -193,8 +193,7 @@ function CreateCalendarModal({
       subtitle="This uses the same Google calendar creation route as the web app."
       onClose={onClose}
       footer={(
-        <View style={styles.modalFooter}>
-          <ActionButton label="Cancel" variant="ghost" onPress={onClose} />
+        <View style={styles.modalFooterEnd}>
           <ActionButton
             label={loading ? 'Saving...' : 'Create'}
             icon="add"
@@ -1131,6 +1130,12 @@ const styles = StyleSheet.create({
   modalFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalFooterEnd: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 12,
   },

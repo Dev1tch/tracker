@@ -1,14 +1,39 @@
 export const AUTH_CHANGE_EVENT = 'life-tracker:auth-change';
 
+import {
+  handleUnauthorized,
+  notifyAuthChange,
+  readStoredValue,
+  resolveApiUrl,
+  writeStoredValue,
+} from './runtime.js';
+
+function canDispatchBrowserEvents() {
+  return typeof window !== 'undefined'
+    && typeof window.dispatchEvent === 'function'
+    && typeof Event === 'function';
+}
+
 export class ApiClient {
-  constructor(baseUrl = '/api/v1') {
+  constructor(baseUrl = null) {
     this.baseUrl = baseUrl;
-    this.token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    this.token = null;
+    this.hasHydratedToken = false;
+  }
+
+  getResolvedBaseUrl() {
+    return this.baseUrl;
+  }
+
+  hydrateToken(token) {
+    this.token = token || null;
+    this.hasHydratedToken = true;
   }
 
   getToken() {
-    if (typeof window !== 'undefined') {
-      this.token = localStorage.getItem('token');
+    if (!this.hasHydratedToken) {
+      this.token = readStoredValue('token');
+      this.hasHydratedToken = true;
     }
 
     return this.token;
@@ -17,26 +42,26 @@ export class ApiClient {
   setToken(token) {
     const nextToken = token || null;
     this.token = nextToken;
+    this.hasHydratedToken = true;
 
-    if (typeof window !== 'undefined') {
-      if (nextToken) {
-        localStorage.setItem('token', nextToken);
-      } else {
-        localStorage.removeItem('token');
-      }
+    writeStoredValue('token', nextToken);
 
+    if (canDispatchBrowserEvents()) {
       window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
     }
+
+    notifyAuthChange(nextToken);
   }
 
   async request(path, options = {}) {
-    const url = `${this.baseUrl}${path}`;
+    const url = resolveApiUrl(path, this.getResolvedBaseUrl());
     const headers = {
       ...options.headers,
     };
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    const token = this.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     // Default to JSON if content-type is not set
@@ -59,12 +84,12 @@ export class ApiClient {
 
       if (!response.ok) {
         // Handle Unauthorized / Token Expiry globally
-        if (response.status === 401 && typeof window !== 'undefined') {
+        if (response.status === 401) {
           this.setToken(null);
-          window.location.reload();
+          handleUnauthorized({ response, data });
         }
 
-        const error = new Error(data.detail || response.statusText || 'API Request Failed');
+        const error = new Error(this.getErrorMessage(data, response));
         error.status = response.status;
         error.data = data;
         throw error;
@@ -83,6 +108,46 @@ export class ApiClient {
       return await response.json();
     }
     return await response.text();
+  }
+
+  getErrorMessage(data, response) {
+    const detail = data?.detail;
+
+    if (typeof detail === 'string' && detail.trim()) {
+      return detail;
+    }
+
+    if (Array.isArray(detail) && detail.length > 0) {
+      const message = detail
+        .map((item) => {
+          if (typeof item === 'string') return item;
+
+          const field = Array.isArray(item?.loc) ? item.loc[item.loc.length - 1] : null;
+          const label = field ? `${field}: ` : '';
+          const text = typeof item?.msg === 'string' ? item.msg : null;
+          return text ? `${label}${text}` : null;
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      if (message) {
+        return message;
+      }
+    }
+
+    if (typeof data?.message === 'string' && data.message.trim()) {
+      return data.message;
+    }
+
+    if (typeof data?.error === 'string' && data.error.trim()) {
+      return data.error;
+    }
+
+    if (typeof data === 'string' && data.trim()) {
+      return data;
+    }
+
+    return response.statusText || 'API Request Failed';
   }
 
   get(path, options = {}) {
@@ -111,13 +176,15 @@ export class ApiClient {
   async postForm(path, data, options = {}) {
     const params = new URLSearchParams();
     for (const key in data) {
-      params.append(key, data[key]);
+      if (data[key] !== undefined && data[key] !== null) {
+        params.append(key, String(data[key]));
+      }
     }
 
     return this.request(path, {
       ...options,
       method: 'POST',
-      body: params,
+      body: params.toString(),
       headers: {
         ...options.headers,
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -127,5 +194,4 @@ export class ApiClient {
 }
 
 
-export const apiClient = new ApiClient('https://tracker-backend-mocha.vercel.app/api/v1');
-// export const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1');
+export const apiClient = new ApiClient();

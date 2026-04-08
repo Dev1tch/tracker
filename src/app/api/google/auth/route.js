@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
+import { encodeGoogleState, getSafeGoogleReturnTarget } from '@/lib/googleAuth';
 
 export async function GET(request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -8,6 +9,10 @@ export async function GET(request) {
   // Use the current request origin for the redirect URI
   const appUrl = request.nextUrl.origin;
   const redirectUri = `${appUrl}/api/google/callback`;
+  const returnTo = getSafeGoogleReturnTarget(
+    request,
+    request.nextUrl.searchParams.get('return_to')
+  );
 
   if (!clientId || !clientSecret) {
     return NextResponse.json(
@@ -28,6 +33,9 @@ export async function GET(request) {
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
     ],
+    state: encodeGoogleState({
+      returnTo: returnTo !== appUrl ? returnTo : null,
+    }),
   });
 
   return NextResponse.redirect(authUrl);

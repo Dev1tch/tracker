@@ -9,7 +9,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { X } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { theme } from '../theme';
 
@@ -19,8 +20,11 @@ export default function ModalSheet({
   subtitle,
   children,
   footer,
+  headerActions,
   onClose,
 }) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal
       animationType="slide"
@@ -33,15 +37,18 @@ export default function ModalSheet({
         style={styles.overlay}
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 10, 18) }]}>
           <View style={styles.header}>
             <View style={styles.headerText}>
               <Text style={styles.title}>{title}</Text>
               {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
             </View>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={20} color={theme.colors.text} />
-            </Pressable>
+            <View style={styles.headerActions}>
+              {headerActions}
+              <Pressable hitSlop={10} onPress={onClose} style={styles.closeButton}>
+                <X size={18} color={theme.colors.text} strokeWidth={1.7} />
+              </Pressable>
+            </View>
           </View>
 
           <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView>
@@ -67,11 +74,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.backgroundAlt,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 18,
     gap: 14,
   },
   header: {
@@ -82,6 +88,11 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
     gap: 4,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   title: {
     color: theme.colors.text,
@@ -96,14 +107,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   closeButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: theme.colors.borderDim,
+    padding: 2,
   },
   content: {
     gap: 14,
