@@ -13,6 +13,10 @@ export default function ScreenShell({
   children,
   refreshControl,
   showPageHeader = true,
+  onScroll,
+  scrollEventThrottle,
+  scrollViewRef,
+  contentContainerStyle,
 }) {
   const { logout } = useAuth();
   const activeLabel = title ? title.toLowerCase() : '';
@@ -35,8 +39,11 @@ export default function ScreenShell({
         </View>
 
         <ScrollView
+          ref={scrollViewRef}
+          onScroll={onScroll}
+          scrollEventThrottle={scrollEventThrottle}
           refreshControl={refreshControl}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, contentContainerStyle]}
           showsVerticalScrollIndicator={false}
         >
           {title && showPageHeader ? (

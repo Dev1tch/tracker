@@ -685,7 +685,7 @@ function DateRangeModal({ visible, dueFrom, dueTo, onChange, onClose, onClear })
   );
 }
 
-export default function TasksScreen() {
+export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = '' } = {}) {
   const addToast = useToast();
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
@@ -714,6 +714,7 @@ export default function TasksScreen() {
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const autosaveTimerRef = useRef(null);
   const lastSavedFingerprintRef = useRef('');
+  const handledRouteOpenRef = useRef('');
 
   const selectedTaskIdSet = useMemo(() => new Set(selectedTaskIds), [selectedTaskIds]);
   const taskTypeById = useMemo(
@@ -888,6 +889,19 @@ export default function TasksScreen() {
     lastSavedFingerprintRef.current = JSON.stringify(buildTaskPayload(task, normalizedForm));
     setTaskModalVisible(true);
   }, []);
+
+  useEffect(() => {
+    if (!routeOpenTaskId || !routeOpenTaskAt) return;
+
+    const routeKey = `${routeOpenTaskId}:${routeOpenTaskAt}`;
+    if (handledRouteOpenRef.current === routeKey) return;
+
+    const task = tasks.find((item) => String(item.id) === String(routeOpenTaskId));
+    if (!task) return;
+
+    handledRouteOpenRef.current = routeKey;
+    openTask(task);
+  }, [openTask, routeOpenTaskAt, routeOpenTaskId, tasks]);
 
   const closeTaskModal = useCallback(() => {
     if (autosaveTimerRef.current) {

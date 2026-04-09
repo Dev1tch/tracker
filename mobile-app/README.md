@@ -45,7 +45,15 @@ Required values:
   - needed for mobile Google Calendar OAuth and `/api/google/*` routes
 
 For real-device testing, `EXPO_PUBLIC_WEB_APP_URL` must be reachable from the phone.
-If you run the Next app locally, use your machine’s LAN IP instead of `localhost`.
+If you run the Next app locally, a LAN IP is enough for normal app traffic, but Google Calendar OAuth on a real iPhone needs a public HTTPS URL for the Next app callback.
+
+For Google Calendar on a physical device, also set `GOOGLE_NEXT_PUBLIC_APP_URL` in the root `.env.development` to the same public HTTPS URL and add:
+
+```bash
+https://your-public-url.example/api/google/callback
+```
+
+to the Google Cloud OAuth client’s authorized redirect URIs.
 
 Example:
 
