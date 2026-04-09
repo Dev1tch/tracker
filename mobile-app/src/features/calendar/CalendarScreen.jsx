@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -25,12 +24,10 @@ import {
   MapPin,
   Menu,
   Plus,
-  RefreshCw,
   Settings2,
   Trash2,
   User,
   Video,
-  X,
 } from 'lucide-react-native';
 
 import ActionButton from '../../components/ActionButton';
@@ -67,7 +64,7 @@ const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thr', 'Fri', 'Sat'];
 const MOBILE_AGENDA_INITIAL_PAST_DAYS = 7;
 const MOBILE_AGENDA_INITIAL_FUTURE_DAYS = 21;
 const MOBILE_AGENDA_LOAD_MORE_DAYS = 14;
@@ -566,6 +563,7 @@ function MiniCalendarPanel({
         {calendarDays.map((cell) => {
           const isToday = isSameCalendarDay(cell.date, new Date());
           const isSelected = selectedDate && isSameCalendarDay(cell.date, selectedDate);
+          const showDot = cell.isCurrentMonth && hasEvents(cell.date);
 
           return (
             <Pressable
@@ -574,22 +572,28 @@ function MiniCalendarPanel({
               style={[
                 styles.miniCalendarCell,
                 !cell.isCurrentMonth ? styles.miniCalendarCellOther : null,
-                isToday ? styles.miniCalendarCellToday : null,
-                isSelected ? styles.miniCalendarCellSelected : null,
               ]}
             >
-              <Text
+              <View
                 style={[
-                  styles.miniCalendarCellLabel,
-                  isToday ? styles.miniCalendarCellLabelToday : null,
-                  isSelected ? styles.miniCalendarCellLabelSelected : null,
+                  styles.miniCalendarCellIndicator,
+                  isToday ? styles.miniCalendarCellToday : null,
+                  isSelected ? styles.miniCalendarCellSelected : null,
                 ]}
               >
-                {cell.day}
-              </Text>
-              {cell.isCurrentMonth && hasEvents(cell.date) ? (
-                <View style={styles.miniCalendarDot} />
-              ) : null}
+                <Text
+                  style={[
+                    styles.miniCalendarCellLabel,
+                    isToday ? styles.miniCalendarCellLabelToday : null,
+                    isSelected ? styles.miniCalendarCellLabelSelected : null,
+                  ]}
+                >
+                  {cell.day}
+                </Text>
+              </View>
+              <View style={styles.miniCalendarDot}>
+                {showDot ? <View style={styles.miniCalendarDotInner} /> : null}
+              </View>
             </Pressable>
           );
         })}
@@ -731,46 +735,25 @@ function SidebarModal({
   onClose,
 }) {
   return (
-    <Modal
-      animationType="fade"
-      transparent
-      visible={visible}
-      onRequestClose={onClose}
-    >
-      <View style={styles.sidebarOverlay}>
-        <Pressable style={styles.sidebarBackdrop} onPress={onClose} />
-        <View style={styles.sidebarPanel}>
-          <View style={styles.sidebarHeader}>
-            <View>
-              <Text style={styles.sidebarLabel}>Calendar Panel</Text>
-              <Text style={styles.sidebarTitle}>Schedule sources</Text>
-            </View>
-            <FramelessIconButton icon={X} onPress={onClose} />
-          </View>
-
-          <ScrollView style={styles.sidebarBody} showsVerticalScrollIndicator={false}>
-            <MiniCalendarPanel
-              selectedDate={selectedDate}
-              onDateSelect={onDateSelect}
-              events={events}
-              enabledCalendarIds={enabledCalendarIds}
-              weekStartDay={weekStartDay}
-            />
-
-            <CalendarTogglesPanel
-              availableCalendars={availableCalendars}
-              enabledCalendarIds={enabledCalendarIds}
-              isMyCalendarsOpen={isMyCalendarsOpen}
-              isOtherCalendarsOpen={isOtherCalendarsOpen}
-              onToggleCalendar={onToggleCalendar}
-              onToggleMyCalendars={onToggleMyCalendars}
-              onToggleOtherCalendars={onToggleOtherCalendars}
-              onOpenCreateCalendar={onOpenCreateCalendar}
-            />
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    <ModalSheet visible={visible} title="Calendar" onClose={onClose}>
+      <MiniCalendarPanel
+        selectedDate={selectedDate}
+        onDateSelect={onDateSelect}
+        events={events}
+        enabledCalendarIds={enabledCalendarIds}
+        weekStartDay={weekStartDay}
+      />
+      <CalendarTogglesPanel
+        availableCalendars={availableCalendars}
+        enabledCalendarIds={enabledCalendarIds}
+        isMyCalendarsOpen={isMyCalendarsOpen}
+        isOtherCalendarsOpen={isOtherCalendarsOpen}
+        onToggleCalendar={onToggleCalendar}
+        onToggleMyCalendars={onToggleMyCalendars}
+        onToggleOtherCalendars={onToggleOtherCalendars}
+        onOpenCreateCalendar={onOpenCreateCalendar}
+      />
+    </ModalSheet>
   );
 }
 
@@ -1839,9 +1822,6 @@ export default function CalendarScreen() {
             <FramelessIconButton icon={ChevronLeft} color={theme.colors.tertiary} onPress={goToPrevWeek} />
             <FramelessIconButton icon={ChevronRight} color={theme.colors.tertiary} onPress={goToNextWeek} />
             <FramelessIconButton icon={Settings2} color={theme.colors.tertiary} onPress={() => setSettingsVisible(true)} />
-            {accounts.length > 0 ? (
-              <FramelessIconButton icon={RefreshCw} color={theme.colors.tertiary} onPress={() => refreshCalendarData({ silent: true })} />
-            ) : null}
           </View>
         </View>
 
@@ -2436,52 +2416,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
   },
-  sidebarOverlay: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: 'rgba(0, 0, 0, 0.44)',
-  },
-  sidebarBackdrop: {
-    flex: 1,
-  },
-  sidebarPanel: {
-    width: '80%',
-    maxWidth: 420,
-    backgroundColor: 'rgba(0, 0, 0, 0.94)',
-    borderRightWidth: 1,
-    borderRightColor: theme.colors.border,
-    shadowColor: '#000000',
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    shadowOffset: { width: 20, height: 0 },
-  },
-  sidebarHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderDim,
-  },
-  sidebarLabel: {
-    color: theme.colors.tertiary,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  sidebarTitle: {
-    marginTop: 6,
-    color: theme.colors.secondary,
-    fontSize: 14,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  sidebarBody: {
-    flex: 1,
-  },
   miniCalendar: {
     paddingHorizontal: 12,
     paddingTop: 12,
@@ -2524,14 +2458,18 @@ const styles = StyleSheet.create({
   },
   miniCalendarCell: {
     width: '14.2857%',
-    aspectRatio: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    borderRadius: 999,
+    paddingVertical: 2,
   },
   miniCalendarCellOther: {
     opacity: 0.25,
+  },
+  miniCalendarCellIndicator: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   miniCalendarCellToday: {
     backgroundColor: theme.colors.text,
@@ -2553,11 +2491,15 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   miniCalendarDot: {
-    position: 'absolute',
-    bottom: 2,
+    height: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  miniCalendarDotInner: {
     width: 3,
     height: 3,
-    borderRadius: 999,
+    borderRadius: 1.5,
     backgroundColor: '#34D399',
   },
   calendarTogglesPanel: {
