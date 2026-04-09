@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 export default function HabitLogModal({ habit, date, existingLog, onClose, onSave }) {
-  const [status, setStatus] = useState('empty');
-  const [notes, setNotes] = useState('');
-  
-  useEffect(() => {
-    if (existingLog) {
-      setStatus(existingLog.is_successful !== undefined ? (existingLog.is_successful ? 'completed' : 'failed') : 'empty');
-      setNotes(existingLog.comment || '');
-    }
-  }, [existingLog]);
+  const [status, setStatus] = useState(
+    existingLog
+      ? (existingLog.is_successful ? 'completed' : 'failed')
+      : 'empty'
+  );
+  const [notes, setNotes] = useState(existingLog?.comment || '');
 
   const handleSubmit = (e) => {
     e.preventDefault();

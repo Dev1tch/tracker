@@ -1,0 +1,25 @@
+export const theme = {
+  colors: {
+    background: '#000000',
+    backgroundAlt: '#060606',
+    card: 'rgba(10, 10, 10, 0.92)',
+    cardSoft: 'rgba(14, 14, 14, 0.96)',
+    surface: 'rgba(18, 18, 18, 0.96)',
+    surfaceSoft: 'rgba(255, 255, 255, 0.03)',
+    border: 'rgba(255, 255, 255, 0.16)',
+    borderDim: 'rgba(255, 255, 255, 0.1)',
+    text: '#ffffff',
+    secondary: 'rgba(255, 255, 255, 0.72)',
+    tertiary: 'rgba(255, 255, 255, 0.48)',
+    muted: 'rgba(255, 255, 255, 0.3)',
+    accent: '#ffffff',
+    success: '#34d399',
+    danger: '#ff4d4d',
+    warning: '#fbbf24',
+    info: '#60a5fa',
+  },
+  gradients: {
+    app: ['#000000', '#060606', '#000000'],
+    auth: ['#000000', '#060606', '#000000'],
+  },
+};

@@ -443,6 +443,7 @@ export default function HabitTracker() {
 
       {isLogModalOpen && (
         <HabitLogModal 
+          key={`${selectedHabit?.id || 'habit'}-${selectedDate ? getLocalYYYYMMDD(selectedDate) : 'date'}`}
           habit={selectedHabit}
           date={selectedDate}
           existingLog={logs[selectedHabit?.id]?.[selectedDate ? getLocalYYYYMMDD(selectedDate) : '']}

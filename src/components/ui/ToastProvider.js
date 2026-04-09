@@ -7,6 +7,15 @@ const ToastContext = createContext(null);
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
+  const removeToast = useCallback((id) => {
+    setToasts((prev) => 
+      prev.map(toast => toast.id === id ? { ...toast, isClosing: true } : toast)
+    );
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 300); // Matches the 0.3s CSS animation duration
+  }, []);
+
   const addToast = useCallback((message, type = 'success', duration = 2000) => {
     const id = Date.now().toString() + Math.random().toString();
     const newToast = { id, message, type, duration };
@@ -18,16 +27,7 @@ export function ToastProvider({ children }) {
         removeToast(id);
       }, duration);
     }
-  }, []);
-
-  const removeToast = useCallback((id) => {
-    setToasts((prev) => 
-      prev.map(toast => toast.id === id ? { ...toast, isClosing: true } : toast)
-    );
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    }, 300); // Matches the 0.3s CSS animation duration
-  }, []);
+  }, [removeToast]);
 
   return (
     <ToastContext.Provider value={addToast}>

@@ -1,21 +1,42 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
+import {
+  appendQueryParamsToUrl,
+  buildNativeRedirectHtml,
+  decodeGoogleState,
+  getGoogleRedirectUri,
+  getGoogleRequestOrigin,
+  getSafeGoogleReturnTarget,
+  isNativeGoogleReturnTarget,
+} from '@/lib/googleAuth';
+
+function redirectToTarget(returnTo, params = {}) {
+  const url = appendQueryParamsToUrl(returnTo, params);
+  if (isNativeGoogleReturnTarget(returnTo)) {
+    return new Response(buildNativeRedirectHtml(url), {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
+  return NextResponse.redirect(url);
+}
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
-  const appUrl = request.nextUrl.origin;
-  const redirectUri = `${appUrl}/api/google/callback`;
+  const appUrl = getGoogleRequestOrigin(request);
+  const redirectUri = getGoogleRedirectUri(request);
+  const state = decodeGoogleState(searchParams.get('state'));
+  const returnTo = getSafeGoogleReturnTarget(request, state.returnTo);
 
   if (error) {
     // User denied access — redirect back with error
-    return NextResponse.redirect(`${appUrl}?google_error=${encodeURIComponent(error)}`);
+    return redirectToTarget(returnTo, { google_error: error });
   }
 
   if (!code) {
-    return NextResponse.redirect(`${appUrl}?google_error=no_code`);
+    return redirectToTarget(returnTo, { google_error: 'no_code' });
   }
 
   try {
@@ -43,9 +64,9 @@ export async function GET(request) {
     if (userInfo.data.email) params.set('google_email', userInfo.data.email);
     if (userInfo.data.picture) params.set('google_picture', userInfo.data.picture);
 
-    return NextResponse.redirect(`${appUrl}?${params.toString()}`);
+    return redirectToTarget(returnTo, Object.fromEntries(params.entries()));
   } catch (err) {
     console.error('Google OAuth callback error:', err);
-    return NextResponse.redirect(`${appUrl}?google_error=token_exchange_failed`);
+    return redirectToTarget(returnTo, { google_error: 'token_exchange_failed' });
   }
 }

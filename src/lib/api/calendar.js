@@ -1,3 +1,5 @@
+import { readStoredValue, resolveWebAppUrl, writeStoredValue } from './runtime.js';
+
 const STORAGE_KEY = 'google_calendar_tokens';
 export const SCOPES = {
   CALENDAR: 'https://www.googleapis.com/auth/calendar',
@@ -6,6 +8,10 @@ export const SCOPES = {
 };
 
 export class CalendarApi {
+  constructor() {
+    this.accountsCache = null;
+  }
+
   normalizeScope(scope) {
     if (Array.isArray(scope)) {
       return [...new Set(scope.filter((value) => typeof value === 'string' && value))];
@@ -45,12 +51,19 @@ export class CalendarApi {
     };
   }
 
+  hydrateAccounts(accounts = []) {
+    this.accountsCache = accounts
+      .map((account) => this.normalizeAccount(account))
+      .filter((account) => account.email);
+  }
+
   saveAccounts(accounts) {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(accounts.map((account) => this.normalizeAccount(account)))
-    );
+    const normalizedAccounts = accounts
+      .map((account) => this.normalizeAccount(account))
+      .filter((account) => account.email);
+
+    this.accountsCache = normalizedAccounts;
+    writeStoredValue(STORAGE_KEY, JSON.stringify(normalizedAccounts));
   }
 
   syncAccountReference(targetAccount, nextAccount) {
@@ -59,7 +72,7 @@ export class CalendarApi {
   }
 
   upsertAccount(email, updates = {}, targetAccount = null) {
-    if (typeof window === 'undefined' || !email) return null;
+    if (!email) return null;
 
     const accounts = this.getAccounts();
     const existingIndex = accounts.findIndex((account) => account.email === email);
@@ -127,8 +140,15 @@ export class CalendarApi {
   /**
    * Start the Google OAuth flow — redirects to the auth API route
    */
-  getAuthUrl() {
-    return '/api/google/auth';
+  getAuthUrl(options = {}) {
+    const authUrl = new URL(resolveWebAppUrl('/api/google/auth'), 'http://local.placeholder');
+
+    if (options.returnTo) {
+      authUrl.searchParams.set('return_to', options.returnTo);
+    }
+
+    const resolvedUrl = authUrl.toString();
+    return resolvedUrl.replace('http://local.placeholder', '');
   }
 
   /**
@@ -139,7 +159,10 @@ export class CalendarApi {
     if (timeMin) params.set('time_min', timeMin);
     if (timeMax) params.set('time_max', timeMax);
 
-    const data = await this.requestJson(`/api/google/events?${params.toString()}`, account);
+    const data = await this.requestJson(
+      resolveWebAppUrl(`/api/google/events?${params.toString()}`),
+      account
+    );
 
     // Tag events and calendars with user email for UI identification
     const events = (data.events || []).map(e => ({ ...e, accountEmail: account.email }));
@@ -157,7 +180,10 @@ export class CalendarApi {
     params.set('calendar_id', calendarId);
     if (options.resolveRecurrence) params.set('resolve_recurrence', '1');
 
-    const data = await this.requestJson(`/api/google/events?${params.toString()}`, account);
+    const data = await this.requestJson(
+      resolveWebAppUrl(`/api/google/events?${params.toString()}`),
+      account
+    );
 
     return data.event ? { ...data.event, accountEmail: account.email } : null;
   }
@@ -167,7 +193,7 @@ export class CalendarApi {
    */
   async createCalendar(account, calendarData) {
     const params = this.buildAuthParams(account);
-    return await this.requestJson(`/api/google/calendars?${params.toString()}`, account, {
+    return await this.requestJson(resolveWebAppUrl(`/api/google/calendars?${params.toString()}`), account, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(calendarData),
@@ -180,7 +206,7 @@ export class CalendarApi {
   async createEvent(account, eventData, calendarId = 'primary') {
     const params = this.buildAuthParams(account);
     params.set('calendar_id', calendarId);
-    return await this.requestJson(`/api/google/events?${params.toString()}`, account, {
+    return await this.requestJson(resolveWebAppUrl(`/api/google/events?${params.toString()}`), account, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(eventData),
@@ -199,7 +225,7 @@ export class CalendarApi {
     if (recurringEdit?.recurringEventId) params.set('recurring_event_id', recurringEdit.recurringEventId);
     if (recurringEdit?.originalStart) params.set('original_start', recurringEdit.originalStart);
 
-    return await this.requestJson(`/api/google/events?${params.toString()}`, account, {
+    return await this.requestJson(resolveWebAppUrl(`/api/google/events?${params.toString()}`), account, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(eventData),
@@ -222,7 +248,7 @@ export class CalendarApi {
     if (options?.recurringDelete?.originalStart) {
       params.set('original_start', options.recurringDelete.originalStart);
     }
-    return await this.requestJson(`/api/google/events?${params.toString()}`, account, {
+    return await this.requestJson(resolveWebAppUrl(`/api/google/events?${params.toString()}`), account, {
       method: 'DELETE',
     });
   }
@@ -254,21 +280,27 @@ export class CalendarApi {
    * Get all connected Google accounts
    */
   getAccounts() {
-    if (typeof window === 'undefined') return [];
-    const stored = localStorage.getItem(STORAGE_KEY);
+    if (Array.isArray(this.accountsCache)) {
+      return [...this.accountsCache];
+    }
+
+    const stored = readStoredValue(STORAGE_KEY);
     if (!stored) return [];
     try {
       const parsed = JSON.parse(stored);
       // Handle legacy format (single object) if it exists
       if (!Array.isArray(parsed) && parsed && parsed.access_token) {
-        return []; // We'll force a reconnect for simplicity with multi-account format
+        this.accountsCache = [];
+        return [];
       }
-      return Array.isArray(parsed)
+      this.accountsCache = Array.isArray(parsed)
         ? parsed
             .map((account) => this.normalizeAccount(account))
             .filter((account) => account.email)
         : [];
+      return [...this.accountsCache];
     } catch {
+      this.accountsCache = [];
       return [];
     }
   }
@@ -277,7 +309,6 @@ export class CalendarApi {
    * Toggle an account's active status
    */
   toggleAccount(email) {
-    if (typeof window === 'undefined') return;
     const accounts = this.getAccounts();
     const index = accounts.findIndex(a => a.email === email);
     if (index >= 0) {
@@ -290,19 +321,16 @@ export class CalendarApi {
    * Disconnect a specific account
    */
   removeAccount(email) {
-    if (typeof window !== 'undefined') {
-      const accounts = this.getAccounts().filter(a => a.email !== email);
-      this.saveAccounts(accounts);
-    }
+    const accounts = this.getAccounts().filter(a => a.email !== email);
+    this.saveAccounts(accounts);
   }
 
   /**
    * Clear all stored accounts (full disconnect)
    */
   clearAll() {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    this.accountsCache = [];
+    writeStoredValue(STORAGE_KEY, null);
   }
 
   /**
