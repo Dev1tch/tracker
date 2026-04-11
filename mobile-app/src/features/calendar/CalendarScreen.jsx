@@ -1287,6 +1287,11 @@ export default function CalendarScreen() {
   const [mobileAgendaEnd, setMobileAgendaEnd] = useState(() =>
     endOfDay(addDays(new Date(), MOBILE_AGENDA_INITIAL_FUTURE_DAYS))
   );
+  // Refs so callbacks can read the current range without causing effect re-triggers
+  const mobileAgendaStartRef = useRef(mobileAgendaStart);
+  const mobileAgendaEndRef = useRef(mobileAgendaEnd);
+  mobileAgendaStartRef.current = mobileAgendaStart;
+  mobileAgendaEndRef.current = mobileAgendaEnd;
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [savingCalendar, setSavingCalendar] = useState(false);
@@ -1428,7 +1433,7 @@ export default function CalendarScreen() {
 
     try {
       const [calendarData, taskData] = await Promise.all([
-        loadCalendarRange(storedAccounts, startOfDay(mobileAgendaStart), endOfDay(mobileAgendaEnd)),
+        loadCalendarRange(storedAccounts, startOfDay(mobileAgendaStartRef.current), endOfDay(mobileAgendaEndRef.current)),
         loadTaskData(),
       ]);
 
@@ -1453,14 +1458,12 @@ export default function CalendarScreen() {
     initializeEnabledCalendars,
     loadCalendarRange,
     loadTaskData,
-    mobileAgendaEnd,
-    mobileAgendaStart,
   ]);
 
   const loadMoreAgenda = useCallback(async () => {
     if (loading || isLoadingMore || accounts.length === 0) return;
 
-    const nextRangeStart = startOfDay(addDays(mobileAgendaEnd, 1));
+    const nextRangeStart = startOfDay(addDays(mobileAgendaEndRef.current, 1));
     const nextRangeEnd = endOfDay(addDays(nextRangeStart, MOBILE_AGENDA_LOAD_MORE_DAYS - 1));
 
     setIsLoadingMore(true);
@@ -1475,6 +1478,7 @@ export default function CalendarScreen() {
       );
       setAvailableCalendars((current) => mergeByKey(current, calendarData.calendars, getCalendarKey));
       initializeEnabledCalendars(calendarData.calendars);
+      mobileAgendaEndRef.current = nextRangeEnd;
       setMobileAgendaEnd(nextRangeEnd);
 
       if (calendarData.errors.length > 0) {
@@ -1486,20 +1490,27 @@ export default function CalendarScreen() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [accounts, initializeEnabledCalendars, isLoadingMore, loadCalendarRange, loading, mobileAgendaEnd]);
+  }, [accounts, initializeEnabledCalendars, isLoadingMore, loadCalendarRange, loading]);
 
+  // Run once on mount — refreshCalendarData is now stable so no re-trigger risk
   useEffect(() => {
     refreshCalendarData();
-  }, [refreshCalendarData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     scrollViewRef.current?.scrollTo?.({ y: 0, animated: false });
   }, [mobileAgendaStart]);
 
   const resetAgendaWindow = useCallback((anchorDate) => {
-    setMobileAgendaStart(startOfDay(addDays(anchorDate, -MOBILE_AGENDA_INITIAL_PAST_DAYS)));
-    setMobileAgendaEnd(endOfDay(addDays(anchorDate, MOBILE_AGENDA_INITIAL_FUTURE_DAYS)));
-  }, []);
+    const newStart = startOfDay(addDays(anchorDate, -MOBILE_AGENDA_INITIAL_PAST_DAYS));
+    const newEnd = endOfDay(addDays(anchorDate, MOBILE_AGENDA_INITIAL_FUTURE_DAYS));
+    mobileAgendaStartRef.current = newStart;
+    mobileAgendaEndRef.current = newEnd;
+    setMobileAgendaStart(newStart);
+    setMobileAgendaEnd(newEnd);
+    refreshCalendarData();
+  }, [refreshCalendarData]);
 
   const visibleCalendarEvents = useMemo(() => {
     return events.filter((event) => enabledCalendarIds.has(getEnabledCalendarId(event.accountEmail, event.calendarId)));
@@ -1558,10 +1569,17 @@ export default function CalendarScreen() {
   }, [resetAgendaWindow]);
 
   const handleDateSelect = useCallback((date) => {
+    // Anchor start AT the selected date so scroll-to-top shows the selected date
+    const newStart = startOfDay(date);
+    const newEnd = endOfDay(addDays(date, MOBILE_AGENDA_INITIAL_FUTURE_DAYS));
+    mobileAgendaStartRef.current = newStart;
+    mobileAgendaEndRef.current = newEnd;
     setSelectedDate(date);
-    resetAgendaWindow(date);
+    setMobileAgendaStart(newStart);
+    setMobileAgendaEnd(newEnd);
+    refreshCalendarData();
     setIsSidebarOpen(false);
-  }, [resetAgendaWindow]);
+  }, [refreshCalendarData]);
 
   const openNewEvent = useCallback((date = selectedDate) => {
     setEditingEvent(null);
