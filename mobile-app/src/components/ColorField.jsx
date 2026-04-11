@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import ColorPicker, { HueSlider, Panel1 } from 'reanimated-color-picker';
+import { Pipette } from 'lucide-react-native';
 
 import { theme } from '../theme';
 
@@ -32,7 +33,7 @@ export default function ColorField({
 
   return (
     <View style={styles.wrapper}>
-      <Text style={styles.label}>{label}</Text>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
 
       <View style={styles.presetRow}>
         <View style={styles.presetWrap}>
@@ -57,7 +58,10 @@ export default function ColorField({
           ]}
         >
           <View style={[styles.customButtonSwatch, { backgroundColor: resolvedColor }]} />
-          <Text style={styles.customButtonLabel}>RGB</Text>
+          <Pipette
+            size={12}
+            color={pickerVisible ? theme.colors.text : theme.colors.secondary}
+          />
         </Pressable>
       </View>
 
@@ -131,6 +135,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
+    borderRadius: 6,
     borderColor: theme.colors.borderDim,
     flexDirection: 'row',
     alignItems: 'center',
@@ -145,18 +150,12 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 999,
   },
-  customButtonLabel: {
-    color: theme.colors.secondary,
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-  },
   pickerWrap: {
     borderWidth: 1,
+    borderRadius: 8,
     borderColor: theme.colors.borderDim,
     backgroundColor: theme.colors.surfaceSoft,
-    padding: 12,
+    padding: 14,
     gap: 10,
   },
   picker: {
@@ -164,8 +163,8 @@ const styles = StyleSheet.create({
   },
   panel: {
     width: '100%',
-    height: 150,
-    borderRadius: 0,
+    height: 170,
+    borderRadius: 4,
   },
   slider: {
     width: '100%',
@@ -178,8 +177,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   hexPreview: {
-    width: 18,
-    height: 18,
+    width: 22,
+    height: 22,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: theme.colors.border,

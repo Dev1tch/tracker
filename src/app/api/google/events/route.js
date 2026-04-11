@@ -71,6 +71,7 @@ function normalizeCalendarEvent(event, calendarMetadata = {}, recurrenceOverride
     status: event.status,
     calendarName: event.calendarSummary || calendarMetadata.summary,
     recurrence: recurrenceOverride ?? event.recurrence ?? [],
+    reminders: event.reminders || null,
     attendees: event.attendees || [],
     eventType: event.eventType || 'default',
     outOfOfficeProperties: event.outOfOfficeProperties || null,

@@ -3,7 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { theme } from '../theme';
-import { formatDateTime } from '../utils/date';
+import { formatDateTime, formatFullDate, formatTime } from '../utils/date';
 
 function normaliseDateValue(value) {
   if (!value) return null;
@@ -17,24 +17,50 @@ export default function DateTimeField({
   value,
   onChange,
   placeholder = 'Choose date and time',
+  mode = 'datetime',
+  disabled = false,
+  formatter,
 }) {
   const [isVisible, setIsVisible] = useState(false);
   const selectedDate = useMemo(() => normaliseDateValue(value), [value]);
+  const displayValue = useMemo(() => {
+    if (!selectedDate) return placeholder;
+    if (typeof formatter === 'function') {
+      return formatter(selectedDate);
+    }
+
+    if (mode === 'date') {
+      return formatFullDate(selectedDate);
+    }
+
+    if (mode === 'time') {
+      return formatTime(selectedDate);
+    }
+
+    return formatDateTime(selectedDate);
+  }, [formatter, mode, placeholder, selectedDate]);
 
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
-      <Pressable onPress={() => setIsVisible(true)} style={styles.button}>
+      <Pressable
+        disabled={disabled}
+        onPress={() => setIsVisible(true)}
+        style={[styles.button, disabled ? styles.buttonDisabled : null]}
+      >
         <Text style={styles.buttonLabel}>
-          {selectedDate ? formatDateTime(selectedDate) : placeholder}
+          {displayValue}
         </Text>
       </Pressable>
 
-      {isVisible ? (
+      {isVisible && !disabled ? (
         <DateTimePicker
           value={selectedDate || new Date()}
-          mode="datetime"
-          display={Platform.select({ ios: 'inline', android: 'default' })}
+          mode={mode}
+          display={Platform.select({
+            ios: mode === 'date' ? 'inline' : 'default',
+            android: 'default',
+          })}
           accentColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
           textColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
           themeVariant={Platform.OS === 'ios' ? 'dark' : undefined}
@@ -71,6 +97,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingHorizontal: 0,
     paddingVertical: 12,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   buttonLabel: {
     color: theme.colors.text,

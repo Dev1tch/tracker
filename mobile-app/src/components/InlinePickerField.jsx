@@ -9,12 +9,13 @@ export default function InlinePickerField({
   placeholder,
   onPress,
   style,
+  disabled = false,
 }) {
   const displayValue = valueLabel || placeholder;
   const isPlaceholder = !valueLabel;
 
   return (
-    <Pressable onPress={onPress} style={[styles.field, style]}>
+    <Pressable disabled={disabled} onPress={onPress} style={[styles.field, disabled ? styles.fieldDisabled : null, style]}>
       <Text style={[styles.value, isPlaceholder ? styles.placeholder : null]} numberOfLines={1}>
         {displayValue}
       </Text>
@@ -34,6 +35,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingVertical: 8,
+  },
+  fieldDisabled: {
+    opacity: 0.5,
   },
   value: {
     flex: 1,

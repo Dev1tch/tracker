@@ -3,9 +3,9 @@ import {
   Alert,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import * as Linking from 'expo-linking';
@@ -23,11 +23,13 @@ import {
   LogOut,
   MapPin,
   Menu,
+  Palette,
   Plus,
   Settings2,
   Trash2,
   User,
   Video,
+  X,
 } from 'lucide-react-native';
 
 import ActionButton from '../../components/ActionButton';
@@ -47,6 +49,10 @@ import {
 import { theme } from '../../theme';
 import {
   toLocalDateKey,
+  combineDateAndTime,
+  formatFullDate,
+  formatTime,
+  parseDateInputValue,
   toLocalISOStringWithOffset,
 } from '../../utils/date';
 import {
@@ -83,6 +89,47 @@ const CALENDAR_COLOR_PRESETS = [
   '#14B8A6',
   '#0EA5E9',
 ];
+const GOOGLE_EVENT_COLORS = [
+  { id: '1', name: 'Lavender', hex: '#7986CB' },
+  { id: '2', name: 'Sage', hex: '#33B679' },
+  { id: '3', name: 'Grape', hex: '#8E24AA' },
+  { id: '4', name: 'Flamingo', hex: '#E67C73' },
+  { id: '5', name: 'Banana', hex: '#F6BF26' },
+  { id: '6', name: 'Tangerine', hex: '#F4511E' },
+  { id: '7', name: 'Peacock', hex: '#039BE5' },
+  { id: '8', name: 'Graphite', hex: '#616161' },
+  { id: '9', name: 'Blueberry', hex: '#3F51B5' },
+  { id: '10', name: 'Basil', hex: '#0B8043' },
+  { id: '11', name: 'Tomato', hex: '#D50000' },
+];
+const EVENT_COLOR_PRESETS = [
+  '#94A3B8',
+  '#60A5FA',
+  '#9CA3AF',
+  '#FBBF24',
+  '#34D399',
+  '#F87171',
+  '#6B7280',
+  '#E879F9',
+  '#A78BFA',
+  '#2DD4BF',
+  '#4ADE80',
+  '#F97316',
+];
+const DEFAULT_DECLINE_MESSAGE = 'Declined as I am currently out of office.';
+const REMINDER_OPTIONS = [
+  { value: '10', label: '10 Minutes Before' },
+  { value: '30', label: '30 Minutes Before' },
+  { value: '60', label: '1 Hour Before' },
+  { value: '1440', label: '1 Day Before' },
+];
+const RECURRENCE_BASE_OPTIONS = [
+  { value: '', label: 'Does Not Repeat' },
+  { value: 'RRULE:FREQ=DAILY', label: 'Daily' },
+  { value: 'RRULE:FREQ=WEEKLY', label: 'Weekly' },
+  { value: 'RRULE:FREQ=MONTHLY', label: 'Monthly' },
+  { value: 'RRULE:FREQ=YEARLY', label: 'Yearly' },
+];
 const DEFAULT_SETTINGS = {
   weekStart: 0,
   eventCardStyle: 'frame',
@@ -93,9 +140,22 @@ const EMPTY_EVENT_FORM = {
   description: '',
   location: '',
   calendarKey: '',
+  eventDate: toLocalDateKey(new Date()),
+  startTime: '09:00',
+  endTime: '10:00',
   allDay: false,
-  start: new Date(),
-  end: addDays(new Date(), 0),
+  eventType: 'default',
+  autoDecline: true,
+  declineMessage: DEFAULT_DECLINE_MESSAGE,
+  hasGoogleMeet: false,
+  refreshGoogleMeet: false,
+  guests: [],
+  guestInput: '',
+  recurrence: '',
+  recurrenceOptions: RECURRENCE_BASE_OPTIONS,
+  reminderMinutes: '30',
+  colorId: '',
+  initialColorId: '',
 };
 const EMPTY_CALENDAR_FORM = {
   summary: '',
@@ -258,6 +318,63 @@ function getGoogleErrorMessage(code) {
   }
 
   return `Google connection failed: ${code}`;
+}
+
+function buildGoogleMeetRequestId() {
+  if (globalThis.crypto?.randomUUID) {
+    return `meet-${globalThis.crypto.randomUUID()}`;
+  }
+
+  return `meet-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeHexColor(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const candidate = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  return /^#([0-9a-f]{6})$/iu.test(candidate) ? candidate.toUpperCase() : '';
+}
+
+function isGooglePresetId(value) {
+  return GOOGLE_EVENT_COLORS.some((color) => color.id === String(value));
+}
+
+function getCurrentEventColorHex(colorId) {
+  if (!colorId) return '#34D399';
+  if (String(colorId).startsWith('#')) return normalizeHexColor(colorId) || '#34D399';
+
+  const matched = GOOGLE_EVENT_COLORS.find((color) => color.id === String(colorId));
+  return matched?.hex || '#34D399';
+}
+
+function getReminderMinutes(reminders) {
+  const firstReminder = reminders?.[0]?.minutes;
+  return Number.isFinite(firstReminder) ? String(firstReminder) : '30';
+}
+
+function buildRecurrenceOptions(recurrenceValue = '') {
+  if (!recurrenceValue || RECURRENCE_BASE_OPTIONS.some((option) => option.value === recurrenceValue)) {
+    return RECURRENCE_BASE_OPTIONS;
+  }
+
+  const frequency = recurrenceValue.split('FREQ=')[1]?.split(';')[0];
+  const label = frequency
+    ? `Custom (${frequency.charAt(0)}${frequency.slice(1).toLowerCase()})`
+    : 'Custom';
+
+  return [
+    ...RECURRENCE_BASE_OPTIONS,
+    { value: recurrenceValue, label },
+  ];
+}
+
+function buildEventDateLabel(value) {
+  const parsed = parseDateInputValue(value);
+  return parsed ? formatFullDate(parsed) : '';
+}
+
+function getRecurringSeriesId(event) {
+  return event?.recurringEventId || ((event?.recurrence || []).length ? event?.id : '');
 }
 
 function FramelessIconButton({ icon, color = theme.colors.text, onPress, size = 16 }) {
@@ -850,15 +967,19 @@ function CalendarSettingsModal({
 function EventEditorModal({
   visible,
   title,
+  subtitle,
   form,
+  event,
   loading,
   availableCalendars,
   onChange,
   onClose,
   onSave,
   onDelete,
+  onOpenMeet,
 }) {
   const [activePicker, setActivePicker] = useState('');
+  const [showCustomColor, setShowCustomColor] = useState(false);
 
   const calendarOptions = useMemo(
     () => availableCalendars.map((calendar) => ({
@@ -868,28 +989,67 @@ function EventEditorModal({
     })),
     [availableCalendars]
   );
-  const eventTypeOptions = useMemo(
-    () => [
-      { value: 'timed', label: 'Timed' },
-      { value: 'all_day', label: 'All Day' },
-    ],
-    []
+  const recurrenceOptions = useMemo(
+    () => form.recurrenceOptions || RECURRENCE_BASE_OPTIONS,
+    [form.recurrenceOptions]
   );
+  const reminderOptions = useMemo(() => REMINDER_OPTIONS, []);
+  const currentColorHex = useMemo(() => getCurrentEventColorHex(form.colorId), [form.colorId]);
+  const googleMeetLink = event?.googleMeetLink || '';
+  const isEditing = Boolean(event?.id);
 
   useEffect(() => {
     if (!visible) {
       setActivePicker('');
+      setShowCustomColor(false);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setShowCustomColor(Boolean(form.colorId && String(form.colorId).startsWith('#')) || !isEditing);
+  }, [visible]);
+
+  const handleTimeChange = useCallback((field, value) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return;
+
+    const nextTime = `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
+    onChange(field, nextTime);
+  }, [onChange]);
+
+  const handleAddGuest = useCallback(() => {
+    const nextEmail = String(form.guestInput || '').trim().toLowerCase();
+    if (!nextEmail || !nextEmail.includes('@')) return;
+    if (form.guests.includes(nextEmail)) {
+      onChange('guestInput', '');
+      return;
+    }
+
+    onChange('guests', [...form.guests, nextEmail]);
+    onChange('guestInput', '');
+  }, [form.guestInput, form.guests, onChange]);
+
+  const handleRemoveGuest = useCallback((email) => {
+    onChange('guests', form.guests.filter((guest) => guest !== email));
+  }, [form.guests, onChange]);
 
   return (
     <ModalSheet
       visible={visible}
       title={title}
+      subtitle={subtitle}
       onClose={onClose}
-      headerActions={onDelete ? (
-        <FramelessIconButton icon={Trash2} color={theme.colors.danger} onPress={onDelete} />
-      ) : null}
+      headerActions={(
+        <>
+          {googleMeetLink ? (
+            <FramelessIconButton icon={Video} color={theme.colors.secondary} onPress={onOpenMeet} />
+          ) : null}
+          {onDelete ? (
+            <FramelessIconButton icon={Trash2} color={theme.colors.danger} onPress={onDelete} />
+          ) : null}
+        </>
+      )}
       footer={(
         <View style={styles.modalFooterEnd}>
           <ActionButton
@@ -907,29 +1067,204 @@ function EventEditorModal({
         value={form.title}
         onChangeText={(value) => onChange('title', value)}
       />
-      <TextField
-        label="Description"
-        placeholder="Optional event details"
-        value={form.description}
-        onChangeText={(value) => onChange('description', value)}
-        multiline
-      />
-      <TextField
-        label="Location"
-        placeholder="Office, Zoom, Cafe"
-        value={form.location}
-        onChangeText={(value) => onChange('location', value)}
-      />
+
+      <View style={styles.formFieldGroup}>
+        <Text style={styles.formSectionLabel}>Day</Text>
+        <DateTimeField
+          label=""
+          mode="date"
+          value={parseDateInputValue(form.eventDate) || new Date()}
+          onChange={(value) => {
+            const parsed = new Date(value);
+            if (!Number.isNaN(parsed.getTime())) {
+              onChange('eventDate', toLocalDateKey(parsed));
+            }
+          }}
+          placeholder="Select day"
+          formatter={(value) => formatFullDate(value)}
+        />
+      </View>
+
+      <View style={styles.formFieldGroup}>
+        <Text style={styles.formSectionLabel}>Time</Text>
+        <View style={styles.timeFieldRow}>
+          <View style={styles.timeFieldColumn}>
+            <DateTimeField
+              label=""
+              disabled={form.allDay}
+              mode="time"
+              value={combineDateAndTime(form.eventDate, form.startTime) || new Date()}
+              onChange={(value) => handleTimeChange('startTime', value)}
+              placeholder="Starts"
+              formatter={(value) => formatTime(value)}
+            />
+          </View>
+          <Text style={styles.timeRangeSeparator}>to</Text>
+          <View style={styles.timeFieldColumn}>
+            <DateTimeField
+              label=""
+              disabled={form.allDay}
+              mode="time"
+              value={combineDateAndTime(form.eventDate, form.endTime) || new Date()}
+              onChange={(value) => handleTimeChange('endTime', value)}
+              placeholder="Ends"
+              formatter={(value) => formatTime(value)}
+            />
+          </View>
+        </View>
+        <Pressable
+          onPress={() => onChange('allDay', !form.allDay)}
+          style={[styles.settingsToggleRow, form.allDay ? styles.settingsToggleRowActive : null]}
+        >
+          <View style={styles.settingsToggleTextWrap}>
+            <Text style={styles.settingsToggleLabel}>All Day</Text>
+          </View>
+          <View style={[styles.settingsToggleCheck, form.allDay ? styles.settingsToggleCheckActive : null]}>
+            {form.allDay ? <Check color={theme.colors.text} size={12} strokeWidth={2.2} /> : null}
+          </View>
+        </Pressable>
+      </View>
+
+      <View style={styles.formFieldGroup}>
+        <Text style={styles.formSectionLabel}>Type</Text>
+        <View style={styles.segmentedRow}>
+          <Pressable
+            disabled={isEditing}
+            onPress={() => onChange('eventType', 'default')}
+            style={[
+              styles.segmentedButton,
+              form.eventType === 'default' ? styles.segmentedButtonActive : null,
+              isEditing ? styles.segmentedButtonDisabled : null,
+            ]}
+          >
+            <Text style={[
+              styles.segmentedLabel,
+              form.eventType === 'default' ? styles.segmentedLabelActive : null,
+            ]}>
+              Event
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={isEditing}
+            onPress={() => {
+              onChange('eventType', 'outOfOffice');
+              onChange('allDay', true);
+              onChange('hasGoogleMeet', false);
+              onChange('refreshGoogleMeet', false);
+            }}
+            style={[
+              styles.segmentedButton,
+              form.eventType === 'outOfOffice' ? styles.segmentedButtonActive : null,
+              isEditing ? styles.segmentedButtonDisabled : null,
+            ]}
+          >
+            <Text style={[
+              styles.segmentedLabel,
+              form.eventType === 'outOfOffice' ? styles.segmentedLabelActive : null,
+            ]}>
+              Out Of Office
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {form.eventType === 'outOfOffice' ? (
+        <View style={styles.formFieldGroup}>
+          <Pressable
+            onPress={() => onChange('autoDecline', !form.autoDecline)}
+            style={[styles.settingsToggleRow, form.autoDecline ? styles.settingsToggleRowActive : null]}
+          >
+            <View style={styles.settingsToggleTextWrap}>
+              <Text style={styles.settingsToggleLabel}>Automatically Decline Meetings</Text>
+            </View>
+            <View style={[styles.settingsToggleCheck, form.autoDecline ? styles.settingsToggleCheckActive : null]}>
+              {form.autoDecline ? <Check color={theme.colors.text} size={12} strokeWidth={2.2} /> : null}
+            </View>
+          </Pressable>
+          {form.autoDecline ? (
+            <TextField
+              label="Decline Message"
+              placeholder="Decline message"
+              value={form.declineMessage}
+              onChangeText={(value) => onChange('declineMessage', value)}
+              multiline
+            />
+          ) : null}
+        </View>
+      ) : (
+        <View style={styles.formFieldGroup}>
+          <Pressable
+            onPress={() => {
+              const nextValue = !form.hasGoogleMeet;
+              onChange('hasGoogleMeet', nextValue);
+              if (!nextValue) {
+                onChange('refreshGoogleMeet', false);
+              }
+            }}
+            style={[styles.settingsToggleRow, form.hasGoogleMeet ? styles.settingsToggleRowActive : null]}
+          >
+            <View style={styles.settingsToggleTextWrap}>
+              <Text style={styles.settingsToggleLabel}>Use Google Meet</Text>
+              {form.hasGoogleMeet && !googleMeetLink ? (
+                <Text style={styles.settingsToggleHelp}>
+                  A Google Meet link will be created when you save this event.
+                </Text>
+              ) : null}
+              {!form.hasGoogleMeet && googleMeetLink ? (
+                <Text style={styles.settingsToggleHelp}>
+                  Saving will remove the current Google Meet link from this event.
+                </Text>
+              ) : null}
+            </View>
+            <View style={[styles.settingsToggleCheck, form.hasGoogleMeet ? styles.settingsToggleCheckActive : null]}>
+              {form.hasGoogleMeet ? <Check color={theme.colors.text} size={12} strokeWidth={2.2} /> : null}
+            </View>
+          </Pressable>
+          {form.hasGoogleMeet && googleMeetLink ? (
+            <Pressable
+              onPress={() => onChange('refreshGoogleMeet', !form.refreshGoogleMeet)}
+              style={[styles.settingsToggleRow, form.refreshGoogleMeet ? styles.settingsToggleRowActive : null]}
+            >
+              <View style={styles.settingsToggleTextWrap}>
+                <Text style={styles.settingsToggleLabel}>Generate A New Meet Link On Save</Text>
+              </View>
+              <View style={[styles.settingsToggleCheck, form.refreshGoogleMeet ? styles.settingsToggleCheckActive : null]}>
+                {form.refreshGoogleMeet ? <Check color={theme.colors.text} size={12} strokeWidth={2.2} /> : null}
+              </View>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
+
+      <View style={styles.formFieldGroup}>
+        <Text style={styles.formSectionLabel}>Repeat</Text>
+        <InlinePickerField
+          placeholder="Select recurrence"
+          valueLabel={recurrenceOptions.find((option) => option.value === form.recurrence)?.label || ''}
+          onPress={() => setActivePicker((current) => (current === 'recurrence' ? '' : 'recurrence'))}
+        />
+        <InlineSelectMenu
+          visible={activePicker === 'recurrence'}
+          options={recurrenceOptions}
+          selectedValue={form.recurrence}
+          onSelect={(value) => {
+            onChange('recurrence', value);
+            onChange('recurrenceOptions', buildRecurrenceOptions(value));
+            setActivePicker('');
+          }}
+        />
+      </View>
 
       <View style={styles.formFieldGroup}>
         <Text style={styles.formSectionLabel}>Calendar</Text>
         <InlinePickerField
+          disabled={isEditing}
           placeholder="Select calendar"
           valueLabel={calendarOptions.find((option) => option.value === form.calendarKey)?.label || ''}
           onPress={() => setActivePicker((current) => (current === 'calendar' ? '' : 'calendar'))}
         />
         <InlineSelectMenu
-          visible={activePicker === 'calendar'}
+          visible={!isEditing && activePicker === 'calendar'}
           options={calendarOptions}
           selectedValue={form.calendarKey}
           onSelect={(value) => {
@@ -940,35 +1275,184 @@ function EventEditorModal({
       </View>
 
       <View style={styles.formFieldGroup}>
-        <Text style={styles.formSectionLabel}>Event Type</Text>
+        <Text style={styles.formSectionLabel}>Event Color</Text>
+        <View style={styles.colorSwatchRow}>
+          <Pressable
+            onPress={() => {
+              onChange('colorId', '');
+              setShowCustomColor(false);
+            }}
+            style={[
+              styles.colorSwatchButton,
+              styles.colorSwatchDefault,
+              !form.colorId ? styles.colorSwatchButtonActive : null,
+            ]}
+          >
+            <View style={styles.colorSwatchDefaultFill} />
+          </Pressable>
+          {GOOGLE_EVENT_COLORS.map((color) => (
+            <Pressable
+              key={color.id}
+              onPress={() => {
+                onChange('colorId', color.id);
+                setShowCustomColor(false);
+              }}
+              style={[
+                styles.colorSwatchButton,
+                String(form.colorId) === color.id ? styles.colorSwatchButtonActive : null,
+              ]}
+            >
+              <View style={[styles.colorSwatchFill, { backgroundColor: color.hex }]} />
+            </Pressable>
+          ))}
+          <Pressable
+            onPress={() => {
+              setShowCustomColor((current) => !current);
+              if (!String(form.colorId || '').startsWith('#')) {
+                onChange('colorId', currentColorHex);
+              }
+            }}
+            style={[
+              styles.colorSwatchButton,
+              styles.colorSwatchCustom,
+              showCustomColor || String(form.colorId || '').startsWith('#')
+                ? styles.colorSwatchButtonActive
+                : null,
+            ]}
+          >
+            {String(form.colorId || '').startsWith('#') ? (
+              <View style={[styles.colorSwatchFill, { backgroundColor: form.colorId }]} />
+            ) : (
+              <Palette
+                size={13}
+                color={showCustomColor ? theme.colors.text : theme.colors.secondary}
+              />
+            )}
+          </Pressable>
+        </View>
+        {showCustomColor || String(form.colorId || '').startsWith('#') ? (
+          <ColorField
+            label=""
+            value={String(form.colorId || '').startsWith('#') ? form.colorId : currentColorHex}
+            onChange={(value) => onChange('colorId', value)}
+          />
+        ) : null}
+      </View>
+
+      <TextField
+        label="Location"
+        placeholder="Office, Zoom, Cafe"
+        value={form.location}
+        onChangeText={(value) => onChange('location', value)}
+      />
+
+      <View style={styles.formFieldGroup}>
+        <Text style={styles.formSectionLabel}>Reminder</Text>
         <InlinePickerField
-          placeholder="Select event type"
-          valueLabel={form.allDay ? 'All Day' : 'Timed'}
-          onPress={() => setActivePicker((current) => (current === 'eventType' ? '' : 'eventType'))}
+          placeholder="Select reminder"
+          valueLabel={reminderOptions.find((option) => option.value === form.reminderMinutes)?.label || ''}
+          onPress={() => setActivePicker((current) => (current === 'reminder' ? '' : 'reminder'))}
         />
         <InlineSelectMenu
-          visible={activePicker === 'eventType'}
-          options={eventTypeOptions}
-          selectedValue={form.allDay ? 'all_day' : 'timed'}
+          visible={activePicker === 'reminder'}
+          options={reminderOptions}
+          selectedValue={form.reminderMinutes}
           onSelect={(value) => {
-            onChange('allDay', value === 'all_day');
+            onChange('reminderMinutes', value);
             setActivePicker('');
           }}
         />
       </View>
 
-      <DateTimeField
-        label={form.allDay ? 'Start Date' : 'Starts'}
-        value={form.start}
-        onChange={(value) => onChange('start', value)}
-        placeholder="Select start"
+      <View style={styles.formFieldGroup}>
+        <Text style={styles.formSectionLabel}>Guests</Text>
+        <View style={styles.guestInputRow}>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            onChangeText={(value) => onChange('guestInput', value)}
+            onSubmitEditing={handleAddGuest}
+            placeholder="Add guest email"
+            placeholderTextColor={theme.colors.muted}
+            selectionColor="#ffffff"
+            style={styles.guestInput}
+            value={form.guestInput}
+          />
+          <ActionButton
+            compact
+            icon="add"
+            label=""
+            onPress={handleAddGuest}
+            style={styles.guestAddButton}
+          />
+        </View>
+        {form.guests.length ? (
+          <View style={styles.guestChipWrap}>
+            {form.guests.map((guest) => (
+              <View key={guest} style={styles.guestChip}>
+                <Text numberOfLines={1} style={styles.guestChipLabel}>
+                  {guest}
+                </Text>
+                <Pressable hitSlop={8} onPress={() => handleRemoveGuest(guest)}>
+                  <Text style={styles.guestChipRemove}>x</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </View>
+
+      <TextField
+        label="Description"
+        placeholder="Optional event details"
+        value={form.description}
+        onChangeText={(value) => onChange('description', value)}
+        multiline
       />
-      <DateTimeField
-        label={form.allDay ? 'End Date' : 'Ends'}
-        value={form.end}
-        onChange={(value) => onChange('end', value)}
-        placeholder="Select end"
-      />
+    </ModalSheet>
+  );
+}
+
+function ChoiceModal({
+  visible,
+  title,
+  message,
+  note,
+  onClose,
+  primaryLabel,
+  secondaryLabel,
+  onPrimary,
+  onSecondary,
+  loading = false,
+  primaryVariant = 'solid',
+}) {
+  return (
+    <ModalSheet
+      visible={visible}
+      title={title}
+      onClose={onClose}
+      footer={(
+        <View style={styles.choiceModalFooter}>
+          <ActionButton
+            label={secondaryLabel}
+            onPress={onSecondary}
+            variant="ghost"
+            style={styles.choiceModalButton}
+          />
+          <ActionButton
+            label={loading ? 'Working...' : primaryLabel}
+            onPress={onPrimary}
+            variant={primaryVariant}
+            style={styles.choiceModalButton}
+          />
+        </View>
+      )}
+    >
+      <View style={styles.choiceModalBody}>
+        <Text style={styles.choiceModalText}>{message}</Text>
+        {note ? <Text style={styles.choiceModalNote}>{note}</Text> : null}
+      </View>
     </ModalSheet>
   );
 }
@@ -1023,64 +1507,153 @@ function CreateCalendarModal({
 function buildEventForm(event, availableCalendars, selectedDate) {
   if (!event) {
     const selectedCalendar = availableCalendars[0];
-    const startDate = startOfDay(selectedDate || new Date());
-    startDate.setHours(9, 0, 0, 0);
-    const endDate = new Date(startDate);
-    endDate.setHours(10, 0, 0, 0);
+    const eventDate = toLocalDateKey(selectedDate || new Date());
 
     return {
       ...EMPTY_EVENT_FORM,
       calendarKey: selectedCalendar ? `${selectedCalendar.accountEmail}:${selectedCalendar.id}` : '',
-      start: startDate,
-      end: endDate,
+      eventDate,
+      recurrenceOptions: RECURRENCE_BASE_OPTIONS,
     };
   }
 
+  const startDate = parseCalendarDate(event.start) || new Date();
+  const endDate = parseCalendarDate(event.end) || new Date(startDate.getTime() + 60 * 60 * 1000);
+  const recurrence = event.recurrence?.[0] || '';
+  const customColor = normalizeHexColor(event.customColor || '');
+  const colorId = customColor || (event.color ? String(event.color) : '');
+  const attendees = (event.attendees || [])
+    .map((attendee) => attendee?.email)
+    .filter(Boolean);
+
   return {
+    ...EMPTY_EVENT_FORM,
     title: event.title || '',
     description: event.description || '',
     location: event.location || '',
     calendarKey: `${event.accountEmail}:${event.calendarId || 'primary'}`,
+    eventDate: toLocalDateKey(startDate),
+    startTime: `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`,
+    endTime: `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`,
     allDay: Boolean(event.allDay),
-    start: event.start ? new Date(event.start) : new Date(),
-    end: event.end ? new Date(event.end) : new Date(),
+    eventType: event.eventType || 'default',
+    autoDecline: event.outOfOfficeProperties?.autoDeclineMode !== 'doNotDecline',
+    declineMessage: event.outOfOfficeProperties?.declineMessage || DEFAULT_DECLINE_MESSAGE,
+    hasGoogleMeet: Boolean(event.googleMeetLink),
+    refreshGoogleMeet: false,
+    guests: attendees,
+    guestInput: '',
+    recurrence,
+    recurrenceOptions: buildRecurrenceOptions(recurrence),
+    reminderMinutes: getReminderMinutes(event.reminders?.overrides),
+    colorId,
+    initialColorId: colorId,
   };
 }
 
-function buildGoogleEventPayload(form) {
-  const startDate = new Date(form.start);
-  const endDate = new Date(form.end);
+function buildGoogleEventPayload(form, event = null) {
+  const baseDate = parseDateInputValue(form.eventDate) || new Date();
+  const startDate = combineDateAndTime(form.eventDate, form.startTime) || new Date(baseDate);
+  const endDate = combineDateAndTime(form.eventDate, form.endTime) || new Date(startDate.getTime() + 60 * 60 * 1000);
   const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  if (form.allDay) {
-    return {
-      summary: form.title.trim(),
-      description: form.description || '',
-      location: form.location || '',
-      start: { date: toLocalDateKey(startDate) },
-      end: { date: toLocalDateKey(addDays(endDate, 1)) },
-      eventType: 'default',
-    };
-  }
+  const isOutOfOffice = form.eventType === 'outOfOffice';
 
   if (endDate <= startDate) {
     endDate.setHours(startDate.getHours() + 1);
   }
 
-  return {
+  const payload = {
     summary: form.title.trim(),
-    description: form.description || '',
-    location: form.location || '',
-    start: {
+    eventType: isOutOfOffice ? 'outOfOffice' : 'default',
+  };
+
+  if (isOutOfOffice) {
+    if (form.allDay) {
+      const oooStart = new Date(baseDate);
+      const oooEnd = new Date(baseDate);
+      oooStart.setHours(0, 0, 0, 0);
+      oooEnd.setHours(23, 59, 59, 0);
+
+      payload.start = {
+        dateTime: toLocalISOStringWithOffset(oooStart),
+        timeZone: browserTimeZone,
+      };
+      payload.end = {
+        dateTime: toLocalISOStringWithOffset(oooEnd),
+        timeZone: browserTimeZone,
+      };
+    } else {
+      payload.start = {
+        dateTime: toLocalISOStringWithOffset(startDate),
+        timeZone: browserTimeZone,
+      };
+      payload.end = {
+        dateTime: toLocalISOStringWithOffset(endDate),
+        timeZone: browserTimeZone,
+      };
+    }
+
+    payload.outOfOfficeProperties = {
+      autoDeclineMode: form.autoDecline ? 'declineAllConflictingInvitations' : 'declineNone',
+      declineMessage: form.declineMessage || DEFAULT_DECLINE_MESSAGE,
+    };
+    payload.transparency = 'opaque';
+
+    return payload;
+  }
+
+  payload.description = form.description || '';
+  payload.location = form.location || '';
+
+  if (form.allDay) {
+    payload.start = { date: toLocalDateKey(baseDate) };
+    payload.end = { date: toLocalDateKey(addDays(baseDate, 1)) };
+  } else {
+    payload.start = {
       dateTime: toLocalISOStringWithOffset(startDate),
       timeZone: browserTimeZone,
-    },
-    end: {
+    };
+    payload.end = {
       dateTime: toLocalISOStringWithOffset(endDate),
       timeZone: browserTimeZone,
-    },
-    eventType: 'default',
+    };
+  }
+
+  if (event?.id) {
+    if (isGooglePresetId(form.colorId)) {
+      payload.colorId = form.colorId;
+      payload.extendedProperties = { private: { customColor: '' } };
+    } else if (String(form.colorId || '').startsWith('#')) {
+      payload.extendedProperties = { private: { customColor: normalizeHexColor(form.colorId) } };
+    } else if (form.initialColorId && !form.colorId) {
+      payload.colorId = null;
+      payload.extendedProperties = { private: { customColor: '' } };
+    }
+  } else if (isGooglePresetId(form.colorId)) {
+    payload.colorId = form.colorId;
+  } else if (String(form.colorId || '').startsWith('#')) {
+    payload.extendedProperties = { private: { customColor: normalizeHexColor(form.colorId) } };
+  }
+
+  payload.attendees = (form.guests || []).map((email) => ({ email }));
+  payload.recurrence = form.recurrence ? [form.recurrence] : undefined;
+  payload.reminders = {
+    useDefault: false,
+    overrides: [{ method: 'popup', minutes: Number(form.reminderMinutes || 30) }],
   };
+
+  if (form.hasGoogleMeet && (!event?.googleMeetLink || form.refreshGoogleMeet)) {
+    payload.conferenceData = {
+      createRequest: {
+        requestId: buildGoogleMeetRequestId(),
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    };
+  } else if (!form.hasGoogleMeet && event?.googleMeetLink) {
+    payload.conferenceData = null;
+  }
+
+  return payload;
 }
 
 function MobileAgendaCard({ item, eventCardStyle, onOpen, onOpenMeet }) {
@@ -1300,10 +1873,22 @@ export default function CalendarScreen() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [eventForm, setEventForm] = useState(EMPTY_EVENT_FORM);
   const [calendarForm, setCalendarForm] = useState(EMPTY_CALENDAR_FORM);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [recurringSaveVisible, setRecurringSaveVisible] = useState(false);
+  const [recurringDeleteVisible, setRecurringDeleteVisible] = useState(false);
+  const [pendingEventPayload, setPendingEventPayload] = useState(null);
 
   const weekStart = useMemo(
     () => getWeekStart(selectedDate, settings.weekStart),
     [selectedDate, settings.weekStart]
+  );
+  const recurringOriginalStart = editingEvent?.originalStart || editingEvent?.start || '';
+  const recurringSeriesId = getRecurringSeriesId(editingEvent);
+  const canShowRecurringSavePrompt = Boolean(
+    editingEvent?.id && recurringSeriesId && recurringOriginalStart
+  );
+  const canShowRecurringDeletePrompt = Boolean(
+    editingEvent?.id && recurringSeriesId
   );
 
   useEffect(() => {
@@ -1581,16 +2166,35 @@ export default function CalendarScreen() {
     setIsSidebarOpen(false);
   }, [refreshCalendarData]);
 
+  const handleCloseEventModal = useCallback(() => {
+    setEventModalVisible(false);
+    setEditingEvent(null);
+    setEventForm(EMPTY_EVENT_FORM);
+    setDeleteConfirmVisible(false);
+    setRecurringSaveVisible(false);
+    setRecurringDeleteVisible(false);
+    setPendingEventPayload(null);
+    setSavingEvent(false);
+  }, []);
+
   const openNewEvent = useCallback((date = selectedDate) => {
     setEditingEvent(null);
     setSelectedDate(date);
     setEventForm(buildEventForm(null, availableCalendars, date));
+    setDeleteConfirmVisible(false);
+    setRecurringSaveVisible(false);
+    setRecurringDeleteVisible(false);
+    setPendingEventPayload(null);
     setEventModalVisible(true);
   }, [availableCalendars, selectedDate]);
 
   const openEditEvent = useCallback(async (event) => {
     setEditingEvent(event);
     setEventForm(buildEventForm(event, availableCalendars, selectedDate));
+    setDeleteConfirmVisible(false);
+    setRecurringSaveVisible(false);
+    setRecurringDeleteVisible(false);
+    setPendingEventPayload(null);
     setEventModalVisible(true);
 
     if (!event?.accountEmail || !event?.recurringEventId || event?.recurrence?.length) {
@@ -1626,6 +2230,17 @@ export default function CalendarScreen() {
       },
     });
   }, [router]);
+
+  const handleOpenMeet = useCallback(async () => {
+    if (!editingEvent?.googleMeetLink) return;
+
+    try {
+      await WebBrowser.openBrowserAsync(editingEvent.googleMeetLink);
+    } catch (error) {
+      console.error('Failed to open Google Meet link', error);
+      addToast('Failed to open Google Meet link.', 'error');
+    }
+  }, [addToast, editingEvent?.googleMeetLink]);
 
   const handleConnectGoogle = async () => {
     if (!webAppUrl) {
@@ -1700,76 +2315,157 @@ export default function CalendarScreen() {
     );
   };
 
-  const handleSaveEvent = async () => {
+  const persistEvent = useCallback(async (payload, options = {}) => {
+    const [accountEmail, calendarId] = eventForm.calendarKey.split(':');
+    const account = accounts.find((item) => item.email === accountEmail);
+
+    if (!account) {
+      throw new Error('Please choose a Google account.');
+    }
+
+    if (!calendarApi.hasPermission(account, SCOPES.CALENDAR_EVENTS)) {
+      throw new Error('Reconnect Google with calendar event permissions to manage events.');
+    }
+
+    if (editingEvent) {
+      await calendarApi.updateEvent(
+        account,
+        editingEvent.id,
+        payload,
+        calendarId || 'primary',
+        options
+      );
+      addToast(
+        options?.recurringEdit?.mode === 'future'
+          ? 'Updated this and future events.'
+          : 'Event updated.'
+      );
+    } else {
+      await calendarApi.createEvent(account, payload, calendarId || 'primary');
+      addToast('Event created.');
+    }
+
+    handleCloseEventModal();
+    refreshCalendarData({ silent: true });
+  }, [accounts, addToast, editingEvent, eventForm.calendarKey, handleCloseEventModal, refreshCalendarData]);
+
+  const handleSaveEvent = useCallback(async () => {
+    const payload = buildGoogleEventPayload(eventForm, editingEvent);
+
+    if (canShowRecurringSavePrompt) {
+      setPendingEventPayload(payload);
+      setRecurringSaveVisible(true);
+      return;
+    }
+
     setSavingEvent(true);
-
     try {
-      const [accountEmail, calendarId] = eventForm.calendarKey.split(':');
-      const account = accounts.find((item) => item.email === accountEmail);
-
-      if (!account) {
-        throw new Error('Please choose a Google account.');
-      }
-
-      if (!calendarApi.hasPermission(account, SCOPES.CALENDAR_EVENTS)) {
-        throw new Error('Reconnect Google with calendar event permissions to manage events.');
-      }
-
-      const payload = buildGoogleEventPayload(eventForm);
-
-      if (editingEvent) {
-        await calendarApi.updateEvent(account, editingEvent.id, payload, calendarId || 'primary');
-        addToast('Event updated.');
-      } else {
-        await calendarApi.createEvent(account, payload, calendarId || 'primary');
-        addToast('Event created.');
-      }
-
-      setEventModalVisible(false);
-      refreshCalendarData({ silent: true });
+      await persistEvent(payload);
     } catch (error) {
       console.error('Failed to save event', error);
       addToast(error?.message || 'Failed to save event.', 'error');
     } finally {
       setSavingEvent(false);
     }
-  };
+  }, [addToast, canShowRecurringSavePrompt, editingEvent, eventForm, persistEvent]);
 
-  const handleDeleteEvent = () => {
+  const handleRecurringSaveChoice = useCallback(async (mode) => {
+    if (!pendingEventPayload || !editingEvent) return;
+
+    setSavingEvent(true);
+
+    try {
+      const payload = mode === 'this'
+        ? { ...pendingEventPayload, recurrence: undefined }
+        : pendingEventPayload;
+
+      await persistEvent(payload, {
+        recurringEdit: {
+          mode,
+          recurringEventId: recurringSeriesId,
+          originalStart: recurringOriginalStart,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to save recurring event', error);
+      addToast(error?.message || 'Failed to save event.', 'error');
+    } finally {
+      setSavingEvent(false);
+      setRecurringSaveVisible(false);
+      setPendingEventPayload(null);
+    }
+  }, [addToast, editingEvent, pendingEventPayload, persistEvent, recurringOriginalStart, recurringSeriesId]);
+
+  const deleteEvent = useCallback(async (options = {}) => {
     if (!editingEvent) return;
 
-    Alert.alert(
-      'Delete event?',
-      editingEvent.title,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const account = accounts.find((item) => item.email === editingEvent.accountEmail);
-              if (!account) {
-                throw new Error('Account not found.');
-              }
+    const account = accounts.find((item) => item.email === editingEvent.accountEmail);
+    if (!account) {
+      throw new Error('Account not found.');
+    }
 
-              await calendarApi.deleteEvent(
-                account,
-                editingEvent.id,
-                editingEvent.calendarId || 'primary'
-              );
-              addToast('Event deleted.');
-              setEventModalVisible(false);
-              refreshCalendarData({ silent: true });
-            } catch (error) {
-              console.error('Failed to delete event', error);
-              addToast(error?.message || 'Failed to delete event.', 'error');
-            }
-          },
-        },
-      ]
+    await calendarApi.deleteEvent(
+      account,
+      editingEvent.id,
+      editingEvent.calendarId || 'primary',
+      options
     );
-  };
+
+    addToast(
+      options?.recurringDelete?.mode === 'future'
+        ? 'Deleted this and future events.'
+        : 'Event deleted.'
+    );
+    handleCloseEventModal();
+    refreshCalendarData({ silent: true });
+  }, [accounts, addToast, editingEvent, handleCloseEventModal, refreshCalendarData]);
+
+  const handleDeleteEvent = useCallback(() => {
+    if (!editingEvent) return;
+
+    if (canShowRecurringDeletePrompt) {
+      setRecurringDeleteVisible(true);
+      return;
+    }
+
+    setDeleteConfirmVisible(true);
+  }, [canShowRecurringDeletePrompt, editingEvent]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    setSavingEvent(true);
+
+    try {
+      await deleteEvent();
+    } catch (error) {
+      console.error('Failed to delete event', error);
+      addToast(error?.message || 'Failed to delete event.', 'error');
+    } finally {
+      setSavingEvent(false);
+      setDeleteConfirmVisible(false);
+    }
+  }, [addToast, deleteEvent]);
+
+  const handleRecurringDeleteChoice = useCallback(async (mode) => {
+    if (!editingEvent) return;
+
+    setSavingEvent(true);
+
+    try {
+      await deleteEvent({
+        recurringDelete: {
+          mode,
+          recurringEventId: recurringSeriesId,
+          originalStart: recurringOriginalStart,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to delete recurring event', error);
+      addToast(error?.message || 'Failed to delete event.', 'error');
+    } finally {
+      setSavingEvent(false);
+      setRecurringDeleteVisible(false);
+    }
+  }, [addToast, deleteEvent, editingEvent, recurringOriginalStart, recurringSeriesId]);
 
   const handleCreateCalendar = async () => {
     const activeAccount = accounts.find((account) => account.active);
@@ -1947,13 +2643,60 @@ export default function CalendarScreen() {
       <EventEditorModal
         visible={eventModalVisible}
         title={editingEvent ? 'Edit Event' : 'New Event'}
+        subtitle={buildEventDateLabel(eventForm.eventDate)}
         form={eventForm}
+        event={editingEvent}
         loading={savingEvent}
         availableCalendars={availableCalendars}
         onChange={(field, value) => setEventForm((current) => ({ ...current, [field]: value }))}
-        onClose={() => setEventModalVisible(false)}
+        onClose={handleCloseEventModal}
         onSave={handleSaveEvent}
         onDelete={editingEvent ? handleDeleteEvent : null}
+        onOpenMeet={handleOpenMeet}
+      />
+
+      <ChoiceModal
+        visible={deleteConfirmVisible}
+        title="Delete Event"
+        message={`Delete "${editingEvent?.title || 'this event'}"?`}
+        note="This action cannot be undone."
+        onClose={() => setDeleteConfirmVisible(false)}
+        primaryLabel="Delete Event"
+        secondaryLabel="Keep Event"
+        onPrimary={handleConfirmDelete}
+        onSecondary={() => setDeleteConfirmVisible(false)}
+        loading={savingEvent}
+        primaryVariant="danger"
+      />
+
+      <ChoiceModal
+        visible={recurringSaveVisible}
+        title="Save Recurring Changes"
+        message="Choose how these changes should be applied to this recurring event."
+        note="Applying changes to future events can reset later exceptions in the series."
+        onClose={() => {
+          setRecurringSaveVisible(false);
+          setPendingEventPayload(null);
+        }}
+        primaryLabel="This And Future"
+        secondaryLabel="Only This Event"
+        onPrimary={() => handleRecurringSaveChoice('future')}
+        onSecondary={() => handleRecurringSaveChoice('this')}
+        loading={savingEvent}
+      />
+
+      <ChoiceModal
+        visible={recurringDeleteVisible}
+        title="Delete Recurring Event"
+        message="Choose whether to delete only this occurrence or this and all future occurrences."
+        note="Deleting future events can remove later exceptions in the series."
+        onClose={() => setRecurringDeleteVisible(false)}
+        primaryLabel="This And Future"
+        secondaryLabel="Only This Event"
+        onPrimary={() => handleRecurringDeleteChoice('future')}
+        onSecondary={() => handleRecurringDeleteChoice('this')}
+        loading={savingEvent}
+        primaryVariant="danger"
       />
 
       <CreateCalendarModal
@@ -2635,11 +3378,163 @@ const styles = StyleSheet.create({
   inlineSelectLabelSelected: {
     color: theme.colors.text,
   },
+  timeFieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  timeFieldColumn: {
+    flex: 1,
+  },
+  timeRangeSeparator: {
+    color: theme.colors.tertiary,
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    paddingTop: 14,
+  },
+  segmentedRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  segmentedButton: {
+    flex: 1,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  segmentedButtonActive: {
+    borderColor: theme.colors.text,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  segmentedButtonDisabled: {
+    opacity: 0.55,
+  },
+  segmentedLabel: {
+    color: theme.colors.secondary,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  segmentedLabelActive: {
+    color: theme.colors.text,
+  },
+  colorSwatchRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  colorSwatchButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  colorSwatchButtonActive: {
+    borderColor: theme.colors.text,
+  },
+  colorSwatchDefault: {
+    borderColor: theme.colors.borderDim,
+  },
+  colorSwatchFill: {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+  },
+  colorSwatchDefaultFill: {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  colorSwatchCustom: {
+    borderColor: theme.colors.borderDim,
+  },
+  guestInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+  },
+  guestInput: {
+    flex: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: 'transparent',
+    color: theme.colors.text,
+    paddingHorizontal: 0,
+    paddingVertical: 12,
+    fontSize: 14,
+    letterSpacing: 0.3,
+  },
+  guestAddButton: {
+    minWidth: 34,
+  },
+  guestChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  guestChip: {
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    backgroundColor: theme.colors.surfaceSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  guestChipLabel: {
+    maxWidth: 220,
+    color: theme.colors.secondary,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.6,
+  },
+  guestChipRemove: {
+    color: theme.colors.tertiary,
+    fontSize: 12,
+    lineHeight: 12,
+    textTransform: 'uppercase',
+  },
   modalFooterEnd: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 12,
+  },
+  choiceModalBody: {
+    gap: 10,
+  },
+  choiceModalText: {
+    color: theme.colors.secondary,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  choiceModalNote: {
+    color: theme.colors.tertiary,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+  choiceModalFooter: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  choiceModalButton: {
+    flex: 1,
   },
   formFieldGroup: {
     gap: 6,
