@@ -1,16 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlignLeft,
   AlignJustify,
   ArrowLeft,
   Calendar,
+  CalendarClock,
   Check,
+  CircleDot,
+  ClipboardList,
   ChevronRight,
   Clock3,
+  Flag,
+  FolderTree,
+  GitBranch,
   Loader2,
   MoveRight,
   Pause,
   Play,
   Plus,
+  Shapes,
   Tag,
   Trash2,
   X,
@@ -37,6 +45,7 @@ import {
   toIsoOrNull,
 } from '@/features/tasks/utils/task-date.utils';
 import TasksDatePicker from './TasksDatePicker';
+import TaskFieldLabel from './TaskFieldLabel';
 
 function getDescriptionPreview(text, maxLength = 110) {
   if (!text) return '';
@@ -55,6 +64,12 @@ function formatSpentTime(totalMinutes) {
   if (hours > 0) parts.push(`${hours}h`);
   if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
   return parts.join(' ');
+}
+
+function formatInputDateTime(value, emptyLabel = '') {
+  const normalized = toIsoOrNull(value);
+  if (!normalized) return emptyLabel;
+  return formatDateTime(normalized);
 }
 
 function getNormalizedPayload(form) {
@@ -183,7 +198,7 @@ export default function TaskDetailModal({
       .map((item) => ({ value: item.id, label: item.title })),
   ];
   const taskTypeById = new Map(taskTypes.map((type) => [String(type.id), type]));
-  const startDateDisplay = formatDateTime(task.start_date);
+  const startDateDisplay = formatInputDateTime(form.start_date, 'Auto when task starts');
 
   const handleStatusAction = (status, { closeOnSuccess = false } = {}) => {
     if (task.status === status && form.status === status) {
@@ -224,6 +239,7 @@ export default function TaskDetailModal({
                 {parentTask.title}
               </button>
             ) : null}
+            <h3>{isSubtask ? 'Subtask Details' : 'Task Details'}</h3>
           </div>
 
           <div className="tasksModalHeaderActions">
@@ -294,9 +310,11 @@ export default function TaskDetailModal({
 
         <div className={`tasksDetailBody ${isSubtask ? 'subtaskView' : ''}`.trim()}>
           <div className="tasksDetailMain">
-            <div className="tasksFormGrid">
+            <div className="tasksFormGrid tasksModalForm">
                 <div className="tasksField tasksFieldFull">
-                  <label>Title *</label>
+                  <label>
+                    <TaskFieldLabel icon={ClipboardList}>Title *</TaskFieldLabel>
+                  </label>
                   <input
                     type="text"
                     value={form.title}
@@ -305,7 +323,9 @@ export default function TaskDetailModal({
                 </div>
 
                 <div className="tasksField tasksFieldFull">
-                  <label>Description</label>
+                  <label>
+                    <TaskFieldLabel icon={AlignLeft}>Description</TaskFieldLabel>
+                  </label>
                   <textarea
                     value={form.description}
                     onChange={(e) =>
@@ -316,7 +336,9 @@ export default function TaskDetailModal({
                 </div>
 
                 <div className="tasksField">
-                  <label>Status</label>
+                  <label>
+                    <TaskFieldLabel icon={CircleDot}>Status</TaskFieldLabel>
+                  </label>
                   <CustomSelect
                     options={statusOptions}
                     value={form.status}
@@ -326,7 +348,9 @@ export default function TaskDetailModal({
                 </div>
 
                 <div className="tasksField">
-                  <label>Priority</label>
+                  <label>
+                    <TaskFieldLabel icon={Flag}>Priority</TaskFieldLabel>
+                  </label>
                   <CustomSelect
                     options={priorityOptions}
                     value={form.priority}
@@ -336,7 +360,9 @@ export default function TaskDetailModal({
                 </div>
 
                 <div className="tasksField">
-                  <label>Task Category</label>
+                  <label>
+                    <TaskFieldLabel icon={Shapes}>Task Category</TaskFieldLabel>
+                  </label>
                   <div className="tasksInlineField">
                     <CustomSelect
                       options={taskTypeOptions}
@@ -353,7 +379,7 @@ export default function TaskDetailModal({
                         onClose();
                         onOpenTypeManager();
                       }}
-                      title="Manage task Categories"
+                      title="Manage task categories"
                     >
                       <Tag size={14} />
                     </button>
@@ -361,7 +387,9 @@ export default function TaskDetailModal({
                 </div>
 
                 <div className="tasksField">
-                  <label>Parent Task</label>
+                  <label>
+                    <TaskFieldLabel icon={GitBranch}>Parent Task</TaskFieldLabel>
+                  </label>
                   <CustomSelect
                     options={parentTaskOptions}
                     value={form.parent_task_id}
@@ -373,12 +401,19 @@ export default function TaskDetailModal({
                 </div>
 
                 <div className="tasksField">
-                  <label>Start Date</label>
-                  <div className="tasksReadonlyField">{startDateDisplay}</div>
+                  <label>
+                    <TaskFieldLabel icon={Calendar}>Start Date</TaskFieldLabel>
+                  </label>
+                  <div className={`tasksReadonlyField ${form.start_date ? '' : 'tasksReadonlyFieldPlaceholder'}`.trim()}>
+                    <span>{startDateDisplay}</span>
+                    <Calendar size={14} />
+                  </div>
                 </div>
 
                 <div className="tasksField">
-                  <label>Due Date</label>
+                  <label>
+                    <TaskFieldLabel icon={CalendarClock}>Due Date</TaskFieldLabel>
+                  </label>
                   <TasksDatePicker
                     value={form.due_date}
                     onChange={(value) =>
@@ -395,7 +430,10 @@ export default function TaskDetailModal({
           {!isSubtask ? (
             <aside className="tasksSubtasksPanel">
               <div className="tasksSubtasksHeader">
-                <h4>Subtasks ({subtasks.length})</h4>
+                <h4>
+                  <FolderTree size={14} />
+                  Subtasks ({subtasks.length})
+                </h4>
                 <button
                   type="button"
                   className="tasksIconBtn"
@@ -408,7 +446,9 @@ export default function TaskDetailModal({
               {showSubtaskForm ? (
                 <div className="tasksSubtaskForm">
                   <div className="tasksField">
-                    <label>Title *</label>
+                    <label>
+                      <TaskFieldLabel icon={ClipboardList}>Title *</TaskFieldLabel>
+                    </label>
                     <input
                       type="text"
                       value={subtaskForm.title}
@@ -418,7 +458,9 @@ export default function TaskDetailModal({
                     />
                   </div>
                   <div className="tasksField">
-                    <label>Description</label>
+                    <label>
+                      <TaskFieldLabel icon={AlignLeft}>Description</TaskFieldLabel>
+                    </label>
                     <textarea
                       rows={3}
                       value={subtaskForm.description}
@@ -428,7 +470,9 @@ export default function TaskDetailModal({
                     />
                   </div>
                   <div className="tasksField">
-                    <label>Status</label>
+                    <label>
+                      <TaskFieldLabel icon={CircleDot}>Status</TaskFieldLabel>
+                    </label>
                     <CustomSelect
                       options={statusOptions}
                       value={subtaskForm.status}
@@ -439,7 +483,9 @@ export default function TaskDetailModal({
                     />
                   </div>
                   <div className="tasksField">
-                    <label>Priority</label>
+                    <label>
+                      <TaskFieldLabel icon={Flag}>Priority</TaskFieldLabel>
+                    </label>
                     <CustomSelect
                       options={priorityOptions}
                       value={subtaskForm.priority}
@@ -450,7 +496,9 @@ export default function TaskDetailModal({
                     />
                   </div>
                   <div className="tasksField">
-                    <label>Due Date</label>
+                    <label>
+                      <TaskFieldLabel icon={CalendarClock}>Due Date</TaskFieldLabel>
+                    </label>
                     <TasksDatePicker
                       value={subtaskForm.due_date}
                       onChange={(value) =>
