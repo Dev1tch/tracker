@@ -223,12 +223,12 @@ function enumerateAgendaDays(startDate, endDate) {
 }
 
 function formatAgendaDayLabel(date) {
-  return date.toLocaleDateString(undefined, { weekday: 'long' });
+  return date.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase();
 }
 
 function formatAgendaDayTitle(date) {
   return date.toLocaleDateString(undefined, {
-    month: 'long',
+    month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
@@ -771,7 +771,7 @@ function CalendarToggleSection({
                   ]}
                 >
                   {enabled ? (
-                    <Check color={theme.colors.text} size={9} strokeWidth={2.2} />
+                    <Check color={theme.colors.text} size={10} strokeWidth={2.5} />
                   ) : null}
                 </View>
                 <View style={styles.calendarToggleMeta}>
@@ -1660,13 +1660,11 @@ function MobileAgendaCard({ item, eventCardStyle, onOpen, onOpenMeet }) {
   const isTask = item.eventType === 'task';
   const eventColor = isTask ? '#EF4444' : getCalendarEventColor(item);
   const calendarColor = item.calendarColor || eventColor;
-  const badgeLabel = isTask ? 'Task due' : item.allDay ? 'All day' : 'Scheduled';
   const timeLabel = isTask
     ? `Due ${formatCalendarTimeRange(item.start, item.end)}`
     : item.allDay
       ? 'All day'
       : formatCalendarTimeRange(item.start, item.end);
-  const hasMeta = Boolean((!isTask && (item.calendarName || item.accountEmail)) || item.location);
   const hasExternalActions = !isTask && Boolean(item.googleMeetLink);
 
   const cardStyle = useMemo(() => {
@@ -1694,69 +1692,36 @@ function MobileAgendaCard({ item, eventCardStyle, onOpen, onOpenMeet }) {
     <View style={[styles.mobileCard, cardStyle]}>
       <View style={[styles.mobileCardAccent, { backgroundColor: calendarColor }]} />
 
-      <Pressable onPress={onOpen} style={[styles.mobileCardContent, hasExternalActions ? styles.mobileCardContentWithActions : null]}>
-        <View style={styles.mobileCardTop}>
-          <View style={styles.mobileCardPills}>
-            <View style={styles.mobileCardTimePill}>
-              <Text style={styles.mobileCardTimePillLabel}>{timeLabel}</Text>
-            </View>
-            <View
-              style={[
-                styles.mobileCardBadge,
-                isTask ? styles.mobileCardBadgeTask : null,
-                !isTask && item.allDay ? styles.mobileCardBadgeAllDay : null,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.mobileCardBadgeLabel,
-                  !isTask && !item.allDay ? styles.mobileCardBadgeLabelTimed : null,
-                  !isTask && item.allDay ? styles.mobileCardBadgeLabelAllDay : null,
-                  isTask ? styles.mobileCardBadgeLabelTask : null,
-                ]}
-              >
-                {badgeLabel}
+      <Pressable
+        onPress={onOpen}
+        style={[
+          styles.mobileCardContent,
+          hasExternalActions ? styles.mobileCardContentWithActions : null,
+        ]}
+      >
+        <Text numberOfLines={2} style={styles.mobileCardTitle}>{item.title}</Text>
+
+        <View style={styles.mobileCardSub}>
+          <Text style={[styles.mobileCardTime, isTask ? styles.mobileCardTimeTask : null]}>
+            {timeLabel}
+          </Text>
+          {!isTask && item.calendarName ? (
+            <>
+              <View style={styles.mobileCardSubDot} />
+              <View style={[styles.mobileCardCalDot, { backgroundColor: calendarColor }]} />
+              <Text numberOfLines={1} style={styles.mobileCardSubText}>
+                {item.calendarName}
               </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.mobileCardTitleRow}>
-          {!isTask ? (
-            <View
-              style={[
-                styles.mobileCardDot,
-                {
-                  backgroundColor: calendarColor,
-                  shadowColor: calendarColor,
-                },
-              ]}
-            />
+            </>
           ) : null}
-          <Text style={styles.mobileCardTitle}>{item.title}</Text>
+          {item.location ? (
+            <>
+              <View style={styles.mobileCardSubDot} />
+              <MapPin color={theme.colors.muted} size={10} strokeWidth={1.8} />
+              <Text numberOfLines={1} style={styles.mobileCardSubText}>{item.location}</Text>
+            </>
+          ) : null}
         </View>
-
-        {hasMeta ? (
-          <View style={styles.mobileCardMeta}>
-            {!isTask && (item.calendarName || item.accountEmail) ? (
-              <View style={styles.mobileCardMetaItem}>
-                <View style={[styles.mobileCardMetaSourceDot, { backgroundColor: calendarColor }]} />
-                <Text numberOfLines={1} style={styles.mobileCardMetaText}>
-                  {item.calendarName || 'Calendar'}{item.accountEmail ? ` - ${item.accountEmail}` : ''}
-                </Text>
-              </View>
-            ) : null}
-
-            {item.location ? (
-              <View style={styles.mobileCardMetaItem}>
-                <MapPin color={theme.colors.secondary} size={12} strokeWidth={1.8} />
-                <Text numberOfLines={1} style={styles.mobileCardMetaText}>
-                  {item.location}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
       </Pressable>
 
       {hasExternalActions ? (
@@ -1791,12 +1756,12 @@ function MobileAgendaDay({
     <View style={[styles.mobileDaySection, isToday ? styles.mobileDaySectionToday : null]}>
       <View style={styles.mobileDayHeader}>
         <View style={styles.mobileDayHeading}>
-          <View style={styles.mobileDayMeta}>
-            <Text style={[styles.mobileDayLabel, isToday ? styles.mobileDayLabelToday : null]}>
-              {isToday ? 'Today' : formatAgendaDayLabel(day)}
-            </Text>
-          </View>
-          <Text style={styles.mobileDayTitle}>{dayTitle}</Text>
+          <Text style={[styles.mobileDayLabel, isToday ? styles.mobileDayLabelToday : null]}>
+            {isToday ? 'Today' : formatAgendaDayLabel(day)}
+          </Text>
+          <Text style={[styles.mobileDayTitle, isToday ? styles.mobileDayTitleToday : null]}>
+            {dayTitle}
+          </Text>
         </View>
 
         <Pressable
@@ -2961,53 +2926,54 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   mobileAgenda: {
-    gap: 12,
-    paddingBottom: 18,
+    paddingBottom: 24,
   },
   mobileDaySection: {
-    gap: 12,
+    marginBottom: 28,
   },
-  mobileDaySectionToday: {
-    borderTopColor: 'rgba(255, 255, 255, 0.14)',
-  },
+  mobileDaySectionToday: {},
   mobileDayHeader: {
-    paddingHorizontal: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    paddingHorizontal: 2,
+    paddingBottom: 5,
+    marginBottom: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderDim,
   },
   mobileDayHeading: {
-    minWidth: 0,
-    gap: 6,
-  },
-  mobileDayMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    flexWrap: 'wrap',
+    flex: 1,
+    minWidth: 0,
   },
   mobileDayLabel: {
     color: theme.colors.tertiary,
-    fontSize: 9,
-    letterSpacing: 1.8,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
   },
   mobileDayLabelToday: {
-    backgroundColor: theme.colors.text,
     color: theme.colors.background,
-    paddingHorizontal: 8,
+    backgroundColor: theme.colors.text,
+    paddingHorizontal: 7,
     paddingVertical: 3,
-    alignSelf: 'flex-start',
   },
   mobileDayTitle: {
-    color: theme.colors.text,
-    fontSize: 17,
+    color: theme.colors.secondary,
+    fontSize: 13,
     letterSpacing: 0.2,
   },
+  mobileDayTitleToday: {
+    color: theme.colors.text,
+    fontWeight: '500',
+  },
   mobileDayAction: {
-    width: 38,
-    height: 38,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3015,7 +2981,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   mobileCardList: {
-    gap: 12,
+    gap: 8,
   },
   mobileCard: {
     position: 'relative',
@@ -3028,106 +2994,54 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    width: 3,
+    width: 4,
   },
   mobileCardContent: {
-    padding: 14,
+    paddingLeft: 18,
+    paddingRight: 14,
+    paddingVertical: 12,
+    gap: 6,
   },
   mobileCardContentWithActions: {
-    paddingRight: 68,
-  },
-  mobileCardTop: {
-    marginBottom: 12,
-  },
-  mobileCardPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingRight: 10,
-  },
-  mobileCardTimePill: {
-    minHeight: 22,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  mobileCardTimePillLabel: {
-    color: theme.colors.text,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  mobileCardBadge: {
-    minHeight: 22,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  mobileCardBadgeTask: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-  },
-  mobileCardBadgeAllDay: {
-    backgroundColor: 'rgba(96, 165, 250, 0.12)',
-  },
-  mobileCardBadgeLabel: {
-    color: theme.colors.tertiary,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  mobileCardBadgeLabelTimed: {
-    color: theme.colors.secondary,
-  },
-  mobileCardBadgeLabelAllDay: {
-    color: '#BFDBFE',
-  },
-  mobileCardBadgeLabelTask: {
-    color: '#FECACA',
-  },
-  mobileCardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  mobileCardDot: {
-    width: 7,
-    height: 7,
-    marginTop: 6,
-    borderRadius: 999,
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
+    paddingRight: 54,
   },
   mobileCardTitle: {
-    flex: 1,
     color: theme.colors.text,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+    letterSpacing: 0.1,
   },
-  mobileCardMeta: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 10,
-  },
-  mobileCardMetaItem: {
+  mobileCardSub: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
-    minWidth: 0,
   },
-  mobileCardMetaText: {
-    color: theme.colors.secondary,
-    fontSize: 11,
-    letterSpacing: 0.2,
-    flexShrink: 1,
+  mobileCardTime: {
+    color: theme.colors.tertiary,
+    fontSize: 10,
+    letterSpacing: 0.4,
   },
-  mobileCardMetaSourceDot: {
+  mobileCardTimeTask: {
+    color: '#FCA5A5',
+  },
+  mobileCardSubDot: {
+    width: 2,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: theme.colors.muted,
+  },
+  mobileCardCalDot: {
     width: 5,
     height: 5,
     borderRadius: 999,
+  },
+  mobileCardSubText: {
+    color: theme.colors.muted,
+    fontSize: 10,
+    letterSpacing: 0.2,
+    flexShrink: 1,
   },
   mobileCardActions: {
     position: 'absolute',
@@ -3265,24 +3179,27 @@ const styles = StyleSheet.create({
   },
   calendarTogglesPanel: {
     paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 16,
-    gap: 10,
+    paddingTop: 8,
+    paddingBottom: 20,
+    gap: 20,
   },
   calendarToggleSection: {
-    gap: 6,
+    gap: 2,
   },
   calendarToggleHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 4,
-    marginBottom: 4,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderDim,
+    marginBottom: 6,
   },
   calendarToggleTitle: {
     color: theme.colors.tertiary,
     fontSize: 10,
-    letterSpacing: 1.2,
+    fontWeight: '500',
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
   calendarToggleHeaderActions: {
@@ -3296,41 +3213,42 @@ const styles = StyleSheet.create({
   calendarToggleItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 2,
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     borderLeftWidth: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
   },
   calendarToggleCheckbox: {
-    width: 14,
-    height: 14,
+    width: 16,
+    height: 16,
+    borderRadius: 999,
     borderWidth: 1.5,
-    borderColor: theme.colors.border,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderColor: theme.colors.borderDim,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
   calendarToggleMeta: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
   },
   calendarToggleSummary: {
     color: theme.colors.secondary,
-    fontSize: 11,
+    fontSize: 13,
+    fontWeight: '500',
   },
   calendarToggleEmail: {
     color: theme.colors.muted,
-    fontSize: 9,
-    letterSpacing: 0.4,
+    fontSize: 10,
+    letterSpacing: 0.3,
   },
   calendarToggleEmpty: {
     color: theme.colors.muted,
-    fontSize: 10,
-    letterSpacing: 0.4,
-    paddingTop: 2,
-    paddingBottom: 6,
+    fontSize: 11,
+    letterSpacing: 0.3,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
   inlineSelectMenu: {
     marginTop: 2,
