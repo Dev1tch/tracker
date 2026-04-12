@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => pad2(index));
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) => pad2(index));
 
 function pad2(value) {
   return String(value).padStart(2, '0');
@@ -59,6 +61,57 @@ function normalize(date) {
   return next;
 }
 
+function TasksTimeSelect({
+  label,
+  value,
+  options,
+  isOpen,
+  onToggle,
+  onSelect,
+}) {
+  const selectedOptionRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen && selectedOptionRef.current) {
+      selectedOptionRef.current.scrollIntoView({ block: 'center' });
+    }
+  }, [isOpen]);
+
+  return (
+    <div className={`tasksTimeSelect ${isOpen ? 'open' : ''}`.trim()}>
+      <button
+        type="button"
+        className={`tasksTimeSelectHeader ${isOpen ? 'open' : ''}`.trim()}
+        onClick={onToggle}
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span>{value}</span>
+        <ChevronDown size={14} className={isOpen ? 'rotate' : ''} />
+      </button>
+
+      {isOpen ? (
+        <div className="tasksTimeSelectDropdown" role="listbox" aria-label={label}>
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="option"
+              aria-selected={option === value}
+              ref={option === value ? selectedOptionRef : null}
+              className={`tasksTimeSelectOption ${option === value ? 'selected' : ''}`.trim()}
+              onClick={() => onSelect(option)}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function TasksDatePicker({
   value,
   onChange,
@@ -73,6 +126,7 @@ export default function TasksDatePicker({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [openUp, setOpenUp] = useState(false);
+  const [openTimePart, setOpenTimePart] = useState(null);
   const containerRef = useRef(null);
   const isRangeMode = typeof onRangeChange === 'function';
   const isTimeMode = showTime && !isRangeMode;
@@ -99,6 +153,7 @@ export default function TasksDatePicker({
     function handleClickOutside(event) {
       if (containerRef.current && !containerRef.current.contains(event.target)) {
         setIsOpen(false);
+        setOpenTimePart(null);
       }
     }
 
@@ -217,6 +272,15 @@ export default function TasksDatePicker({
     onChange(toDateValue(nextDate, { includeTime: true }));
   };
 
+  const handleTimePartChange = (part, nextSegment) => {
+    const nextValue = part === 'hour'
+      ? `${nextSegment}:${pad2(selectedTime.minute)}`
+      : `${pad2(selectedTime.hour)}:${nextSegment}`;
+
+    handleTimeChange(nextValue);
+    setOpenTimePart(null);
+  };
+
   const handleRangeDateChange = (date) => {
     if (!selectedRangeStart || selectedRangeEnd) {
       onRangeChange(toDateValue(date), '');
@@ -253,6 +317,7 @@ export default function TasksDatePicker({
               });
             }
           }
+          setOpenTimePart(null);
           setIsOpen((prev) => !prev);
         }}
       >
@@ -326,17 +391,33 @@ export default function TasksDatePicker({
 
           {isTimeMode ? (
             <div className="tasksDateTimeRow">
-              <span>Time</span>
-              <input
-                type="time"
-                step={60}
-                value={`${pad2(selectedTime.hour)}:${pad2(selectedTime.minute)}`}
-                onChange={(event) => handleTimeChange(event.target.value)}
-              />
+              <span className="tasksDateTimeLabel">Time</span>
+              <div className="tasksTimePickerRow">
+                <TasksTimeSelect
+                  label="Hour"
+                  value={pad2(selectedTime.hour)}
+                  options={HOUR_OPTIONS}
+                  isOpen={openTimePart === 'hour'}
+                  onToggle={() => setOpenTimePart((current) => (current === 'hour' ? null : 'hour'))}
+                  onSelect={(nextHour) => handleTimePartChange('hour', nextHour)}
+                />
+                <span className="tasksTimeSeparator">:</span>
+                <TasksTimeSelect
+                  label="Minute"
+                  value={pad2(selectedTime.minute)}
+                  options={MINUTE_OPTIONS}
+                  isOpen={openTimePart === 'minute'}
+                  onToggle={() => setOpenTimePart((current) => (current === 'minute' ? null : 'minute'))}
+                  onSelect={(nextMinute) => handleTimePartChange('minute', nextMinute)}
+                />
+              </div>
               <button
                 type="button"
                 className="tasksDateDoneBtn"
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setOpenTimePart(null);
+                  setIsOpen(false);
+                }}
               >
                 Done
               </button>
