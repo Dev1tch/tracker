@@ -1,4 +1,18 @@
-const DEFAULT_API_BASE_URL = 'https://tracker-backend-mocha.vercel.app/api/v1';
+const HOSTED_API_BASE_URL = 'https://tracker-backend-mocha.vercel.app/api/v1';
+
+function trimTrailingSlash(value) {
+  return value.replace(/\/+$/u, '');
+}
+
+function readEnvValue(value) {
+  return typeof value === 'string' && value.trim() ? trimTrailingSlash(value.trim()) : '';
+}
+
+const DEFAULT_API_BASE_URL = readEnvValue(
+  typeof process !== 'undefined'
+    ? (process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL || '')
+    : ''
+) || HOSTED_API_BASE_URL;
 
 function isPromiseLike(value) {
   return Boolean(value) && typeof value.then === 'function';
@@ -26,10 +40,6 @@ const runtime = {
   onAuthChange: null,
   onUnauthorized: null,
 };
-
-function trimTrailingSlash(value) {
-  return value.replace(/\/+$/u, '');
-}
 
 function logAsyncStorageError(label, error) {
   console.error(`${label} failed:`, error);
@@ -139,4 +149,4 @@ export function handleUnauthorized(error) {
   }
 }
 
-export { DEFAULT_API_BASE_URL };
+export { DEFAULT_API_BASE_URL, HOSTED_API_BASE_URL };
