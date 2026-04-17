@@ -84,7 +84,7 @@
 html[data-theme="light"] {
   --theme-rgb: 15, 23, 42;
   --shadow-rgb: 15, 23, 42;
-  --bg-color: #edf3fb;
+  --bg-color: #f8f9fb;
   --text-primary: #0f172a;
   --text-secondary: rgba(15, 23, 42, 0.72);
   --text-tertiary: rgba(15, 23, 42, 0.5);
