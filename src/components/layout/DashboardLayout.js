@@ -2,21 +2,26 @@
 
 import React, { useEffect, useRef } from 'react';
 import { CheckCircle2, ListTodo, CalendarDays, LineChart, LogOut } from 'lucide-react';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 import './Dashboard.css';
 
 export default function DashboardLayout({ children, activeTab, onTabChange, onLogout }) {
   const canvasRef = useRef(null);
 
-  // Subtle background particles for the dashboard
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    let width, height, particles;
+    let width;
+    let height;
+    let particles;
+    let frameId;
+
+    const getThemeRgb = () =>
+      getComputedStyle(document.documentElement).getPropertyValue('--theme-rgb').trim() || '255, 255, 255';
 
     function init() {
-      const parent = canvas.parentElement;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
       
@@ -37,6 +42,7 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
 
     function animate() {
       ctx.clearRect(0, 0, width, height);
+      const particleRgb = getThemeRgb();
 
       particles.forEach(p => {
         p.x += p.vx;
@@ -49,11 +55,11 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+        ctx.fillStyle = `rgba(${particleRgb}, ${p.opacity})`;
         ctx.fill();
       });
 
-      requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
     }
 
     const handleResize = () => init();
@@ -62,14 +68,16 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
     init();
     animate();
 
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (frameId) cancelAnimationFrame(frameId);
+    };
   }, []);
 
   return (
     <div className="dashboardContainer">
       <canvas ref={canvasRef} className="dashboardParticles" />
 
-      {/* Subtle Top Branding */}
       <header className="topHeader">
         <div className="brand">
           <img src="/logo.svg" alt="Life Tracker Logo" className="brandLogo" />
@@ -77,21 +85,22 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
           <span style={{ opacity: 0.3, margin: '0 4px', textTransform: 'none' }}>/</span> 
           <span style={{ color: 'var(--text-secondary)' }}>{activeTab}</span>
         </div>
-        <button 
-          className="logoutFab" 
-          onClick={onLogout}
-          title="Sign Out"
-        >
-          <LogOut size={16} strokeWidth={1.5} />
-        </button>
+        <div className="headerActions">
+          <ThemeToggle className="dashboardThemeToggle" />
+          <button
+            className="logoutFab"
+            onClick={onLogout}
+            title="Sign Out"
+          >
+            <LogOut size={16} strokeWidth={1.5} />
+          </button>
+        </div>
       </header>
 
-      {/* Main Content Area */}
       <main className="mainContent">
         {children}
       </main>
 
-      {/* Bottom Navigation */}
       <nav className="bottomNav">
         <div className="navContainer">
           <button 

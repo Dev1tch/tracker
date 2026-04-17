@@ -34,12 +34,12 @@
 
 .legalPanel.right {
   right: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.7) 30%, rgba(0, 0, 0, 0.9) 100%);
+  background: var(--panel-gradient-right);
 }
 
 .legalPanel.left {
   left: 0;
-  background: linear-gradient(270deg, transparent 0%, rgba(0, 0, 0, 0.7) 30%, rgba(0, 0, 0, 0.9) 100%);
+  background: var(--panel-gradient-left);
 }
 
 .legalContainer {
@@ -74,7 +74,7 @@
   content: "";
   width: 8px;
   height: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid var(--surface-30);
   transform: rotate(45deg);
 }
 
@@ -96,7 +96,7 @@
 
 .legalTopLink:hover {
   color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.45);
+  border-color: var(--surface-45);
 }
 
 .legalTitle {
@@ -188,9 +188,9 @@
 
 .legalHighlight {
   margin-top: 12px;
-  border: 1px dashed rgba(255, 255, 255, 0.32);
+  border: 1px dashed var(--surface-32);
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-03);
 }
 
 .legalContent a {
@@ -212,7 +212,7 @@
     width: 100%;
     left: 0;
     right: auto;
-    background: rgba(0, 0, 0, 0.8);
+    background: var(--panel-translucent-strong);
   }
 
   .legalContainer {

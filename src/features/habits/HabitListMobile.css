@@ -39,7 +39,7 @@
 }
 
 .mobileNavBtn:active {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-05);
   transform: scale(0.9);
 }
 
@@ -77,7 +77,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  border-bottom: 1px dashed var(--surface-10);
   padding-bottom: 8px;
 }
 
@@ -140,7 +140,7 @@
 }
 
 .mobileDayCol:not(.futureCol):active {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-05);
   transform: scale(0.95);
 }
 
@@ -165,8 +165,8 @@
 }
 
 .mobileDayCol.todayCol {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-05);
+  border: 1px solid var(--surface-10);
 }
 
 .mobileDayCol.futureCol {
@@ -185,8 +185,8 @@
 }
 
 .statusIndicator.success {
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+  background: var(--surface-90);
+  box-shadow: 0 0 10px var(--surface-40);
 }
 
 .statusIndicator.fail {
@@ -200,6 +200,6 @@
 }
 
 .statusIndicator.future {
-  border: 2px dashed rgba(255, 255, 255, 0.1);
+  border: 2px dashed var(--surface-10);
   background: transparent;
 }

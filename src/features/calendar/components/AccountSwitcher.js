@@ -111,18 +111,18 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           margin-right: -4px;
         }
         .account-trigger:hover {
-          background: rgba(255, 255, 255, 0.05);
+          background: var(--surface-05);
         }
         .account-mini-profile {
           width: 22px;
           height: 22px;
           border-radius: 50%;
-          background: rgba(255, 255, 255, 0.1);
+          background: var(--surface-10);
           display: flex;
           align-items: center;
           justify-content: center;
           overflow: hidden;
-          border: 1px solid rgba(255, 255, 255, 0.2);
+          border: 1px solid var(--surface-20);
         }
         .account-mini-profile img {
           width: 100%;
@@ -142,7 +142,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           right: 0;
           width: min(320px, calc(100vw - 32px));
           border: 1px solid var(--border-color);
-          background: rgba(12, 12, 12, 0.98);
+          background: var(--panel-solid);
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.42);
           border-radius: 0;
           animation: slideDown 0.2s ease-out;
@@ -169,7 +169,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
         .dropdown-add-btn {
           background: transparent;
           border: none;
-          color: rgba(255, 255, 255, 0.6);
+          color: var(--surface-60);
           width: 24px;
           height: 24px;
           border-radius: 0;
@@ -180,7 +180,7 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           transition: all 0.2s;
         }
         .dropdown-add-btn:hover {
-          color: rgba(255, 255, 255, 1);
+          color: var(--text-primary);
           transform: scale(1.1);
         }
         .account-dropdown-list {
@@ -195,12 +195,12 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           align-items: center;
           padding: 8px;
           border-radius: 0;
-          background: rgba(255, 255, 255, 0.02);
+          background: var(--surface-02);
           border: none;
           transition: all 0.2s;
         }
         .account-dropdown-item:hover {
-          background: rgba(255, 255, 255, 0.05);
+          background: var(--surface-05);
         }
         .account-dropdown-item.inactive {
           opacity: 0.5;
@@ -221,13 +221,13 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           width: 26px;
           height: 26px;
           border-radius: 50%;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 1px solid var(--surface-10);
         }
         .item-avatar-placeholder {
           width: 26px;
           height: 26px;
           border-radius: 50%;
-          background: rgba(255, 255, 255, 0.1);
+          background: var(--surface-10);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -246,9 +246,9 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           flex-shrink: 0;
         }
         .item-toggle-btn, .item-remove-btn {
-          background: rgba(255, 255, 255, 0.05);
+          background: var(--surface-05);
           border: none;
-          color: rgba(255, 255, 255, 0.3);
+          color: var(--surface-30);
           width: 26px;
           height: 26px;
           border-radius: 0;
@@ -263,8 +263,8 @@ export default function AccountSwitcher({ accounts, onConnect, onToggle, onDisco
           background: rgba(16, 185, 129, 0.15);
         }
         .item-toggle-btn:hover:not(.active) {
-          color: white;
-          background: rgba(255, 255, 255, 0.1);
+          color: var(--text-primary);
+          background: var(--surface-10);
         }
         .item-remove-btn:hover {
           color: #ef4444;

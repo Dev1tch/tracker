@@ -14,6 +14,26 @@ function canDispatchBrowserEvents() {
     && typeof Event === 'function';
 }
 
+function buildRequestError(message, response, data, context = {}) {
+  const error = new Error(message);
+  error.name = 'ApiError';
+  error.status = response?.status;
+  error.data = data;
+  error.url = context.url || null;
+  error.method = context.method || null;
+  return error;
+}
+
+function shouldLogRequestError(error) {
+  const status = Number(error?.status);
+
+  if (!Number.isFinite(status)) {
+    return true;
+  }
+
+  return status >= 500;
+}
+
 export class ApiClient {
   constructor(baseUrl = null) {
     this.baseUrl = baseUrl;
@@ -55,6 +75,7 @@ export class ApiClient {
 
   async request(path, options = {}) {
     const url = resolveApiUrl(path, this.getResolvedBaseUrl());
+    const method = options.method || 'GET';
     const headers = {
       ...options.headers,
     };
@@ -89,15 +110,20 @@ export class ApiClient {
           handleUnauthorized({ response, data });
         }
 
-        const error = new Error(this.getErrorMessage(data, response));
-        error.status = response.status;
-        error.data = data;
-        throw error;
+        throw buildRequestError(
+          this.getErrorMessage(data, response),
+          response,
+          data,
+          { url, method }
+        );
       }
 
       return data;
     } catch (error) {
-      console.error(`API Error [${options.method || 'GET'}] ${url}:`, error);
+      if (shouldLogRequestError(error)) {
+        console.error(`API Error [${method}] ${url}:`, error);
+      }
+
       throw error;
     }
   }

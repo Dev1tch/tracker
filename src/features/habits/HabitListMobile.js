@@ -116,7 +116,7 @@ export default function HabitListMobile({ habits, categories, logs, days, onTogg
                        </div>
                        
                        <div className="mobileDayColStatus">
-                         {status === 'completed' && <div className="statusIndicator success"><Check size={12} color="#000" strokeWidth={3} /></div>}
+                         {status === 'completed' && <div className="statusIndicator success"><Check size={12} strokeWidth={3} /></div>}
                          {status === 'failed' && <div className="statusIndicator fail"><X size={12} color="#ff4d4d" strokeWidth={3} /></div>}
                          {status === 'empty' && !isFuture && <div className="statusIndicator empty"></div>}
                          {isFuture && <div className="statusIndicator future"></div>}

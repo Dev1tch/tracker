@@ -14,6 +14,17 @@
     z-index: 9999;
 }
 
+.authThemeToggleWrap {
+    position: fixed;
+    top: 22px;
+    left: 22px;
+    z-index: 20;
+}
+
+.authThemeToggle {
+    opacity: 0.96;
+}
+
 .particleCanvas {
     position: fixed;
     top: 0;
@@ -33,7 +44,7 @@
     align-items: center;
     justify-content: center;
     z-index: 10;
-    background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0.9) 100%);
+    background: var(--panel-gradient-right);
     backdrop-filter: blur(1px);
 }
 
@@ -61,7 +72,7 @@
     content: '';
     width: 8px;
     height: 8px;
-    border: 1px solid rgba(255,255,255,0.3);
+    border: 1px solid var(--surface-30);
     transform: rotate(45deg);
     animation: authLogoPulse 3s ease-in-out infinite;
 }
@@ -157,7 +168,7 @@
 
 .strengthBar {
     flex: 1;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--surface-10);
     border-radius: 2px;
     transition: all 0.3s ease;
 }
@@ -183,14 +194,14 @@
     bottom: 0;
     width: 6px;
     height: 1px;
-    background: rgba(255,255,255,0.5);
+    background: var(--surface-50);
     transition: var(--transition-fast);
 }
 
 .authInputGroup:focus-within::before {
     width: 100%;
-    background: rgba(255,255,255,0.8);
-    box-shadow: 0 0 20px rgba(255,255,255,0.4);
+    background: var(--surface-80);
+    box-shadow: 0 0 20px var(--surface-40);
 }
 
 .authInput {
@@ -237,8 +248,8 @@
 }
 
 .customSelectHeader.open {
-    border-color: rgba(255, 255, 255, 0.8);
-    box-shadow: 0 4px 20px -10px rgba(255, 255, 255, 0.2);
+    border-color: var(--surface-80);
+    box-shadow: 0 4px 20px -10px var(--surface-20);
 }
 
 .customSelectList {
@@ -248,13 +259,13 @@
     width: 100%;
     max-height: 200px;
     overflow-y: auto;
-    background: rgba(15, 15, 15, 0.95);
+    background: var(--panel-solid);
     border: 1px solid var(--border-color);
     backdrop-filter: blur(10px);
     z-index: 100;
     border-radius: 4px;
     margin-top: 5px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.3);
     animation: authFadeIn 0.2s ease-out;
 }
 
@@ -269,12 +280,12 @@
 }
 
 .customSelectOption:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-05);
     color: var(--text-primary);
 }
 
 .customSelectOption.selected {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--surface-10);
     color: var(--text-primary);
 }
 
@@ -317,7 +328,7 @@
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    background: linear-gradient(90deg, transparent, var(--surface-10), transparent);
     transition: all 0.6s ease;
 }
 
@@ -333,10 +344,10 @@
 .authSubmitBtn:hover {
     color: var(--text-primary);
     text-shadow: 
-        0 0 10px rgba(255,255,255,0.8),
-        0 0 20px rgba(255,255,255,0.6),
-        0 0 40px rgba(255,255,255,0.4),
-        0 0 80px rgba(255,255,255,0.2);
+        0 0 10px var(--surface-80),
+        0 0 20px var(--surface-60),
+        0 0 40px var(--surface-40),
+        0 0 80px var(--surface-20);
 }
 
 .authSubmitBtn:hover::before {
@@ -424,9 +435,98 @@
 }
 
 @media (max-width: 768px) {
+    .authThemeToggleWrap {
+        top: 14px;
+        left: 14px;
+    }
+
     .rightPanel {
         width: 100%;
         padding: 20px;
-        background: rgba(0,0,0,0.8);
+        background: var(--panel-translucent-strong);
     }
+}
+
+/* Light-mode legibility overrides for the login/auth screen.
+   Dark mode keeps the low-opacity aesthetic; in light mode low opacity
+   on dark ink over a bright panel becomes unreadable, so we raise it. */
+html[data-theme="light"] .authLogo {
+    opacity: 1;
+    color: var(--text-primary);
+}
+
+html[data-theme="light"] .authLogo::before {
+    border-color: var(--text-secondary);
+}
+
+html[data-theme="light"] .authTab {
+    opacity: 0.65;
+    color: var(--text-primary);
+}
+
+html[data-theme="light"] .authTab:hover {
+    opacity: 0.9;
+}
+
+html[data-theme="light"] .authTab.active {
+    opacity: 1;
+}
+
+html[data-theme="light"] .authInput {
+    color: var(--text-primary) !important;
+    border-bottom-color: rgba(15, 23, 42, 0.45) !important;
+}
+
+html[data-theme="light"] .authInput::placeholder {
+    color: rgba(15, 23, 42, 0.55) !important;
+}
+
+html[data-theme="light"] .customSelectHeader {
+    color: var(--text-primary);
+    border-bottom-color: rgba(15, 23, 42, 0.45);
+}
+
+html[data-theme="light"] .authSubmitBtn {
+    color: var(--text-primary);
+    background: transparent;
+    border: none;
+}
+
+html[data-theme="light"] .authSubmitBtn:hover {
+    color: var(--text-primary);
+    background: transparent;
+    text-shadow: none;
+}
+
+html[data-theme="light"] .authLegalLinks {
+    opacity: 1;
+}
+
+html[data-theme="light"] .authLegalLinks a {
+    color: var(--text-primary);
+    opacity: 0.85;
+}
+
+html[data-theme="light"] .authLegalLinks a:hover {
+    opacity: 1;
+    text-shadow: none;
+}
+
+html[data-theme="light"] .authLegalLinks span {
+    color: rgba(15, 23, 42, 0.5);
+}
+
+html[data-theme="light"] .authFooter {
+    opacity: 0.75;
+    color: var(--text-primary);
+}
+
+html[data-theme="light"] .authFooter a {
+    color: var(--text-primary);
+    opacity: 0.85;
+}
+
+html[data-theme="light"] .authFooter a:hover {
+    opacity: 1;
+    text-shadow: none;
 }

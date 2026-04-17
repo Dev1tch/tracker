@@ -145,7 +145,7 @@ export default function HabitList({ habits, categories, logs, days, onToggleToda
                        title={`${date.toDateString()} - ${status}`}
                        onClick={handleCubeClick}
                      >
-                       {status === 'completed' && <Check size={18} color="#FFF" strokeWidth={3} />}
+                       {status === 'completed' && <Check size={18} strokeWidth={3} />}
                        {status === 'failed' && <X size={18} color="#ff4d4d" strokeWidth={3} />}
                      </div>
                    );

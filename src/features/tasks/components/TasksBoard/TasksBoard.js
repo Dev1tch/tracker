@@ -134,7 +134,7 @@ const PRIORITY_OPTION_COLORS = {
 function hexToRgba(hex, alpha) {
   const raw = hex.replace('#', '');
   const parsed = Number.parseInt(raw, 16);
-  if (Number.isNaN(parsed)) return `rgba(255, 255, 255, ${alpha})`;
+  if (Number.isNaN(parsed)) return `rgba(var(--theme-rgb), ${alpha})`;
   const red = (parsed >> 16) & 255;
   const green = (parsed >> 8) & 255;
   const blue = parsed & 255;
@@ -1714,7 +1714,17 @@ export default function TasksBoard() {
                               </span>
                             ) : null}
                             {cardViewSettings.description && task.description ? (
-                              <div className="tasksDescriptionHint">
+                              <div
+                                className="tasksDescriptionHint"
+                                onMouseEnter={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const preview = e.currentTarget.querySelector('.tasksDescriptionPreview');
+                                  if (preview) {
+                                    preview.style.top = `${rect.bottom + 8}px`;
+                                    preview.style.left = `${rect.left}px`;
+                                  }
+                                }}
+                              >
                                 <AlignJustify size={12} />
                                 <div className="tasksDescriptionPreview">{descriptionPreview}</div>
                               </div>

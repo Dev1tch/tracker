@@ -43,7 +43,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+  background: var(--header-gradient);
   pointer-events: none;
 }
 
@@ -65,13 +65,22 @@
   filter: drop-shadow(0 0 5px var(--glow-color));
 }
 
-/* Floating Logout Button */
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.dashboardThemeToggle {
+  opacity: 0.92;
+}
+
 .logoutFab {
   width: 30px;
   height: 30px;
-  border-radius: 50%;
-  background: transparent;
   border: none;
+  background: transparent;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -80,12 +89,13 @@
   transition: var(--transition-fast);
   pointer-events: auto;
   opacity: 0.6;
+  padding: 0;
 }
 
 .logoutFab:hover {
   color: #ff4d4d;
   transform: scale(1.1);
-  text-shadow: 0 0 10px rgba(255, 77, 77, 0.4);
+  text-shadow: 0 0 10px rgba(255, 77, 77, 0.25);
   opacity: 1;
 }
 
@@ -95,7 +105,7 @@
   bottom: 0;
   left: 0;
   width: 100%;
-  background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 100%);
+  background: var(--nav-gradient);
   border-top: 1px solid var(--border-color-dim);
   backdrop-filter: blur(10px);
   z-index: 100;
@@ -149,7 +159,7 @@
 @media (max-width: 768px) {
   .topHeader {
     padding: 12px 14px;
-    background: var(--bg-color);
+    background: var(--panel-translucent-strong);
     border-bottom: 1px solid var(--border-color-dim);
     pointer-events: auto;
   }
@@ -165,7 +175,8 @@
 
 /* Ensure modals are on top of everything including nav */
 body.modal-open .bottomNav,
-body.modal-open .logoutFab {
+body.modal-open .logoutFab,
+body.modal-open .dashboardThemeToggle {
   z-index: 50; /* Lower than modalOverlay's 9999 */
 }
 

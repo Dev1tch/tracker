@@ -17,7 +17,7 @@ export default function AccountPromptModal({ isOpen, onClose, accounts, onSelect
         </header>
 
         <div className="calModalBody" style={{ padding: '20px' }}>
-          <p style={{ color: 'rgba(255,255,255,0.7)', marginBottom: '20px', fontSize: '14px' }}>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
             To which account should this event be added? It will be created in the primary calendar.
           </p>
           
@@ -33,9 +33,9 @@ export default function AccountPromptModal({ isOpen, onClose, accounts, onSelect
                   gap: '12px',
                   padding: '12px',
                   borderRadius: '0',
-                  background: 'rgba(255, 255, 255, 0.05)',
+                  background: 'var(--surface-05)',
                   border: 'none',
-                  color: 'white',
+                  color: 'var(--text-primary)',
                   textAlign: 'left',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
@@ -47,11 +47,11 @@ export default function AccountPromptModal({ isOpen, onClose, accounts, onSelect
                   height: '32px',
                   borderRadius: '50%',
                   overflow: 'hidden',
-                  background: 'rgba(255, 255, 255, 0.1)',
+                  background: 'var(--surface-10)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: '1px solid rgba(255, 255, 255, 0.2)'
+                  border: '1px solid var(--surface-20)'
                 }}>
                   {account.picture ? (
                     <img src={account.picture} alt="" style={{ width: '100%', height: '100%' }} />
@@ -72,7 +72,7 @@ export default function AccountPromptModal({ isOpen, onClose, accounts, onSelect
 
       <style jsx>{`
         .calAccountItem:hover {
-          background: rgba(255, 255, 255, 0.1) !important;
+          background: var(--surface-10) !important;
           border-color: var(--accent-light) !important;
           transform: translateY(-2px);
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);

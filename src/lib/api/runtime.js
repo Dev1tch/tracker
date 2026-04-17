@@ -1,4 +1,5 @@
 const HOSTED_API_BASE_URL = 'https://tracker-backend-mocha.vercel.app/api/v1';
+const WEB_PROXY_API_BASE_URL = '/api/v1';
 
 function trimTrailingSlash(value) {
   return value.replace(/\/+$/u, '');
@@ -8,11 +9,25 @@ function readEnvValue(value) {
   return typeof value === 'string' && value.trim() ? trimTrailingSlash(value.trim()) : '';
 }
 
-const DEFAULT_API_BASE_URL = readEnvValue(
-  typeof process !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL || '')
-    : ''
-) || HOSTED_API_BASE_URL;
+function getDefaultApiBaseUrl() {
+  const envValue = readEnvValue(
+    typeof process !== 'undefined'
+      ? (process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL || '')
+      : ''
+  );
+
+  if (envValue) {
+    return envValue;
+  }
+
+  if (typeof window !== 'undefined') {
+    return WEB_PROXY_API_BASE_URL;
+  }
+
+  return HOSTED_API_BASE_URL;
+}
+
+const DEFAULT_API_BASE_URL = getDefaultApiBaseUrl();
 
 function isPromiseLike(value) {
   return Boolean(value) && typeof value.then === 'function';

@@ -1,22 +1,64 @@
 :root {
-  /* Colors */
+  --theme-rgb: 255, 255, 255;
+  --shadow-rgb: 0, 0, 0;
   --bg-color: #000;
   --text-primary: #fff;
   --text-secondary: rgba(255, 255, 255, 0.7);
   --text-tertiary: rgba(255, 255, 255, 0.4);
   --text-muted: rgba(255, 255, 255, 0.3);
-  
   --border-color: rgba(255, 255, 255, 0.15);
   --border-color-dim: rgba(255, 255, 255, 0.1);
-  
-  /* Glow Effects */
   --glow-color: rgba(255, 255, 255, 0.5);
   --glow-intensity: 10px;
-  
-  /* Fonts */
+  --panel-solid: rgba(0, 0, 0, 0.92);
+  --panel-translucent: rgba(0, 0, 0, 0.74);
+  --panel-translucent-strong: rgba(0, 0, 0, 0.94);
+  --header-gradient: linear-gradient(180deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.3) 72%, rgba(0, 0, 0, 0) 100%);
+  --nav-gradient: linear-gradient(0deg, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.74) 100%);
+  --panel-gradient-right: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.74) 28%, rgba(0, 0, 0, 0.94) 100%);
+  --panel-gradient-left: linear-gradient(270deg, transparent 0%, rgba(0, 0, 0, 0.74) 28%, rgba(0, 0, 0, 0.94) 100%);
+  --surface-01: rgba(var(--theme-rgb), 0.01);
+  --surface-015: rgba(var(--theme-rgb), 0.015);
+  --surface-02: rgba(var(--theme-rgb), 0.02);
+  --surface-025: rgba(var(--theme-rgb), 0.025);
+  --surface-03: rgba(var(--theme-rgb), 0.03);
+  --surface-04: rgba(var(--theme-rgb), 0.04);
+  --surface-05: rgba(var(--theme-rgb), 0.05);
+  --surface-06: rgba(var(--theme-rgb), 0.06);
+  --surface-07: rgba(var(--theme-rgb), 0.07);
+  --surface-08: rgba(var(--theme-rgb), 0.08);
+  --surface-10: rgba(var(--theme-rgb), 0.1);
+  --surface-12: rgba(var(--theme-rgb), 0.12);
+  --surface-14: rgba(var(--theme-rgb), 0.14);
+  --surface-15: rgba(var(--theme-rgb), 0.15);
+  --surface-16: rgba(var(--theme-rgb), 0.16);
+  --surface-18: rgba(var(--theme-rgb), 0.18);
+  --surface-20: rgba(var(--theme-rgb), 0.2);
+  --surface-22: rgba(var(--theme-rgb), 0.22);
+  --surface-24: rgba(var(--theme-rgb), 0.24);
+  --surface-25: rgba(var(--theme-rgb), 0.25);
+  --surface-28: rgba(var(--theme-rgb), 0.28);
+  --surface-30: rgba(var(--theme-rgb), 0.3);
+  --surface-32: rgba(var(--theme-rgb), 0.32);
+  --surface-34: rgba(var(--theme-rgb), 0.34);
+  --surface-35: rgba(var(--theme-rgb), 0.35);
+  --surface-40: rgba(var(--theme-rgb), 0.4);
+  --surface-42: rgba(var(--theme-rgb), 0.42);
+  --surface-45: rgba(var(--theme-rgb), 0.45);
+  --surface-50: rgba(var(--theme-rgb), 0.5);
+  --surface-60: rgba(var(--theme-rgb), 0.6);
+  --surface-62: rgba(var(--theme-rgb), 0.62);
+  --surface-70: rgba(var(--theme-rgb), 0.7);
+  --surface-72: rgba(var(--theme-rgb), 0.72);
+  --surface-80: rgba(var(--theme-rgb), 0.8);
+  --surface-90: rgba(var(--theme-rgb), 0.9);
+  --surface-92: rgba(var(--theme-rgb), 0.92);
+  --surface-95: rgba(var(--theme-rgb), 0.95);
+  --surface-contrast: #ffffff;
+  --surface-contrast-inverse: #000;
+  --radius-md: 16px;
+
   --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  
-  /* Transitions */
   --transition-smooth: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: all 0.4s ease;
 
@@ -39,19 +81,56 @@
   --cursor-dgn2: url('/cursors/dgn2.cur');
 }
 
+html[data-theme="light"] {
+  --theme-rgb: 15, 23, 42;
+  --shadow-rgb: 15, 23, 42;
+  --bg-color: #edf3fb;
+  --text-primary: #0f172a;
+  --text-secondary: rgba(15, 23, 42, 0.72);
+  --text-tertiary: rgba(15, 23, 42, 0.5);
+  --text-muted: rgba(15, 23, 42, 0.34);
+  --border-color: rgba(15, 23, 42, 0.55);
+  --border-color-dim: rgba(15, 23, 42, 0.35);
+  --glow-color: rgba(59, 130, 246, 0.18);
+  --panel-solid: rgba(255, 255, 255, 0.94);
+  --panel-translucent: rgba(255, 255, 255, 0.78);
+  --panel-translucent-strong: rgba(255, 255, 255, 0.96);
+  --header-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.62) 72%, rgba(255, 255, 255, 0) 100%);
+  --nav-gradient: linear-gradient(0deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.84) 100%);
+  --panel-gradient-right: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.78) 28%, rgba(255, 255, 255, 0.96) 100%);
+  --panel-gradient-left: linear-gradient(270deg, transparent 0%, rgba(255, 255, 255, 0.78) 28%, rgba(255, 255, 255, 0.96) 100%);
+  --surface-contrast: #0f172a;
+  --surface-contrast-inverse: #ffffff;
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html, body {
+html {
+  color-scheme: dark;
   background: var(--bg-color);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html, body {
+  background:
+    radial-gradient(circle at top, rgba(var(--theme-rgb), 0.05) 0%, transparent 32%),
+    radial-gradient(circle at bottom right, rgba(var(--theme-rgb), 0.03) 0%, transparent 28%),
+    var(--bg-color);
   color: var(--text-primary);
   font-family: var(--font-main);
   min-height: 100vh;
   width: 100%;
   cursor: var(--cursor-arrow), auto;
+  transition:
+    background-color 0.45s ease,
+    color 0.3s ease;
 }
 
 body {
@@ -229,21 +308,21 @@ a:hover {
 
 /* Global Utilities */
 .glass {
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--panel-translucent);
   backdrop-filter: blur(10px);
   border: 1px solid var(--border-color-dim);
 }
 
 .glow-text {
   text-shadow: 
-    0 0 10px rgba(255,255,255,0.8),
-    0 0 20px rgba(255,255,255,0.6);
+    0 0 10px var(--surface-80),
+    0 0 20px var(--surface-60);
 }
 
 .btn-primary {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  color: #ffffff;
+  background: var(--surface-02);
+  border: 1px solid var(--surface-72);
+  color: var(--surface-contrast);
   border-radius: 0;
   padding: 12px 18px;
   font-size: 10px;
@@ -254,8 +333,8 @@ a:hover {
 }
 
 .btn-primary:hover {
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.95);
+  color: var(--surface-contrast);
+  border-color: var(--surface-95);
 }
 
 .btn-primary:disabled {
@@ -264,7 +343,7 @@ a:hover {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-02);
   border: 1px solid var(--border-color-dim);
   border-radius: 0;
   color: var(--text-secondary);
@@ -278,7 +357,7 @@ a:hover {
 
 .btn-secondary:hover {
   color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.35);
+  border-color: var(--surface-35);
 }
 
 .btn-secondary:disabled {

@@ -623,7 +623,17 @@ export default function TaskDetailModal({
                             </span>
                           ) : null}
                           {cardViewSettings?.description && subtask.description ? (
-                            <div className="tasksDescriptionHint">
+                            <div
+                              className="tasksDescriptionHint"
+                              onMouseEnter={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const preview = e.currentTarget.querySelector('.tasksDescriptionPreview');
+                                if (preview) {
+                                  preview.style.top = `${rect.bottom + 8}px`;
+                                  preview.style.left = `${rect.left}px`;
+                                }
+                              }}
+                            >
                               <AlignJustify size={12} />
                               <div className="tasksDescriptionPreview">{subtaskDescriptionPreview}</div>
                             </div>

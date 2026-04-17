@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { categoriesApi, habitsApi } from '@/lib/api';
 import CustomSelect from '@/components/ui/CustomSelect';
+import ColorPicker from '@/components/ui/ColorPicker';
 
 export default function HabitEditModal({ habit, categories, onClose, onSuccess, onDelete }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -151,22 +152,7 @@ export default function HabitEditModal({ habit, categories, onClose, onSuccess, 
               </div>
               <div className="formGroup">
                 <label>Category Color</label>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <input 
-                    type="color" 
-                    value={newCategoryColor}
-                    onChange={(e) => setNewCategoryColor(e.target.value)}
-                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', height: '40px' }}
-                  />
-                  <input 
-                    type="text" 
-                    className="authInput" 
-                    value={newCategoryColor}
-                    onChange={(e) => setNewCategoryColor(e.target.value)}
-                    placeholder="#ffffff"
-                    style={{ flex: 1 }}
-                  />
-                </div>
+                <ColorPicker value={newCategoryColor} onChange={setNewCategoryColor} />
               </div>
               <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                  <button 

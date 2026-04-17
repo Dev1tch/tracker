@@ -36,15 +36,15 @@
   overflow-y: auto;
   flex: 1;
   position: relative;
-  /* border-top: 1px solid rgba(255, 255, 255, 0.1); */
-  /* border-bottom: 1px solid rgba(255, 255, 255, 0.1); */
+  /* border-top: 1px solid var(--surface-10); */
+  /* border-bottom: 1px solid var(--surface-10); */
 }
 
 .timetableHeaderRow {
   display: flex;
   align-items: center;
   padding: 15px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--surface-10);
   position: sticky;
   top: 0;
   background: var(--bg-color); /* Match page background */
@@ -81,7 +81,7 @@
 }
 
 .monthNavBtn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-10);
   color: var(--text-primary);
 }
 
@@ -98,8 +98,8 @@
   font-size: 10px;
   color: var(--text-tertiary);
   padding: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: 1px solid var(--surface-05);
+  border-right: 1px solid var(--surface-05);
   margin-left: -1px;
   display: flex;
   flex-direction: column;
@@ -120,27 +120,27 @@
 }
 
 .timetableDayLabel.weekStart {
-  border-left: 2px solid rgba(255, 255, 255, 1); /* Full white for prominence */
+  border-left: 2px solid var(--surface-contrast); /* Full white for prominence */
 }
 
 .timetableDayLabel.todayLabel {
   color: var(--text-primary);
   font-weight: bold;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-05);
 }
 
 .timetableRow {
   display: flex;
   align-items: stretch;
   padding: 0;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid var(--surface-05);
   transition: background 0.2s;
   position: relative;
   z-index: 1;
 }
 
 .timetableRow:hover {
-  background: rgba(255,255,255,0.02);
+  background: var(--surface-02);
   z-index: 11;
 }
 
@@ -244,7 +244,7 @@
 }
 
 .priorityBadge.normal {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-10);
   color: var(--text-secondary);
 }
 
@@ -269,7 +269,7 @@
 }
 
 .checkboxBtn.completed {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-10);
   border-color: var(--text-primary);
   box-shadow: 0 0 15px var(--glow-color);
 }
@@ -283,7 +283,7 @@
 
 .checkboxBtn:not(.completed):hover {
   border-color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-05);
 }
 
 /* Day Cubes Grid */
@@ -292,8 +292,8 @@
   aspect-ratio: 1 / 1;
   min-width: 0;
   background: transparent;
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: 1px solid var(--surface-05);
+  border-right: 1px solid var(--surface-05);
   margin-left: -1px; /* Overlap borders */
   cursor: pointer;
   transition: var(--transition-fast);
@@ -304,14 +304,14 @@
 }
 
 .dayCube:hover {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--surface-contrast);
   outline-offset: -1px;
   z-index: 10;
 }
 
 .dayCube.success {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: #fff;
+  background: var(--surface-80);
+  border-color: var(--surface-contrast);
   box-shadow: 0 0 10px var(--glow-color);
 }
 
@@ -323,66 +323,66 @@
 /* Default styling for empty state is handled by base .dayCube class */
 
 .dayCube.today {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff;
-  background: rgba(255, 255, 255, 0.02);
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast);
+  background: var(--surface-02);
 }
 
 .dayCube.today:hover {
   transform: none;
   z-index: 10;
-  border-color: rgba(255, 255, 255, 0.05); /* Reset border */
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff;
+  border-color: var(--surface-05); /* Reset border */
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast);
 }
 
 .dayCube.today.success {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, 0 0 10px var(--glow-color);
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), 0 0 10px var(--glow-color);
 }
 
 .dayCube.today.fail {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff;
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast);
 }
 
 .timetableRow:first-child .dayCube.today {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff;
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast);
 }
 
 .timetableRow:first-child .dayCube.today:hover {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff;
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast);
 }
 
 .timetableRow:first-child .dayCube.today.success {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, 0 0 10px var(--glow-color);
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast), 0 0 10px var(--glow-color);
 }
 
 .timetableRow:last-child .dayCube.today {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 -2px 0 0 #fff;
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast);
 }
 
 .timetableRow:last-child .dayCube.today:hover {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff;
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast);
 }
 
 .timetableRow:last-child .dayCube.today.success {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 -2px 0 0 #fff, 0 0 10px var(--glow-color);
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast), 0 0 10px var(--glow-color);
 }
 
 .timetableRow:only-child .dayCube.today {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff;
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast);
 }
 
 .timetableRow:only-child .dayCube.today.success {
-  box-shadow: inset 2px 0 0 0 #fff, inset -2px 0 0 0 #fff, inset 0 2px 0 0 #fff, inset 0 -2px 0 0 #fff, 0 0 10px var(--glow-color);
+  box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast), 0 0 10px var(--glow-color);
 }
 
 .dayCube.weekStart {
-  border-left: 2px solid rgba(255, 255, 255, 1); /* Full white for prominence */
+  border-left: 2px solid var(--surface-contrast); /* Full white for prominence */
 }
 
 .dayCube.weekStart:hover,
 .dayCube.weekStart.today:hover,
 .timetableRow:first-child .dayCube.weekStart.today:hover,
 .timetableRow:last-child .dayCube.weekStart.today:hover {
-  border-left-color: rgba(255, 255, 255, 0.4);
+  border-left-color: var(--surface-40);
 }
 
 .dayCube.future {
@@ -393,7 +393,7 @@
 
 .dayCube.future:hover {
   transform: none;
-  border-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--surface-05);
 }
 
 /* Modal Styles */
@@ -403,7 +403,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85); /* Slightly darker for better focus */
+  background: var(--panel-translucent-strong); /* Slightly darker for better focus */
   backdrop-filter: blur(8px); /* More blur for premium feel */
   z-index: 9999;
   display: flex;
@@ -417,7 +417,7 @@
 }
 
 .modalContent {
-  background: #111;
+  background: var(--panel-solid);
   border: 1px solid var(--border-color);
   padding: 40px;
   border-radius: 8px;
@@ -465,13 +465,13 @@
 }
 
 .statusBtn.success {
-  border-color: rgba(255, 255, 255, 0.5);
+  border-color: var(--surface-50);
 }
 
 .statusBtn.success.active {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border-color: #fff;
+  background: var(--surface-10);
+  color: var(--surface-contrast);
+  border-color: var(--surface-contrast);
   box-shadow: 0 0 15px var(--glow-color);
 }
 
@@ -487,7 +487,7 @@
 
 .commentInput {
   width: 100%;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-02);
   border: 1px solid var(--border-color-dim);
   color: var(--text-primary);
   padding: 15px;
@@ -510,7 +510,7 @@
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-02);
   border: 1px solid var(--border-color-dim);
   border-radius: 0;
   color: var(--text-secondary);
@@ -524,7 +524,7 @@
 
 .btn-secondary:hover {
   color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.35);
+  border-color: var(--surface-35);
 }
 
 .btn-secondary:disabled {
@@ -547,7 +547,7 @@
 }
 
 .inlineCategoryCreation {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-02);
   border: 1px dashed var(--border-color-dim);
   padding: 15px;
   border-radius: 4px;
@@ -650,6 +650,153 @@
   }
   
   .habitTimetable {
-    max-height: calc(100vh - 260px); 
+    max-height: calc(100vh - 260px);
   }
+}
+
+/* Default check / cross icon colors so removing inline color props still renders
+   correctly in dark mode. */
+.dayCube.success svg {
+  color: #ffffff;
+  stroke: #ffffff;
+}
+
+.statusIndicator.success svg {
+  color: #000000;
+  stroke: #000000;
+}
+
+/* Light theme: previously-white backgrounds invert to solid black so completed days
+   read clearly on a bright canvas; checks inside stay white for contrast. */
+html[data-theme="light"] .habitTimetable .dayCube.success,
+html[data-theme="light"] .habitTimetable .dayCube.success.today {
+  background: #000000 !important;
+  border-color: #000000 !important;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.18) !important;
+}
+
+html[data-theme="light"] .habitTimetable .dayCube.success svg,
+html[data-theme="light"] .habitTimetable .dayCube.success svg * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+html[data-theme="light"] .checkboxBtn.completed {
+  background: #000000 !important;
+  border-color: #000000 !important;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.22) !important;
+}
+
+html[data-theme="light"] .checkboxBtn.completed::after {
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+
+html[data-theme="light"] .statusIndicator.success {
+  background: #000000 !important;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2) !important;
+}
+
+html[data-theme="light"] .statusIndicator.success svg,
+html[data-theme="light"] .statusIndicator.success svg * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Light mode: weekStart stripes and today column outlines need explicit black so the
+   left/right/top/bottom frame of the active day reads clearly on the bright canvas.
+   We match every first/last/only/hover variant because the original rules use chained
+   class selectors with higher specificity than a plain html[data-theme="light"]. */
+html[data-theme="light"] .timetableDayLabel.weekStart,
+html[data-theme="light"] .dayCube.weekStart {
+  border-left-color: #000000 !important;
+}
+
+html[data-theme="light"] .habitTimetable .dayCube.today {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000 !important;
+}
+
+html[data-theme="light"] .habitTimetable .dayCube.today:hover,
+html[data-theme="light"] .habitTimetable .timetableRow:first-child .dayCube.today:hover,
+html[data-theme="light"] .habitTimetable .timetableRow:last-child .dayCube.today:hover {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000,
+    inset 0 2px 0 0 #000000,
+    inset 0 -2px 0 0 #000000 !important;
+}
+
+html[data-theme="light"] .habitTimetable .timetableRow:first-child .dayCube.today {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000,
+    inset 0 2px 0 0 #000000 !important;
+}
+
+html[data-theme="light"] .habitTimetable .timetableRow:last-child .dayCube.today {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000,
+    inset 0 -2px 0 0 #000000 !important;
+}
+
+html[data-theme="light"] .habitTimetable .timetableRow:only-child .dayCube.today {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000,
+    inset 0 2px 0 0 #000000,
+    inset 0 -2px 0 0 #000000 !important;
+}
+
+/* Today + success combinations keep the glow but anchor stripes in black */
+html[data-theme="light"] .habitTimetable .dayCube.today.success {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000,
+    0 0 10px var(--glow-color) !important;
+}
+
+html[data-theme="light"] .habitTimetable .timetableRow:first-child .dayCube.today.success {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000,
+    inset 0 2px 0 0 #000000,
+    0 0 10px var(--glow-color) !important;
+}
+
+html[data-theme="light"] .habitTimetable .timetableRow:last-child .dayCube.today.success {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000,
+    inset 0 -2px 0 0 #000000,
+    0 0 10px var(--glow-color) !important;
+}
+
+html[data-theme="light"] .habitTimetable .timetableRow:only-child .dayCube.today.success {
+  box-shadow:
+    inset 2px 0 0 0 #000000,
+    inset -2px 0 0 0 #000000,
+    inset 0 2px 0 0 #000000,
+    inset 0 -2px 0 0 #000000,
+    0 0 10px var(--glow-color) !important;
+}
+
+/* Unsuccessful button stays in its muted red per previous request, but the X glyphs
+   elsewhere (day cubes, mobile status) always render in the classic red. */
+.statusBtn.fail {
+  border-color: rgba(184, 84, 80, 0.35);
+}
+
+.statusBtn.fail.active {
+  background: rgba(184, 84, 80, 0.12);
+  color: #b85450;
+  border-color: #b85450;
+}
+
+.dayCube.fail svg,
+.statusIndicator.fail svg {
+  color: #ff4d4d !important;
+  stroke: #ff4d4d !important;
 }

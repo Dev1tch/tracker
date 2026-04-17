@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { categoriesApi } from '@/lib/api';
+import ColorPicker from '@/components/ui/ColorPicker';
 
 export default function CategoryEditModal({ category, onClose, onSuccess, onDelete }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,22 +61,7 @@ export default function CategoryEditModal({ category, onClose, onSuccess, onDele
 
           <div className="formGroup">
             <label>Category Color</label>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <input 
-                type="color" 
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', height: '40px' }}
-              />
-              <input 
-                type="text" 
-                className="authInput" 
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                placeholder="#ffffff"
-                style={{ flex: 1 }}
-              />
-            </div>
+            <ColorPicker value={color} onChange={setColor} />
           </div>
 
           <div className="modalActions" style={{ marginTop: '30px', display: 'flex', justifyContent: 'space-between', width: '100%' }}>

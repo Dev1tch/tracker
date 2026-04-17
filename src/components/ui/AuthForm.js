@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import './AuthForm.css';
 import { authApi } from '@/lib/api';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 import zxcvbn from 'zxcvbn';
 
 // Standard RFC 5322 Email Regex Approximation
@@ -24,12 +25,18 @@ export default function AuthForm({ onLoginSuccess }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
-    // Particle system
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    let width, height, particles, mouse;
+    let width;
+    let height;
+    let particles;
+    let mouse;
+    let frameId;
+
+    const getThemeRgb = () =>
+      getComputedStyle(document.documentElement).getPropertyValue('--theme-rgb').trim() || '255, 255, 255';
 
     function init() {
       width = canvas.width = window.innerWidth * 2;
@@ -61,6 +68,7 @@ export default function AuthForm({ onLoginSuccess }) {
 
     function animate() {
       ctx.clearRect(0, 0, width, height);
+      const particleRgb = getThemeRgb();
 
       particles.forEach((p, i) => {
         const dx = mouse.x - p.x;
@@ -90,7 +98,7 @@ export default function AuthForm({ onLoginSuccess }) {
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+        ctx.fillStyle = `rgba(${particleRgb}, ${p.opacity})`;
         ctx.fill();
 
         for (let j = i + 1; j < particles.length; j++) {
@@ -103,14 +111,14 @@ export default function AuthForm({ onLoginSuccess }) {
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 * (1 - dist2 / 70)})`;
+            ctx.strokeStyle = `rgba(${particleRgb}, ${0.5 * (1 - dist2 / 70)})`;
             ctx.lineWidth = 1.5;
             ctx.stroke();
           }
         }
       });
 
-      requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
     }
 
     const handleMouseMove = (e) => {
@@ -135,6 +143,7 @@ export default function AuthForm({ onLoginSuccess }) {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('resize', handleResize);
+      if (frameId) cancelAnimationFrame(frameId);
     };
   }, []);
 
@@ -221,6 +230,9 @@ export default function AuthForm({ onLoginSuccess }) {
   return (
     <div className="authBody">
       <canvas ref={canvasRef} className="particleCanvas"></canvas>
+      <div className="authThemeToggleWrap">
+        <ThemeToggle className="authThemeToggle" />
+      </div>
 
       <div className="rightPanel">
         <div className="authContainer">

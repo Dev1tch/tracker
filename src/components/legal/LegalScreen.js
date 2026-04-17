@@ -18,6 +18,9 @@ export default function LegalScreen({ title, updatedAt, side = 'right', switchHr
     let mouse;
     let frameId;
 
+    const getThemeRgb = () =>
+      getComputedStyle(document.documentElement).getPropertyValue('--theme-rgb').trim() || '255, 255, 255';
+
     function init() {
       width = canvas.width = window.innerWidth * 2;
       height = canvas.height = window.innerHeight * 2;
@@ -47,6 +50,7 @@ export default function LegalScreen({ title, updatedAt, side = 'right', switchHr
 
     function animate() {
       ctx.clearRect(0, 0, width, height);
+      const particleRgb = getThemeRgb();
 
       particles.forEach((p, i) => {
         const dx = mouse.x - p.x;
@@ -75,7 +79,7 @@ export default function LegalScreen({ title, updatedAt, side = 'right', switchHr
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+        ctx.fillStyle = `rgba(${particleRgb}, ${p.opacity})`;
         ctx.fill();
 
         for (let j = i + 1; j < particles.length; j += 1) {
@@ -88,7 +92,7 @@ export default function LegalScreen({ title, updatedAt, side = 'right', switchHr
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 * (1 - dist2 / 70)})`;
+            ctx.strokeStyle = `rgba(${particleRgb}, ${0.5 * (1 - dist2 / 70)})`;
             ctx.lineWidth = 1.5;
             ctx.stroke();
           }

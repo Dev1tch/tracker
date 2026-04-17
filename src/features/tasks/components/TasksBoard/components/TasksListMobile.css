@@ -11,7 +11,7 @@
 
 /* ── Status Group ── */
 .tasksMobileGroup {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--surface-06);
 }
 
 .tasksMobileGroupHeader {
@@ -89,7 +89,7 @@
   -webkit-tap-highlight-color: transparent;
   transition: background 0.12s ease;
   min-height: 36px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--surface-03);
 }
 
 .tasksMobileRow:last-of-type {
@@ -97,7 +97,7 @@
 }
 
 .tasksMobileRow:active {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-03);
 }
 
 .tasksMobileRow.selected {

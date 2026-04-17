@@ -16,10 +16,11 @@
   gap: 12px;
   padding: 12px 20px;
   border-radius: var(--radius-md);
-  color: white;
+  color: var(--text-primary);
   min-width: 250px;
   max-width: 350px;
-  background: transparent;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-color);
   backdrop-filter: blur(10px);
   /* The mounting animation */
   animation: slideInRight 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -31,7 +32,7 @@
 }
 
 .toastItem.success {
-  border: 1px dashed rgba(255, 255, 255, 0.5);
+  border: 1px dashed var(--surface-50);
   color: var(--text-primary);
 }
 
@@ -84,7 +85,7 @@
 }
 
 .toastItem.success .toastClose {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .toastItem.success .toastClose:hover {
