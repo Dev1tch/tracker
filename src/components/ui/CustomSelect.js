@@ -86,19 +86,30 @@ export default function CustomSelect({
               onClick={() => handleOptionSelect(option.value)}
             >
               {option.color && (
-                <span 
-                  style={{ 
-                    display: 'inline-block', 
-                    width: '10px', 
-                    height: '10px', 
-                    borderRadius: '50%', 
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
                     backgroundColor: option.color,
-                    marginRight: '10px'
-                  }} 
+                    marginRight: '10px',
+                    flexShrink: 0
+                  }}
                 />
               )}
-              {multiple && selectedValues.includes(option.value) ? '✓ ' : ''}
-              {option.label}
+              <span
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {multiple && selectedValues.includes(option.value) ? '✓ ' : ''}
+                {option.label}
+              </span>
             </div>
           ))}
           
@@ -110,8 +121,18 @@ export default function CustomSelect({
                 onCreateNew();
               }}
             >
-              <Plus size={14} style={{ marginRight: '8px' }} />
-              {createNewText}
+              <Plus size={14} style={{ marginRight: '8px', flexShrink: 0 }} />
+              <span
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {createNewText}
+              </span>
             </div>
           )}
         </div>
