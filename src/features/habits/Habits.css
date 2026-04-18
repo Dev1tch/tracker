@@ -385,6 +385,46 @@
   border-left-color: var(--surface-40);
 }
 
+.dayCube.weekStart:not(.today):hover::before {
+  background: var(--surface-40);
+}
+
+.dayCube.weekStart.today:hover::before {
+  box-shadow: -2px 0 0 0 var(--surface-40);
+}
+
+/* Bridge the 1px habit-row separator so the today outline and week separator
+   read as single continuous vertical lines instead of stacked per-cube segments. */
+.dayCube.today::before,
+.dayCube.today::after,
+.dayCube.weekStart::before {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  height: 1px;
+  width: 2px;
+  background: var(--surface-contrast);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.dayCube.today::before { left: 0; }
+.dayCube.today::after { right: 0; }
+.dayCube.weekStart::before { left: -2px; }
+
+/* When a cube is both weekStart and today, draw the weekStart extension via a
+   box-shadow copy of the today ::before so we still get both stripes bridged. */
+.dayCube.weekStart.today::before {
+  left: 0;
+  box-shadow: -2px 0 0 0 var(--surface-contrast);
+}
+
+.timetableRow:last-child .dayCube.today::before,
+.timetableRow:last-child .dayCube.today::after,
+.timetableRow:last-child .dayCube.weekStart::before {
+  display: none;
+}
+
 .dayCube.future {
   opacity: 0.3;
   cursor: var(--cursor-unavail), not-allowed;
@@ -710,6 +750,16 @@ html[data-theme="light"] .statusIndicator.success svg * {
 html[data-theme="light"] .timetableDayLabel.weekStart,
 html[data-theme="light"] .dayCube.weekStart {
   border-left-color: #000000 !important;
+}
+
+html[data-theme="light"] .dayCube.today::before,
+html[data-theme="light"] .dayCube.today::after,
+html[data-theme="light"] .dayCube.weekStart::before {
+  background: #000000 !important;
+}
+
+html[data-theme="light"] .dayCube.weekStart.today::before {
+  box-shadow: -2px 0 0 0 #000000 !important;
 }
 
 html[data-theme="light"] .habitTimetable .dayCube.today {
