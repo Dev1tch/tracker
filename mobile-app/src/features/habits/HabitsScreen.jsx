@@ -561,7 +561,10 @@ export default function HabitsScreen() {
 
   const openCreateHabit = () => {
     setEditingHabit(null);
-    setHabitForm(EMPTY_HABIT_FORM);
+    setHabitForm({
+      ...EMPTY_HABIT_FORM,
+      category_id: filterCategory || '',
+    });
     setInlineCategoryForm(EMPTY_CATEGORY_FORM);
     setIsInlineCategoryVisible(false);
     setHabitFormVisible(true);

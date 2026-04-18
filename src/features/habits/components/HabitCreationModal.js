@@ -3,7 +3,12 @@ import { categoriesApi, habitsApi } from '@/lib/api';
 import CustomSelect from '@/components/ui/CustomSelect';
 import ColorPicker from '@/components/ui/ColorPicker';
 
-export default function HabitCreationModal({ categories, onClose, onSuccess }) {
+export default function HabitCreationModal({
+  categories,
+  initialCategoryId = '',
+  onClose,
+  onSuccess,
+}) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -13,7 +18,7 @@ export default function HabitCreationModal({ categories, onClose, onSuccess }) {
   const [priority, setPriority] = useState('Normal');
   
   // Category Fields
-  const [categoryId, setCategoryId] = useState(''); // '' means no category
+  const [categoryId, setCategoryId] = useState(initialCategoryId || ''); // '' means no category
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#ffffff');
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);

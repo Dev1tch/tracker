@@ -31,6 +31,7 @@ import TextField from '../../components/TextField';
 import {
   DEFAULT_TASK_FORM,
   DEFAULT_TASK_TYPE_FORM,
+  getTaskFormFromFilters,
   PRIORITY_META,
   PRIORITY_ORDER,
   STATUS_META,
@@ -862,18 +863,23 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     setInlineTypeForm((current) => ({ ...current, [field]: value }));
   }, []);
 
-  const openCreateTask = useCallback((status = TASK_STATUS.TO_DO) => {
+  const openCreateTask = useCallback((status) => {
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
     }
     setEditingTask(null);
-    setTaskForm({ ...DEFAULT_TASK_FORM, status });
+    setTaskForm(
+      getTaskFormFromFilters(
+        filters,
+        status ? { status } : {}
+      )
+    );
     setInlineTypeForm(DEFAULT_TASK_TYPE_FORM);
     setInlineTypeVisible(false);
     setAutosavingTask(false);
     lastSavedFingerprintRef.current = '';
     setTaskModalVisible(true);
-  }, []);
+  }, [filters]);
 
   const openTask = useCallback((task) => {
     if (autosaveTimerRef.current) {

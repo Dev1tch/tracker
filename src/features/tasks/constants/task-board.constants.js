@@ -58,6 +58,33 @@ export function getDefaultCreateForm() {
   };
 }
 
+function getSingleSelectedValue(values) {
+  return Array.isArray(values) && values.length === 1 ? values[0] : undefined;
+}
+
+export function getCreateFormFromFilters(filters = {}, overrides = {}) {
+  const next = getDefaultCreateForm();
+  const filteredStatus = getSingleSelectedValue(filters.status);
+  const filteredPriority = getSingleSelectedValue(filters.priority);
+  const filteredTaskTypeId = getSingleSelectedValue(filters.task_type_id);
+
+  // Only apply a filter to the create form when it resolves to one clear value.
+  if (filteredStatus !== undefined) {
+    next.status = filteredStatus;
+  }
+  if (filteredPriority !== undefined) {
+    next.priority = filteredPriority;
+  }
+  if (filteredTaskTypeId !== undefined) {
+    next.task_type_id = filteredTaskTypeId;
+  }
+
+  return {
+    ...next,
+    ...overrides,
+  };
+}
+
 export function getDefaultTypeForm() {
   return {
     name: '',

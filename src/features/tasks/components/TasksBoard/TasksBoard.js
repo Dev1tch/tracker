@@ -33,6 +33,7 @@ import CustomSelect from '@/components/ui/CustomSelect';
 import {
   DEFAULT_CREATE_FORM,
   DEFAULT_TYPE_FORM,
+  getCreateFormFromFilters,
   PRIORITY_META,
   PRIORITY_ORDER,
   STATUS_META,
@@ -1125,13 +1126,13 @@ export default function TasksBoard() {
     setDragTaskId(null);
     setDragOverStatus('');
   };
-  const handleOpenCreateForStatus = (status) => {
-    setCreateForm({
-      ...DEFAULT_CREATE_FORM,
-      status,
-    });
+  const openCreateTask = useCallback((overrides = {}) => {
+    setCreateForm(getCreateFormFromFilters(filters, overrides));
     setIsCreateOpen(true);
-  };
+  }, [filters]);
+  const handleOpenCreateForStatus = useCallback((status) => {
+    openCreateTask({ status });
+  }, [openCreateTask]);
   const handleColumnDragEnd = () => {
     if (typeof document !== 'undefined') {
       document.body.classList.remove('tasksDragging');
@@ -1231,7 +1232,7 @@ export default function TasksBoard() {
               <button
                 type="button"
                 className="tasksBtn tasksBtnPrimary"
-                onClick={() => setIsCreateOpen(true)}
+                onClick={() => openCreateTask()}
               >
                 <Plus size={14} />
                 Add Task

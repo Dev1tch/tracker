@@ -475,6 +475,7 @@ export default function HabitTracker() {
       {isCreationModalOpen && (
         <HabitCreationModal 
           categories={categories}
+          initialCategoryId={filterCategory}
           onClose={() => setIsCreationModalOpen(false)}
           onSuccess={() => {
             setIsCreationModalOpen(false);
