@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   codec,
   decryptJson,
@@ -329,4 +337,18 @@ export function useVault() {
     lastSavedAt,
     actions,
   };
+}
+
+/* Context wrapper so the vault state survives tab switches — otherwise the
+   Finance component unmounts, the in-memory key is destroyed, and the user
+   has to re-enter their passphrase every time they leave & return. */
+const VaultContext = createContext(null);
+
+export function FinanceVaultProvider({ children }) {
+  const vault = useVault();
+  return <VaultContext.Provider value={vault}>{children}</VaultContext.Provider>;
+}
+
+export function useVaultContext() {
+  return useContext(VaultContext);
 }

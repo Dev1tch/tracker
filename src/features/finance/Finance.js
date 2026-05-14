@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import { useVault } from './hooks/useVault';
+import { useVaultContext } from './hooks/useVault';
 import PrivacyGate from './components/PrivacyGate';
 import Dashboard from './components/Dashboard';
 import './Finance.css';
 
 export default function Finance() {
-  const { status, error, data, actions, lastSavedAt } = useVault();
+  const { status, error, data, actions, lastSavedAt } = useVaultContext();
 
   if (status !== 'unlocked' || !data) {
     return (

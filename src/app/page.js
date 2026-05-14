@@ -8,6 +8,7 @@ import HabitTracker from '@/features/habits/HabitTracker';
 import TasksBoard from '@/features/tasks';
 import Calendar from '@/features/calendar/Calendar';
 import Finance from '@/features/finance/Finance';
+import { FinanceVaultProvider } from '@/features/finance/hooks/useVault';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 
 const DEFAULT_TAB = 'habits';
@@ -149,13 +150,15 @@ export default function Home() {
 
   return (
     <ToastProvider>
-      <DashboardLayout 
-        activeTab={activeTab} 
-        onTabChange={handleTabChange}
-        onLogout={handleLogout}
-      >
-        {renderContent()}
-      </DashboardLayout>
+      <FinanceVaultProvider>
+        <DashboardLayout
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          onLogout={handleLogout}
+        >
+          {renderContent()}
+        </DashboardLayout>
+      </FinanceVaultProvider>
     </ToastProvider>
   );
 }

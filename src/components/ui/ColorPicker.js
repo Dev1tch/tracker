@@ -1,6 +1,13 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import './ColorPicker.css';
 
 const DEFAULT_PRESETS = [
@@ -106,6 +113,7 @@ export default function ColorPicker({
   const [isOpen, setIsOpen] = useState(false);
   const [isWheelDragging, setIsWheelDragging] = useState(false);
   const [hexInput, setHexInput] = useState(value || '');
+  const [popoverStyle, setPopoverStyle] = useState(null);
   const wrapperRef = useRef(null);
   const wheelRef = useRef(null);
 
@@ -176,6 +184,65 @@ export default function ColorPicker({
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [isOpen]);
 
+  /* Anchor the popover to viewport coords so an ancestor with
+     `overflow: hidden` (like .tasksModal) can't clip it. Flip above the
+     trigger when there's no room below. */
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const trigger = wrapperRef.current;
+    if (!trigger) return;
+
+    const POPOVER_WIDTH = 144;
+    const POPOVER_HEIGHT = 200;
+    const GAP = 8;
+    const PAD = 12;
+
+    const rect = trigger.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - PAD;
+    const spaceAbove = rect.top - PAD;
+    const openUp = spaceBelow < POPOVER_HEIGHT && spaceAbove > spaceBelow;
+
+    let left = rect.left;
+    if (left + POPOVER_WIDTH > window.innerWidth - PAD) {
+      left = window.innerWidth - POPOVER_WIDTH - PAD;
+    }
+    if (left < PAD) left = PAD;
+
+    const style = {
+      position: 'fixed',
+      left,
+      width: POPOVER_WIDTH,
+      zIndex: 10000,
+    };
+    if (openUp) {
+      style.bottom = window.innerHeight - rect.top + GAP;
+      style.top = 'auto';
+    } else {
+      style.top = rect.bottom + GAP;
+      style.bottom = 'auto';
+    }
+    setPopoverStyle(style);
+  }, [isOpen]);
+
+  /* The popover is anchored to a fixed viewport point; if any ancestor
+     scrolls, close it rather than let it float in the wrong place. */
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    function handleScroll(event) {
+      if (wrapperRef.current && wrapperRef.current.contains(event.target)) return;
+      setIsOpen(false);
+    }
+    function handleResize() {
+      setIsOpen(false);
+    }
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     if (!isWheelDragging) return undefined;
 
@@ -222,7 +289,7 @@ export default function ColorPicker({
       />
 
       {isOpen ? (
-        <div className="salColorPickerPopover">
+        <div className="salColorPickerPopover" style={popoverStyle || undefined}>
           <div
             ref={wheelRef}
             className="salColorPickerWheel"

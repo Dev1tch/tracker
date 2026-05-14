@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Repeat } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
+import TasksDatePicker from '@/features/tasks/components/TasksBoard/components/TasksDatePicker';
 import {
   PAYMENT_METHODS,
   TRANSACTION_TYPES,
@@ -26,8 +27,6 @@ function blankTransaction(overrides = {}) {
     toAccountId: '',
     categoryId: '',
     date: getYYYYMMDD(new Date()),
-    source: '',
-    destination: '',
     payee: '',
     paymentMethod: 'cash',
     note: '',
@@ -136,17 +135,16 @@ export default function TransactionModal({
   return (
     <div className="modalOverlay" onClick={onClose}>
       <div
-        className="modalContent financeModal"
+        className="modalContent financeModal financeTxnModal"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modalHeader">
           <h2 className="modalTitle">
             {initial ? 'Edit transaction' : 'New transaction'}
           </h2>
-          <p className="modalDate">All entries stay encrypted on this device.</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="financeTxnForm">
           <div className="financeTypeRow">
             {TRANSACTION_TYPES.map((opt) => (
               <button
@@ -161,181 +159,193 @@ export default function TransactionModal({
             ))}
           </div>
 
-          <div className="financeFieldGroup">
-            <label>Amount</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              className="authInput"
-              value={form.amount}
-              onChange={(e) => updateField('amount', e.target.value)}
-              placeholder="0.00"
-              autoFocus
-            />
-          </div>
+          {isTransfer ? (
+            <>
+              <div className="financeFieldGrid">
+                <div className="financeFieldGroup">
+                  <label>Amount</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    className="authInput"
+                    value={form.amount}
+                    onChange={(e) => updateField('amount', e.target.value)}
+                    placeholder="0.00"
+                    autoFocus
+                  />
+                </div>
+                <div className="financeFieldGroup">
+                  <label>Date</label>
+                  <TasksDatePicker
+                    value={form.date}
+                    onChange={(v) => updateField('date', v || getYYYYMMDD(new Date()))}
+                    placeholder="Pick date"
+                  />
+                </div>
+              </div>
 
-          <div className="financeFieldGrid">
-            <div className="financeFieldGroup">
-              <label>Date</label>
-              <input
-                type="date"
-                className="authInput"
-                value={form.date}
-                onChange={(e) => updateField('date', e.target.value)}
-              />
-            </div>
+              <div className="financeFieldGrid">
+                <div className="financeFieldGroup">
+                  <label>From account</label>
+                  <CustomSelect
+                    options={accounts.map((a) => ({
+                      value: a.id,
+                      label: `${a.name} (${a.currency})`,
+                      color: a.color,
+                    }))}
+                    value={form.accountId}
+                    onChange={(v) => updateField('accountId', v)}
+                    placeholder="Select account"
+                  />
+                </div>
+                <div className="financeFieldGroup">
+                  <label>To account</label>
+                  <CustomSelect
+                    options={accounts
+                      .filter((a) => a.id !== form.accountId)
+                      .map((a) => ({
+                        value: a.id,
+                        label: `${a.name} (${a.currency})`,
+                        color: a.color,
+                      }))}
+                    value={form.toAccountId}
+                    onChange={(v) => updateField('toAccountId', v)}
+                    placeholder="Destination account"
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="financeFieldGrid3">
+                <div className="financeFieldGroup">
+                  <label>Amount</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    className="authInput"
+                    value={form.amount}
+                    onChange={(e) => updateField('amount', e.target.value)}
+                    placeholder="0.00"
+                    autoFocus
+                  />
+                </div>
+                <div className="financeFieldGroup">
+                  <label>Date</label>
+                  <TasksDatePicker
+                    value={form.date}
+                    onChange={(v) => updateField('date', v || getYYYYMMDD(new Date()))}
+                    placeholder="Pick date"
+                  />
+                </div>
+                <div className="financeFieldGroup">
+                  <label>Account</label>
+                  <CustomSelect
+                    options={accounts.map((a) => ({
+                      value: a.id,
+                      label: `${a.name} (${a.currency})`,
+                      color: a.color,
+                    }))}
+                    value={form.accountId}
+                    onChange={(v) => updateField('accountId', v)}
+                    placeholder="Select account"
+                  />
+                </div>
+              </div>
 
-            <div className="financeFieldGroup">
-              <label>{isTransfer ? 'From account' : 'Account'}</label>
-              <CustomSelect
-                options={accounts.map((a) => ({
-                  value: a.id,
-                  label: `${a.name} (${a.currency})`,
-                  color: a.color,
-                }))}
-                value={form.accountId}
-                onChange={(v) => updateField('accountId', v)}
-                placeholder="Select account"
-              />
-            </div>
-          </div>
-
-          {isTransfer && (
-            <div className="financeFieldGroup">
-              <label>To account</label>
-              <CustomSelect
-                options={accounts
-                  .filter((a) => a.id !== form.accountId)
-                  .map((a) => ({
-                    value: a.id,
-                    label: `${a.name} (${a.currency})`,
-                    color: a.color,
-                  }))}
-                value={form.toAccountId}
-                onChange={(v) => updateField('toAccountId', v)}
-                placeholder="Destination account"
-              />
-            </div>
+              <div className="financeFieldGrid3">
+                <div className="financeFieldGroup">
+                  <label>Category</label>
+                  <CustomSelect
+                    options={filteredCategories.map((c) => ({
+                      value: c.id,
+                      label: c.name,
+                      color: c.color,
+                    }))}
+                    value={form.categoryId}
+                    onChange={(v) => updateField('categoryId', v)}
+                    placeholder={`Select ${form.type} category`}
+                  />
+                </div>
+                <div className="financeFieldGroup">
+                  <label>Method</label>
+                  <CustomSelect
+                    options={PAYMENT_METHODS.map((m) => ({ value: m.value, label: m.label }))}
+                    value={form.paymentMethod}
+                    onChange={(v) => updateField('paymentMethod', v)}
+                    placeholder="Payment method"
+                  />
+                </div>
+                <div className="financeFieldGroup">
+                  <label>{form.type === 'income' ? 'From (payer)' : 'Payee / store'}</label>
+                  <input
+                    type="text"
+                    className="authInput"
+                    value={form.payee}
+                    onChange={(e) => updateField('payee', e.target.value)}
+                    placeholder={form.type === 'income' ? 'Employer, client...' : 'Where you spent'}
+                  />
+                </div>
+              </div>
+            </>
           )}
 
-          {!isTransfer && (
+          <div className="financeTxnFooterGrid">
             <div className="financeFieldGroup">
-              <label>Category</label>
-              <CustomSelect
-                options={filteredCategories.map((c) => ({
-                  value: c.id,
-                  label: c.name,
-                  color: c.color,
-                }))}
-                value={form.categoryId}
-                onChange={(v) => updateField('categoryId', v)}
-                placeholder={`Select ${form.type} category`}
-              />
-            </div>
-          )}
-
-          {!isTransfer && (
-            <div className="financeFieldGrid">
-              <div className="financeFieldGroup">
-                <label>{form.type === 'income' ? 'From (payer)' : 'Payee / store'}</label>
+              <label>Tags</label>
+              <div className="financeTagInputRow">
                 <input
                   type="text"
                   className="authInput"
-                  value={form.payee}
-                  onChange={(e) => updateField('payee', e.target.value)}
-                  placeholder={form.type === 'income' ? 'Employer, client...' : 'Where you spent'}
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                  }}
+                  placeholder="Add tag and press Enter"
                 />
+                <button type="button" className="btn-secondary" onClick={handleAddTag}>
+                  Add
+                </button>
               </div>
-              <div className="financeFieldGroup">
-                <label>Method</label>
-                <CustomSelect
-                  options={PAYMENT_METHODS.map((m) => ({ value: m.value, label: m.label }))}
-                  value={form.paymentMethod}
-                  onChange={(v) => updateField('paymentMethod', v)}
-                  placeholder="Payment method"
-                />
-              </div>
+              {form.tags.length > 0 && (
+                <div className="financeTagList">
+                  {form.tags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className="financeTagChip"
+                      onClick={() => handleRemoveTag(tag)}
+                      title="Remove"
+                    >
+                      {tag} <span aria-hidden="true">×</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
 
-          {!isTransfer && (
-            <div className="financeFieldGrid">
-              <div className="financeFieldGroup">
-                <label>Source (origin of funds)</label>
-                <input
-                  type="text"
-                  className="authInput"
-                  value={form.source}
-                  onChange={(e) => updateField('source', e.target.value)}
-                  placeholder={form.type === 'income' ? 'Salary, bonus, refund...' : 'Wallet, savings...'}
-                />
-              </div>
-              <div className="financeFieldGroup">
-                <label>Destination (where it ended up)</label>
-                <input
-                  type="text"
-                  className="authInput"
-                  value={form.destination}
-                  onChange={(e) => updateField('destination', e.target.value)}
-                  placeholder={form.type === 'income' ? 'Bank account, cash...' : 'Bills, gift, asset...'}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="financeFieldGroup">
-            <label>Tags</label>
-            <div className="financeTagInputRow">
-              <input
-                type="text"
-                className="authInput"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                }}
-                placeholder="Add tag and press Enter"
+            <div className="financeFieldGroup">
+              <label>Note</label>
+              <textarea
+                className="commentInput financeTxnNote"
+                value={form.note}
+                onChange={(e) => updateField('note', e.target.value)}
+                placeholder="Optional details..."
               />
-              <button type="button" className="btn-secondary" onClick={handleAddTag}>
-                Add
-              </button>
             </div>
-            {form.tags.length > 0 && (
-              <div className="financeTagList">
-                {form.tags.map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    className="financeTagChip"
-                    onClick={() => handleRemoveTag(tag)}
-                    title="Remove"
-                  >
-                    {tag} <span aria-hidden="true">×</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="financeFieldGroup">
-            <label>Note</label>
-            <textarea
-              className="commentInput"
-              value={form.note}
-              onChange={(e) => updateField('note', e.target.value)}
-              placeholder="Optional details..."
-              style={{ minHeight: 70 }}
-            />
           </div>
 
           {error && <div className="authError" style={{ marginTop: 0 }}>{error}</div>}
 
-          <div className="modalActions" style={{ marginTop: 24 }}>
+          <div className="modalActions financeTxnActions">
             {initial && onDelete && (
               <button
                 type="button"

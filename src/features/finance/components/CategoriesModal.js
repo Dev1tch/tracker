@@ -78,7 +78,6 @@ export default function CategoriesModal({ open, vault, onClose, onChange }) {
       >
         <div className="modalHeader">
           <h2 className="modalTitle">Categories</h2>
-          <p className="modalDate">Group entries so the breakdown actually means something.</p>
         </div>
 
         <div className="financeTabRow">

@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { CURRENCY_OPTIONS, currencyToSelectOption } from '@/features/finance/lib/defaults';
@@ -121,203 +122,199 @@ export default function SettingsModal({ open, vault, actions, onClose }) {
   };
 
   return (
-    <div className="modalOverlay" onClick={onClose}>
+    <div className="tasksModalOverlay" onClick={onClose}>
       <div
-        className="modalContent financeModal financeWideModal"
+        className="tasksModal finSettingsModal"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modalHeader">
-          <h2 className="modalTitle">Vault settings</h2>
-          <p className="modalDate">
-            Privacy posture, backups, and the kill switch all live here.
-          </p>
+        <div className="tasksModalHeader">
+          <h3>Vault settings</h3>
+          <div className="tasksModalHeaderActions">
+            <button type="button" className="tasksIconBtn" onClick={onClose} title="Close">
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
-        <section className="financeSettingsSection">
-          <header className="financeSettingsHeader">
-            <Cpu size={14} />
-            <h3>Privacy posture</h3>
-          </header>
-          <div className="financePledge inline">
-            <div className="financePledgeRow">
-              <Lock size={12} />
-              <span>Encrypted with AES-GCM, key derived from your passphrase.</span>
-            </div>
-            <div className="financePledgeRow">
-              <ShieldCheck size={12} />
-              <span>Stored only in this browser&apos;s IndexedDB. No network calls.</span>
-            </div>
-          </div>
-
-          <div className="financeFieldGrid" style={{ marginTop: 16 }}>
-            <div className="financeFieldGroup">
-              <label>Default currency</label>
-              <CustomSelect
-                options={CURRENCY_OPTIONS.map(currencyToSelectOption)}
-                value={settings.defaultCurrency}
-                onChange={(v) => handleUpdateSettings({ defaultCurrency: v })}
-                searchable
-                searchPlaceholder="Search by code or name"
-              />
-            </div>
-            <div className="financeFieldGroup">
-              <label>Auto-lock after inactivity</label>
-              <CustomSelect
-                options={AUTO_LOCK_OPTIONS.map((o) => ({
-                  value: o.value,
-                  label: o.label,
-                }))}
-                value={settings.autoLockMinutes ?? 15}
-                onChange={(v) => handleUpdateSettings({ autoLockMinutes: Number(v) })}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="financeSettingsSection">
-          <header className="financeSettingsHeader">
-            <Download size={14} />
-            <h3>Backup &amp; restore</h3>
-          </header>
-          <p className="financeSettingsHint">
-            The export is the same encrypted blob that lives in your browser. Anyone with the
-            file <em>and</em> your passphrase can read it. Anyone with just the file can&apos;t.
-          </p>
-          <div className="financeSettingsActions">
-            <button type="button" className="btn-primary" onClick={handleExport}>
-              <Download size={12} style={{ marginRight: 6 }} />
-              Export encrypted backup
-            </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload size={12} style={{ marginRight: 6 }} />
-              Restore from file
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json"
-              hidden
-              onChange={handleImport}
-            />
-          </div>
-          {settings.lastBackupAt && (
-            <div className="financeSettingsMeta">
-              Last backup: {new Date(settings.lastBackupAt).toLocaleString()}
-            </div>
-          )}
-        </section>
-
-        <section className="financeSettingsSection">
-          <header className="financeSettingsHeader">
-            <KeyRound size={14} />
-            <h3>Change passphrase</h3>
-          </header>
-          <div className="financeFieldGroup">
-            <label>Current passphrase</label>
-            <input
-              type="password"
-              className="authInput"
-              value={currentPass}
-              onChange={(e) => setCurrentPass(e.target.value)}
-              autoComplete="off"
-            />
-          </div>
-          <div className="financeFieldGrid">
-            <div className="financeFieldGroup">
-              <label>New passphrase</label>
-              <input
-                type="password"
-                className="authInput"
-                value={newPass}
-                onChange={(e) => setNewPass(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-            <div className="financeFieldGroup">
-              <label>Confirm new passphrase</label>
-              <input
-                type="password"
-                className="authInput"
-                value={newPassConfirm}
-                onChange={(e) => setNewPassConfirm(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-          </div>
-          {passError && <div className="authError">{passError}</div>}
-          <div className="financeSettingsActions">
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleChangePassphrase}
-              disabled={!currentPass || !newPass || !newPassConfirm}
-            >
-              Update passphrase
-            </button>
-          </div>
-        </section>
-
-        <section className="financeSettingsSection danger">
-          <header className="financeSettingsHeader">
-            <AlertTriangle size={14} />
-            <h3>Reset everything</h3>
-          </header>
-          <p className="financeSettingsHint">
-            Deletes the encrypted vault from this browser. Only use this if you have an
-            exported backup or you want to start fresh.
-          </p>
-          {showDestroy ? (
-            <>
-              <input
-                type="text"
-                className="authInput"
-                placeholder='Type "DELETE" to confirm'
-                value={destroyConfirm}
-                onChange={(e) => setDestroyConfirm(e.target.value)}
-              />
-              <div className="financeSettingsActions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => {
-                    setShowDestroy(false);
-                    setDestroyConfirm('');
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary financeDangerBtn"
-                  onClick={handleDestroy}
-                  disabled={destroyConfirm !== 'DELETE'}
-                >
-                  <Trash2 size={12} style={{ marginRight: 6 }} />
-                  Permanently delete vault
-                </button>
+        <div className="finSettingsBody">
+          <div className="finSettingsTopRow">
+            <section className="finSettingsCard">
+              <header className="finSettingsCardHead">
+                <Cpu size={13} />
+                <h4>Privacy posture</h4>
+              </header>
+              <ul className="finSettingsPledge">
+                <li>
+                  <Lock size={11} />
+                  <span>Encrypted with AES-GCM, key derived from your passphrase.</span>
+                </li>
+                <li>
+                  <ShieldCheck size={11} />
+                  <span>Stored only in this browser&apos;s IndexedDB. No network calls.</span>
+                </li>
+              </ul>
+              <div className="finSettingsFieldGrid">
+                <div className="tasksField">
+                  <label>Default currency</label>
+                  <CustomSelect
+                    options={CURRENCY_OPTIONS.map(currencyToSelectOption)}
+                    value={settings.defaultCurrency}
+                    onChange={(v) => handleUpdateSettings({ defaultCurrency: v })}
+                    searchable
+                    searchPlaceholder="Search by code or name"
+                  />
+                </div>
+                <div className="tasksField">
+                  <label>Auto-lock</label>
+                  <CustomSelect
+                    options={AUTO_LOCK_OPTIONS.map((o) => ({
+                      value: o.value,
+                      label: o.label,
+                    }))}
+                    value={settings.autoLockMinutes ?? 15}
+                    onChange={(v) => handleUpdateSettings({ autoLockMinutes: Number(v) })}
+                  />
+                </div>
               </div>
-            </>
-          ) : (
-            <div className="financeSettingsActions">
+            </section>
+
+            <section className="finSettingsCard">
+              <header className="finSettingsCardHead">
+                <Download size={13} />
+                <h4>Backup &amp; restore</h4>
+              </header>
+              <p className="finSettingsHint">
+                The export is the encrypted blob from your browser. Anyone with the file{' '}
+                <em>and</em> your passphrase can read it. Anyone with just the file can&apos;t.
+              </p>
+              <div className="finSettingsActions">
+                <button
+                  type="button"
+                  className="tasksBtn tasksBtnPrimary tasksBtnCompact"
+                  onClick={handleExport}
+                >
+                  <Download size={12} />
+                  Export
+                </button>
+                <button
+                  type="button"
+                  className="tasksBtn tasksBtnCompact"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={12} />
+                  Restore
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json"
+                  hidden
+                  onChange={handleImport}
+                />
+              </div>
+              {settings.lastBackupAt && (
+                <div className="finSettingsMeta">
+                  Last backup: {new Date(settings.lastBackupAt).toLocaleString()}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <section className="finSettingsCard">
+            <header className="finSettingsCardHead">
+              <KeyRound size={13} />
+              <h4>Change passphrase</h4>
+            </header>
+            <div className="finSettingsPassRow">
+              <div className="tasksField">
+                <label>Current</label>
+                <input
+                  type="password"
+                  value={currentPass}
+                  onChange={(e) => setCurrentPass(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="tasksField">
+                <label>New</label>
+                <input
+                  type="password"
+                  value={newPass}
+                  onChange={(e) => setNewPass(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="tasksField">
+                <label>Confirm new</label>
+                <input
+                  type="password"
+                  value={newPassConfirm}
+                  onChange={(e) => setNewPassConfirm(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
               <button
                 type="button"
-                className="btn-secondary financeDangerLink"
-                onClick={() => setShowDestroy(true)}
+                className="tasksBtn tasksBtnPrimary"
+                onClick={handleChangePassphrase}
+                disabled={!currentPass || !newPass || !newPassConfirm}
               >
-                Delete vault from this browser
+                Update
               </button>
             </div>
-          )}
-        </section>
+            {passError && <div className="authError">{passError}</div>}
+          </section>
 
-        <div className="modalActions" style={{ marginTop: 24 }}>
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Close
-          </button>
+          <section className="finSettingsCard finSettingsCardDanger">
+            <header className="finSettingsCardHead">
+              <AlertTriangle size={13} />
+              <h4>Reset everything</h4>
+            </header>
+            <div className="finSettingsResetRow">
+              <p className="finSettingsHint">
+                Deletes the encrypted vault from this browser. Only use this if you have an
+                exported backup or you want to start fresh.
+              </p>
+              {showDestroy ? (
+                <div className="finSettingsResetForm">
+                  <input
+                    type="text"
+                    className="finSettingsResetInput"
+                    placeholder='Type "DELETE"'
+                    value={destroyConfirm}
+                    onChange={(e) => setDestroyConfirm(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="tasksBtn tasksBtnCompact"
+                    onClick={() => {
+                      setShowDestroy(false);
+                      setDestroyConfirm('');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="tasksBtn tasksBtnCompact finSettingsDangerBtn"
+                    onClick={handleDestroy}
+                    disabled={destroyConfirm !== 'DELETE'}
+                  >
+                    <Trash2 size={12} />
+                    Delete
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="tasksBtn tasksBtnCompact finSettingsDangerLink"
+                  onClick={() => setShowDestroy(true)}
+                >
+                  Delete vault from this browser
+                </button>
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </div>

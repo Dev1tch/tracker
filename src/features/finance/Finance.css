@@ -299,45 +299,1137 @@ html[data-theme="light"] .financePledgeRow.warning {
   color: #ff5a5a !important;
 }
 
-/* ===================== Header bar in unlocked dashboard ================== */
+/* =========================================================================
+   UNLOCKED DASHBOARD — Sidebar + main layout
+   Reuses calendar's shell (.calContainer, .calHeader, .calLayout,
+   .calSidebar, .calMain, .calNavBtn, .calTodayBtn, .calBookBtn,
+   .calSettingsPopover) so the page reads as one with the rest of the app.
+   ========================================================================= */
 
-.financeHeaderBar {
+/* shared color dot — also used by BudgetsModal */
+.financeColorDot,
+.finAccountDot,
+.finBreakdownDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.finBreakdownDot {
+  width: 6px;
+  height: 6px;
+}
+
+/* ---------- Container override ---------- */
+.finShell {
+  /* calContainer already gives us full-width + padding: 72px 18px 10px.
+     Just tighten the bottom so the layout doesn't leave a tall gutter. */
+  padding-bottom: 12px;
+  overflow: hidden;
+}
+
+/* ---------- Header bar (extends .calHeader) ---------- */
+.finHeader {
+  row-gap: 10px;
+}
+
+.finHeader .calHeaderLeft {
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Date title — replaces the "Finance" wordmark. Larger and heavier than
+   .calTitle's default so it reads as the page anchor. */
+.finHeaderDate {
+  font-size: 24px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.14em !important;
+  color: var(--text-primary);
+  text-shadow: 0 0 14px var(--glow-color);
+}
+
+.finHeaderRight {
+  flex-wrap: nowrap;
+  row-gap: 8px;
+  min-width: 0;
+}
+
+/* Underline-style search to match the tasks page filter input. .authInput
+   provides the bottom-border, transparent bg and uppercase placeholder; we
+   only size/space it for the header row. */
+.finHeaderSearch.authInput {
+  flex: 1 1 140px;
+  max-width: 240px;
+  min-width: 0;
+  padding: 8px 0 !important;
+}
+
+.finHeaderFilter {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.finHeaderFilter .customSelectHeader {
+  height: 34px;
+  border-radius: 0;
+}
+
+/* Keep header action buttons on a single line — they should never be the
+   ones to wrap if the row gets tight. */
+.finHeaderRight .calTodayBtn,
+.finHeaderRight .calBookBtn,
+.finHeaderRight .calNavButtons,
+.finHeaderRight .calSettingsWrap {
+  flex-shrink: 0;
+}
+
+.calTodayBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.calTodayBtn:disabled:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+
+/* ---------- Settings popover (vault menu) ---------- */
+.finSettingsPopover {
+  width: 240px;
+  padding: 6px;
+  gap: 0;
+}
+
+.finPopoverItem {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-align: left;
+}
+
+.finPopoverItem:hover {
+  background: var(--surface-05);
+  color: var(--text-primary);
+}
+
+.finPopoverItem svg {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.finPopoverItem:hover svg {
+  color: var(--text-primary);
+}
+
+.finPopoverItem.danger {
+  color: rgba(248, 113, 113, 0.85);
+}
+
+.finPopoverItem.danger svg {
+  color: rgba(248, 113, 113, 0.7);
+}
+
+.finPopoverItem.danger:hover,
+.finPopoverItem.danger:hover svg {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.finPopoverDivider {
+  height: 1px;
+  background: var(--border-color-dim);
+  margin: 4px 6px;
+}
+
+/* ---------- Backup banner strip ---------- */
+.finBackupStrip {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 14px;
-  padding: 14px 18px;
-  border: 1px solid var(--border-color-dim);
-  border-radius: 12px;
-  background: var(--surface-02);
-  backdrop-filter: blur(8px);
+  padding: 10px 16px;
+  border: 1px solid rgba(251, 191, 36, 0.32);
+  background: rgba(251, 191, 36, 0.06);
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
-.financePrivacyBadge {
+.finBackupText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 320px;
+}
+
+.finBackupText strong {
+  color: var(--text-primary);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.finBackupActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ---------- Layout (sidebar + main) ---------- */
+.finLayout {
+  /* calLayout gives us flex:1 + horizontal split */
+}
+
+.finSidebar {
+  width: 300px;
+  min-width: 300px;
+  padding: 0;
+  gap: 0;
+}
+
+.finSideSection {
+  padding: 14px 18px 16px;
+  border-bottom: 1px solid var(--border-color-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.finSideSection:last-child {
+  border-bottom: none;
+}
+
+.finSideHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.finSideSub {
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-size: 10px;
+}
+
+.finSideAction {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 2px 4px;
+  transition: var(--transition-fast);
+}
+
+.finSideAction:hover {
+  color: var(--text-primary);
+}
+
+/* "+" icon button used as a compact inviting affordance in sidebar section
+   headers (replaces a plain "Manage" text link). Frameless to match the
+   other icon buttons in the finance UI. */
+.finSideAddBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.finSideAddBtn:hover {
+  color: var(--text-primary);
+}
+
+.finSideEmpty {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 2px;
+}
+
+.finSidePledge {
+  margin-top: auto;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.finSidePledge span {
+  display: inline-flex;
+  align-items: flex-start;
   gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--border-color-dim);
-  border-radius: 999px;
+}
+
+.finSidePledge svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.finSideSavedAt {
+  display: block !important;
   font-size: 9px;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-secondary);
-  background: var(--surface-03);
+  color: var(--text-tertiary);
+  margin-top: 2px;
 }
 
-.financePrivacyBadge svg {
-  opacity: 0.8;
+/* Monthly net + flow */
+.finNetRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 2px;
 }
 
-.financeHeaderActions {
+.finEyeBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.finEyeBtn:hover {
+  color: var(--text-primary);
+}
+
+.finNet {
+  font-size: 26px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.finNet.positive { color: var(--text-primary); }
+.finNet.negative { color: #f87171; }
+html[data-theme="light"] .finNet.negative { color: #b03434; }
+
+.finFlow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.finFlowItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-02);
+}
+
+.finFlowLabel {
   display: flex;
   align-items: center;
   gap: 6px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 
+.finFlowVal {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.finFlowVal.positive { color: #4cd996; }
+.finFlowVal.negative { color: #ff7a7a; }
+html[data-theme="light"] .finFlowVal.positive { color: #11804b; }
+html[data-theme="light"] .finFlowVal.negative { color: #b03434; }
+
+/* Account rows (click-to-filter) */
+.finAccountList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.finAccountRow {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-align: left;
+  font: inherit;
+}
+
+.finAccountRow:hover {
+  background: var(--surface-04);
+  color: var(--text-primary);
+}
+
+.finAccountRow.active {
+  background: var(--surface-08);
+  border-left-color: var(--row-color, var(--text-primary));
+  color: var(--text-primary);
+}
+
+.finAccountName {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.finAccountBalance {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.finAccountRow:hover .finAccountBalance,
+.finAccountRow.active .finAccountBalance {
+  color: var(--text-secondary);
+}
+
+.finAccountBalance.negative { color: #f87171; }
+html[data-theme="light"] .finAccountBalance.negative { color: #b03434; }
+
+/* Budget mini */
+.finBudgetMiniList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.finBudgetMini {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.finBudgetMiniRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.finBudgetMiniName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finBudgetMiniPct {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.finBudgetMiniPct.negative { color: #f87171; }
+html[data-theme="light"] .finBudgetMiniPct.negative { color: #b03434; }
+
+.finBudgetMiniBar {
+  height: 4px;
+  background: var(--surface-04);
+  overflow: hidden;
+}
+
+.finBudgetMiniFill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.finBudgetMiniFill.over {
+  background: #f87171 !important;
+}
+
+.finBudgetMiniMeta {
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Main column ---------- */
+.finMain {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 4px 12px 18px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+  gap: 14px;
+}
+
+.finMain::-webkit-scrollbar {
+  width: 6px;
+}
+.finMain::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+}
+.finMain::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Breakdown strip */
+.finBreakdown {
+  padding: 14px 18px 16px;
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-02);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.finBreakdownHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.finBreakdownTotal {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.finBreakdownBar {
+  display: flex;
+  height: 8px;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.finBreakdownSegment {
+  height: 100%;
+  min-width: 2px;
+}
+
+.finBreakdownLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.finBreakdownChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-02);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.finBreakdownChip.muted {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.finBreakdownName {
+  letter-spacing: 0.02em;
+}
+
+.finBreakdownAmount {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* Transaction list */
+.finTxnList {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.finDayGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.finDayHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 4px 8px;
+  border-bottom: 1px solid var(--border-color-dim);
+  margin-bottom: 2px;
+  position: sticky;
+  top: 0;
+  background: var(--bg-color);
+  z-index: 2;
+}
+
+.finDayLabel {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.finDayTotals {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.finDayTotals .positive { color: #4cd996; }
+.finDayTotals .negative { color: #ff7a7a; }
+html[data-theme="light"] .finDayTotals .positive { color: #11804b; }
+html[data-theme="light"] .finDayTotals .negative { color: #b03434; }
+
+.finDayItems {
+  display: flex;
+  flex-direction: column;
+}
+
+.finTxnRow {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 8px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-color-dim);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition-fast);
+  font: inherit;
+  width: 100%;
+}
+
+.finTxnRow:hover {
+  background: var(--surface-04);
+}
+
+.finTxnRow:last-child {
+  border-bottom: none;
+}
+
+.finTxnIcon {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--surface-contrast-inverse);
+  background: var(--surface-10);
+  flex-shrink: 0;
+}
+
+.finTxnRow.income .finTxnIcon { color: #fff; }
+.finTxnRow.transfer .finTxnIcon {
+  color: var(--text-primary);
+  background: var(--surface-15) !important;
+}
+
+.finTxnMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.finTxnTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.finTxnTitle {
+  font-size: 13px;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finTxnTags {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.finTxnTag {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 1px 6px;
+  border: 1px solid var(--border-color-dim);
+}
+
+.finTxnMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+
+.finTxnAmount {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.finTxnAmount.positive { color: #4cd996; }
+.finTxnAmount.negative { color: #ff7a7a; }
+html[data-theme="light"] .finTxnAmount.positive { color: #11804b; }
+html[data-theme="light"] .finTxnAmount.negative { color: #b03434; }
+
+/* Empty state */
+.finEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 24px;
+  color: var(--text-tertiary);
+  gap: 8px;
+  border: 1px dashed var(--border-color-dim);
+  flex: 1;
+}
+
+.finEmpty svg {
+  color: var(--text-muted);
+  opacity: 0.4;
+  margin-bottom: 8px;
+}
+
+.finEmpty h3 {
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin: 0;
+}
+
+.finEmpty p {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  max-width: 380px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.finEmpty strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.finEmptyHint {
+  margin-top: 4px !important;
+  color: var(--text-muted) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.04em;
+}
+
+/* ===================== Modal-specific overrides ========================== */
+
+/* ============================
+   Accounts modal (tasks-style)
+   Reuses .tasksModal/.tasksModalHeader/.tasksField/.tasksTypeItem shells from
+   TasksBoard.css and adds finance-only refinements on top.
+   ============================ */
+
+.finAccountsModal {
+  max-width: 720px;
+}
+
+/* ============================
+   Vault settings modal (tasks-style, wide)
+   2-col top row (Privacy + Backup), full-width passphrase row, full-width
+   danger row. Keeps the modal short and horizontal instead of a tall stack.
+   ============================ */
+
+.finSettingsModal {
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 160px);
+}
+
+.finSettingsBody {
+  padding: 16px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.finSettingsBody::-webkit-scrollbar {
+  width: 6px;
+}
+
+.finSettingsBody::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+}
+
+.finSettingsTopRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.finSettingsCard {
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-02);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.finSettingsCard.finSettingsCardDanger {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(248, 113, 113, 0.04);
+}
+
+.finSettingsCardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.finSettingsCardHead h4 {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.finSettingsPledge {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.finSettingsPledge li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.finSettingsPledge li svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--text-tertiary);
+}
+
+.finSettingsFieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.finSettingsHint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.finSettingsActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.finSettingsMeta {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-top: auto;
+}
+
+/* Change passphrase row: 3 fields + Update button on a single line */
+.finSettingsPassRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.finSettingsPassRow .tasksBtn {
+  height: 38px;
+}
+
+/* Reset row */
+.finSettingsResetRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.finSettingsResetRow .finSettingsHint {
+  flex: 1 1 280px;
+}
+
+.finSettingsResetForm {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.finSettingsResetInput {
+  height: 28px;
+  padding: 0 8px;
+  background: var(--surface-03);
+  border: 1px solid var(--border-color-dim);
+  border-radius: 0;
+  color: var(--text-primary);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  outline: none;
+  width: 160px;
+  font-family: inherit;
+}
+
+.finSettingsResetInput:focus {
+  border-color: var(--text-secondary);
+}
+
+.finSettingsDangerLink {
+  color: #fca5a5 !important;
+  border-color: rgba(248, 113, 113, 0.4) !important;
+}
+
+.finSettingsDangerLink:hover:not(:disabled) {
+  color: #fecaca !important;
+  border-color: rgba(248, 113, 113, 0.8) !important;
+  background: rgba(248, 113, 113, 0.06) !important;
+}
+
+.finSettingsDangerBtn {
+  color: #fca5a5 !important;
+  border-color: rgba(248, 113, 113, 0.6) !important;
+  background: rgba(248, 113, 113, 0.1) !important;
+}
+
+.finSettingsDangerBtn:hover:not(:disabled) {
+  color: #fecaca !important;
+  border-color: #f87171 !important;
+  background: rgba(248, 113, 113, 0.15) !important;
+}
+
+/* Frameless close button to match other finance modals */
+.finSettingsModal .tasksIconBtn {
+  background: transparent;
+  border: none;
+}
+
+.finSettingsModal .tasksIconBtn:hover {
+  background: var(--surface-05);
+  border-color: transparent;
+}
+
+@media (max-width: 760px) {
+  .finSettingsTopRow,
+  .finSettingsPassRow,
+  .finSettingsFieldGrid {
+    grid-template-columns: 1fr;
+  }
+  .finSettingsPassRow .tasksBtn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Frameless icon buttons inside the finance accounts modal (matches the rest
+   of the finance UI which uses borderless icon affordances). */
+.finAccountsModal .tasksIconBtn {
+  background: transparent;
+  border: none;
+}
+
+.finAccountsModal .tasksIconBtn:hover {
+  color: var(--text-primary);
+  border-color: transparent;
+  background: var(--surface-05);
+}
+
+.finAccountsModal .tasksIconBtn.danger {
+  border-color: transparent;
+}
+
+.finAccountsModal .tasksIconBtn.danger:hover {
+  border-color: transparent;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.finAccountCreateGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.finAccountColorField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.finAccountList {
+  gap: 8px;
+}
+
+.finAccountItem {
+  align-items: center;
+}
+
+.finAccountItem.archived {
+  opacity: 0.55;
+}
+
+.finAccountInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.finAccountInfoBody {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Inline editable name — looks like plain text until hovered/focused. */
+.finAccountInlineName {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  outline: none;
+  padding: 2px 0;
+  width: 100%;
+  transition: var(--transition-fast);
+}
+
+.finAccountInlineName:hover,
+.finAccountInlineName:focus {
+  border-bottom-color: var(--border-color-dim);
+}
+
+.finAccountInfoBody p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.finAccountInfoBody p .negative {
+  color: #f87171;
+}
+
+html[data-theme="light"] .finAccountInfoBody p .negative {
+  color: #b03434;
+}
+
+.finAccountSep {
+  color: var(--text-muted);
+}
+
+.finAccountItemActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Compact icon button used inside manager modals for archive/delete row actions. */
 .financeIconBtn {
   background: transparent;
   border: 1px solid transparent;
@@ -364,477 +1456,59 @@ html[data-theme="light"] .financePledgeRow.warning {
   background: rgba(255, 90, 90, 0.08);
 }
 
-.financePrimaryAdd {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 14px !important;
-}
-
-/* ===================== Backup banner ===================================== */
-
-.financeBackupBanner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 18px;
-  border: 1px solid rgba(241, 163, 90, 0.4);
-  background: rgba(241, 163, 90, 0.08);
-  border-radius: 10px;
-}
-
-.financeBackupBannerText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.financeBackupBannerText strong {
-  color: var(--text-primary);
-  letter-spacing: 0.04em;
-  font-size: 12px;
-}
-
-.financeBackupBannerActions {
-  display: flex;
-  gap: 8px;
-}
-
-/* ===================== Summary cards ===================================== */
-
-.financeSummaryGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.financeSummaryCard {
-  border: 1px solid var(--border-color-dim);
-  border-radius: 12px;
-  padding: 18px 20px;
-  background: var(--surface-02);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 170px;
-}
-
-.financeSummaryLabel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.financeSummaryHint {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 10px;
-}
-
-.financeMonthArrow {
-  cursor: pointer;
-  color: var(--text-tertiary);
-  transition: var(--transition-fast);
-}
-
-.financeMonthArrow:hover {
-  color: var(--text-primary);
-}
-
-.financeMiniBtn {
-  background: transparent;
-  border: 1px solid var(--border-color-dim);
-  color: var(--text-tertiary);
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.financeMiniBtn:hover {
-  color: var(--text-primary);
-  border-color: var(--surface-35);
-}
-
-.financeSummaryValue {
-  font-size: 26px;
-  font-weight: 300;
-  letter-spacing: 0.02em;
-  color: var(--text-primary);
-}
-
-.financeSummaryValue.positive {
-  color: #4cd996;
-}
-
-.financeSummaryValue.negative {
-  color: #ff7a7a;
-}
-
-html[data-theme="light"] .financeSummaryValue.positive { color: #11804b; }
-html[data-theme="light"] .financeSummaryValue.negative { color: #b03434; }
-
-.financeSummarySubgrid {
-  display: flex;
-  gap: 18px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.financeSummarySub {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.financeSummarySub .positive { color: #4cd996; }
-.financeSummarySub .negative { color: #ff7a7a; }
-html[data-theme="light"] .financeSummarySub .positive { color: #11804b; }
-html[data-theme="light"] .financeSummarySub .negative { color: #b03434; }
-
-.financeAccountList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  max-height: 130px;
-  padding-right: 4px;
-}
-
-.financeAccountEmpty {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  font-style: italic;
-}
-
-.financeAccountRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.financeAccountName {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-}
-
-.financeAccountBalance {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.financeAccountBalance.negative {
-  color: #ff7a7a;
-}
-
-html[data-theme="light"] .financeAccountBalance.negative { color: #b03434; }
-
-.financeColorDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: inline-block;
-}
-
-.financeBreakdownBar {
-  display: flex;
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--surface-05);
-}
-
-.financeBreakdownSegment {
-  height: 100%;
-  min-width: 2px;
-}
-
-.financeBreakdownList {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.financeBreakdownRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.financeBreakdownName {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.financeBreakdownAmount {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.financeBreakdownMore {
-  font-size: 10px;
-  color: var(--text-tertiary);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-/* ===================== Toolbar (search + filters) ======================== */
-
-.financeToolbar {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.financeSearch {
-  flex: 1;
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.financeSearch svg {
-  position: absolute;
-  left: 0;
-  bottom: 18px;
-  color: var(--text-muted);
-  pointer-events: none;
-}
-
-.financeSearch .authInput {
-  padding-left: 22px !important;
-}
-
-.financeFilterWrap {
-  width: 180px;
-  flex-shrink: 0;
-}
-
-/* ===================== Transaction list ================================== */
-
-.financeTransactionList {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.financeEmptyState {
-  border: 1px dashed var(--border-color-dim);
-  border-radius: 12px;
-  padding: 40px 24px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.financeEmptyHint {
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.financeDayGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.financeDayHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--surface-08);
-}
-
-.financeDayLabel {
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.financeDayTotals {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.financeDayTotals .positive { color: #4cd996; }
-.financeDayTotals .negative { color: #ff7a7a; }
-html[data-theme="light"] .financeDayTotals .positive { color: #11804b; }
-html[data-theme="light"] .financeDayTotals .negative { color: #b03434; }
-
-.financeDayItems {
-  display: flex;
-  flex-direction: column;
-}
-
-.financeTxnRow {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  text-align: left;
-  cursor: pointer;
-  transition: var(--transition-fast);
-  width: 100%;
-  color: inherit;
-  font: inherit;
-}
-
-.financeTxnRow:hover {
-  background: var(--surface-04);
-  border-color: var(--border-color-dim);
-}
-
-.financeTxnIcon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--surface-contrast-inverse);
-  flex-shrink: 0;
-}
-
-.financeTxnRow.income .financeTxnIcon { color: #fff; }
-.financeTxnRow.transfer .financeTxnIcon {
-  color: var(--text-primary);
-  background: var(--surface-15) !important;
-}
-
-.financeTxnMain {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.financeTxnTitleRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.financeTxnTitle {
-  font-size: 13px;
-  color: var(--text-primary);
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 320px;
-}
-
-.financeTxnTags {
-  display: inline-flex;
-  gap: 4px;
-}
-
-.financeTxnTag {
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  border: 1px solid var(--border-color-dim);
-  padding: 1px 6px;
-  border-radius: 999px;
-}
-
-.financeTxnMeta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-  flex-wrap: wrap;
-}
-
-.financeTxnAmount {
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-  flex-shrink: 0;
-}
-
-.financeTxnAmount.positive { color: #4cd996; }
-.financeTxnAmount.negative { color: #ff7a7a; }
-html[data-theme="light"] .financeTxnAmount.positive { color: #11804b; }
-html[data-theme="light"] .financeTxnAmount.negative { color: #b03434; }
-
-/* ===================== Footer pledge ===================================== */
-
-.financeFooterStrip {
-  margin-top: 8px;
-  padding: 14px 18px;
-  border: 1px solid var(--border-color-dim);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: var(--surface-02);
-}
-
-.financeFooterPledge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-.financeFooterPledge svg {
-  opacity: 0.7;
-}
-
-.financeFooterMeta {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-/* ===================== Modal-specific overrides ========================== */
-
 .financeModal {
   max-width: 500px;
 }
 
 .financeWideModal {
   max-width: 640px;
+}
+
+/* Transaction modal — wider so 3-column rows breathe, with explicit row gap
+   so groups don't visually collide. */
+.financeTxnModal {
+  max-width: 780px !important;
+}
+
+.financeTxnForm {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.financeTxnForm .financeTypeRow {
+  margin-bottom: 0;
+}
+
+.financeFieldGrid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+/* Tags + Note share a row; note gets ~2/3, tags ~1/3. align-items:start so the
+   taller textarea doesn't stretch the tags column. */
+.financeTxnFooterGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.financeTxnNote {
+  margin-bottom: 0 !important;
+  min-height: 96px;
+}
+
+.financeTxnActions {
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .financeFieldGrid3,
+  .financeTxnFooterGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .financeTypeRow {
@@ -1227,47 +1901,69 @@ html[data-theme="light"] .financeBudgetTotals.over { color: #b03434; }
 
 /* ===================== Responsive ======================================== */
 
-@media (max-width: 900px) {
-  .financeContainer {
-    padding: 60px 14px 110px 14px;
-    gap: 16px;
+@media (max-width: 1100px) {
+  .finHeaderSearch.authInput {
+    flex: 1 1 120px;
+    max-width: 200px;
   }
-  .financeSummaryGrid {
-    grid-template-columns: 1fr;
+  .finHeaderFilter {
+    width: 130px;
+  }
+}
+
+@media (max-width: 900px) {
+  .finShell {
+    padding-bottom: 110px;
+    overflow: visible;
+  }
+  .finLayout {
+    flex-direction: column;
+    overflow-y: visible;
+  }
+  .finSidebar {
+    width: 100%;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color-dim);
+  }
+  .finSideSection {
+    border-bottom: 1px solid var(--border-color-dim);
+  }
+  .finMain {
+    padding: 14px 0 0 0;
+    overflow-y: visible;
   }
   .financeFieldGrid {
     grid-template-columns: 1fr;
   }
-  .financeToolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .financeFilterWrap {
-    width: 100%;
-  }
 }
 
-@media (max-width: 600px) {
-  .financeContainer {
-    padding: 14px 12px 110px 12px;
+@media (max-width: 640px) {
+  .finHeader .calHeaderLeft {
+    width: 100%;
+    justify-content: space-between;
   }
-  .financeHeaderBar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .financeHeaderActions {
+  .finHeaderRight {
+    width: 100%;
+    justify-content: flex-end;
     flex-wrap: wrap;
-    justify-content: flex-end;
   }
-  .financeBackupBanner {
+  .finHeaderSearch.authInput {
+    width: 100%;
+    max-width: none;
+    order: -1;
+    flex: 1 1 100%;
+  }
+  .finHeaderFilter {
+    flex: 1 1 calc(50% - 4px);
+    width: auto;
+  }
+  .finBackupStrip {
     flex-direction: column;
     align-items: stretch;
   }
-  .financeBackupBannerActions {
+  .finBackupActions {
     justify-content: flex-end;
-  }
-  .financeTxnTitle {
-    max-width: 180px;
   }
   .financeGateRow {
     flex-direction: column;
