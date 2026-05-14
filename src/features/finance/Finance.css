@@ -308,18 +308,12 @@ html[data-theme="light"] .financePledgeRow.warning {
 
 /* shared color dot — also used by BudgetsModal */
 .financeColorDot,
-.finAccountDot,
-.finBreakdownDot {
+.finAccountDot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
   display: inline-block;
-}
-
-.finBreakdownDot {
-  width: 6px;
-  height: 6px;
 }
 
 /* ---------- Container override ---------- */
@@ -826,83 +820,12 @@ html[data-theme="light"] .finBudgetMiniPct.negative { color: #b03434; }
   background: transparent;
 }
 
-/* Breakdown strip */
-.finBreakdown {
-  padding: 14px 18px 16px;
-  border: 1px solid var(--border-color-dim);
-  background: var(--surface-02);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.finBreakdownHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.finBreakdownTotal {
-  font-size: 14px;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.finBreakdownBar {
-  display: flex;
-  height: 8px;
-  gap: 2px;
-  overflow: hidden;
-}
-
-.finBreakdownSegment {
-  height: 100%;
-  min-width: 2px;
-}
-
-.finBreakdownLegend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.finBreakdownChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border: 1px solid var(--border-color-dim);
-  background: var(--surface-02);
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.finBreakdownChip.muted {
-  color: var(--text-tertiary);
-  font-style: italic;
-}
-
-.finBreakdownName {
-  letter-spacing: 0.02em;
-}
-
-.finBreakdownAmount {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
-
-/* Transaction list */
+/* Transaction list — minimal, typography-led. No row dividers, no icons; the
+   category-color dot in the meta + the colored amount carry the visual cues. */
 .finTxnList {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 26px;
 }
 
 .finDayGroup {
@@ -914,9 +837,9 @@ html[data-theme="light"] .finBudgetMiniPct.negative { color: #b03434; }
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 4px 4px 8px;
+  padding: 0 2px 8px;
   border-bottom: 1px solid var(--border-color-dim);
-  margin-bottom: 2px;
+  margin-bottom: 4px;
   position: sticky;
   top: 0;
   background: var(--bg-color);
@@ -925,17 +848,19 @@ html[data-theme="light"] .finBudgetMiniPct.negative { color: #b03434; }
 
 .finDayLabel {
   font-size: 10px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .finDayTotals {
   display: flex;
-  gap: 10px;
-  font-size: 11px;
+  gap: 14px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
 }
 
 .finDayTotals .positive { color: #4cd996; }
@@ -950,62 +875,42 @@ html[data-theme="light"] .finDayTotals .negative { color: #b03434; }
 
 .finTxnRow {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 11px 8px;
+  gap: 24px;
+  padding: 12px 8px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--border-color-dim);
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
   transition: var(--transition-fast);
   font: inherit;
   width: 100%;
+  border-radius: 4px;
 }
 
 .finTxnRow:hover {
-  background: var(--surface-04);
-}
-
-.finTxnRow:last-child {
-  border-bottom: none;
-}
-
-.finTxnIcon {
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--surface-contrast-inverse);
-  background: var(--surface-10);
-  flex-shrink: 0;
-}
-
-.finTxnRow.income .finTxnIcon { color: #fff; }
-.finTxnRow.transfer .finTxnIcon {
-  color: var(--text-primary);
-  background: var(--surface-15) !important;
+  background: var(--surface-03);
 }
 
 .finTxnMain {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
   min-width: 0;
 }
 
 .finTxnTitleRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
 .finTxnTitle {
   font-size: 13px;
+  font-weight: 500;
   color: var(--text-primary);
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -1021,28 +926,67 @@ html[data-theme="light"] .finDayTotals .negative { color: #b03434; }
 
 .finTxnTag {
   font-size: 9px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-tertiary);
-  padding: 1px 6px;
+  padding: 2px 8px;
   border: 1px solid var(--border-color-dim);
+  border-radius: 999px;
 }
 
 .finTxnMeta {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 5px;
-  font-size: 10px;
-  letter-spacing: 0.02em;
+  gap: 7px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
   color: var(--text-tertiary);
 }
 
+.finTxnCatDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.finTxnSep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.finTxnDate {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Inline-coloured meta chips (category / account names). Keep their colour
+   via inline style, but bump weight slightly so they stand out against the
+   muted surrounding meta text. */
+.finTxnChip {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Note hint icon — keep tasks behaviour & styling, just nudge the icon
+   color closer to the meta row so it doesn't shout. */
+.finTxnNoteHint {
+  color: var(--text-muted);
+}
+
+.finTxnNoteHint:hover {
+  color: var(--text-primary);
+}
+
 .finTxnAmount {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .finTxnAmount.positive { color: #4cd996; }

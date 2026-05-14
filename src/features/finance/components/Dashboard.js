@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlignJustify,
   ArrowDownLeft,
   ArrowUpRight,
   ChevronLeft,
@@ -12,7 +13,6 @@ import {
   Layers,
   Lock,
   Plus,
-  Repeat,
   Settings2,
   Tag,
   Target,
@@ -68,25 +68,23 @@ function netWorthByAccount(accounts, transactions) {
   return map;
 }
 
-function categoryBreakdown(transactions, categories, range) {
-  const result = new Map();
-  transactions.forEach((t) => {
-    if (t.type !== 'expense') return;
-    if (t.date < range.start || t.date > range.end) return;
-    const id = t.categoryId || 'uncategorized';
-    result.set(id, (result.get(id) || 0) + (Number(t.amount) || 0));
-  });
-  return Array.from(result.entries())
-    .map(([id, amount]) => {
-      const cat = categories.find((c) => c.id === id);
-      return {
-        id,
-        name: cat?.name || 'Uncategorized',
-        color: cat?.color || '#7f8c8d',
-        amount,
-      };
-    })
-    .sort((a, b) => b.amount - a.amount);
+function formatShortDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+function formatMethodLabel(method) {
+  if (!method) return '';
+  return method.charAt(0).toUpperCase() + method.slice(1);
+}
+
+function getNotePreview(text, maxLength = 140) {
+  if (!text) return '';
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
 function spentByCategoryInRange(transactions, range) {
@@ -171,11 +169,6 @@ export default function Dashboard({ vault, actions, lastSavedAt }) {
     });
     return sum;
   }, [accounts, balances]);
-  const breakdown = useMemo(
-    () => categoryBreakdown(transactions, categories, range),
-    [transactions, categories, range]
-  );
-  const breakdownTotal = breakdown.reduce((sum, b) => sum + b.amount, 0);
   const spentByCat = useMemo(
     () => spentByCategoryInRange(transactions, range),
     [transactions, range]
@@ -650,49 +643,6 @@ export default function Dashboard({ vault, actions, lastSavedAt }) {
         </aside>
 
         <main className="calMain finMain">
-          {breakdown.length > 0 && (
-            <section className="finBreakdown">
-              <header className="finBreakdownHead">
-                <span>Where money went</span>
-                <span className="finBreakdownTotal">
-                  {formatMoney(breakdownTotal, currency, { hidden: hideBalances })}
-                </span>
-              </header>
-              <div className="finBreakdownBar">
-                {breakdown.map((b) => (
-                  <span
-                    key={b.id}
-                    className="finBreakdownSegment"
-                    style={{
-                      width: `${(b.amount / breakdownTotal) * 100}%`,
-                      background: b.color,
-                    }}
-                    title={`${b.name}: ${formatMoney(b.amount, currency)}`}
-                  />
-                ))}
-              </div>
-              <div className="finBreakdownLegend">
-                {breakdown.slice(0, 6).map((b) => (
-                  <div key={b.id} className="finBreakdownChip">
-                    <span
-                      className="finBreakdownDot"
-                      style={{ background: b.color }}
-                    />
-                    <span className="finBreakdownName">{b.name}</span>
-                    <span className="finBreakdownAmount">
-                      {formatMoney(b.amount, currency, { hidden: hideBalances })}
-                    </span>
-                  </div>
-                ))}
-                {breakdown.length > 6 && (
-                  <div className="finBreakdownChip muted">
-                    + {breakdown.length - 6} more
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
           {grouped.length === 0 ? (
             <div className="finEmpty">
               <Layers size={32} strokeWidth={1.2} />
@@ -745,12 +695,7 @@ export default function Dashboard({ vault, actions, lastSavedAt }) {
                         const toAcct = t.toAccountId
                           ? accountById.get(t.toAccountId)
                           : null;
-                        const Icon =
-                          t.type === 'income'
-                            ? ArrowDownLeft
-                            : t.type === 'expense'
-                              ? ArrowUpRight
-                              : Repeat;
+                        const isTransfer = t.type === 'transfer';
                         return (
                           <button
                             type="button"
@@ -761,25 +706,33 @@ export default function Dashboard({ vault, actions, lastSavedAt }) {
                               setShowTransactionModal(true);
                             }}
                           >
-                            <span
-                              className="finTxnIcon"
-                              style={{
-                                background:
-                                  cat?.color ||
-                                  (t.type === 'transfer'
-                                    ? 'var(--surface-15)'
-                                    : 'var(--surface-10)'),
-                              }}
-                            >
-                              <Icon size={12} />
-                            </span>
                             <div className="finTxnMain">
                               <div className="finTxnTitleRow">
                                 <span className="finTxnTitle">
-                                  {t.type === 'transfer'
-                                    ? `Transfer → ${toAcct?.name || 'Account'}`
+                                  {isTransfer
+                                    ? 'Transfer'
                                     : t.payee || cat?.name || 'Untitled'}
                                 </span>
+                                {t.note && (
+                                  <span
+                                    className="tasksDescriptionHint finTxnNoteHint"
+                                    onMouseEnter={(e) => {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const preview = e.currentTarget.querySelector(
+                                        '.tasksDescriptionPreview'
+                                      );
+                                      if (preview) {
+                                        preview.style.top = `${rect.bottom + 8}px`;
+                                        preview.style.left = `${rect.left}px`;
+                                      }
+                                    }}
+                                  >
+                                    <AlignJustify size={12} />
+                                    <div className="tasksDescriptionPreview">
+                                      {getNotePreview(t.note)}
+                                    </div>
+                                  </span>
+                                )}
                                 {t.tags && t.tags.length > 0 && (
                                   <span className="finTxnTags">
                                     {t.tags.slice(0, 2).map((tag) => (
@@ -791,13 +744,53 @@ export default function Dashboard({ vault, actions, lastSavedAt }) {
                                 )}
                               </div>
                               <div className="finTxnMeta">
-                                <span>{acct?.name || 'No account'}</span>
-                                {t.type !== 'transfer' && cat && (
+                                {!isTransfer && cat && (
                                   <>
-                                    <span>•</span>
-                                    <span>{cat.name}</span>
+                                    <span
+                                      className="finTxnCatDot"
+                                      style={{ background: cat.color }}
+                                      aria-hidden="true"
+                                    />
+                                    <span
+                                      className="finTxnChip"
+                                      style={{ color: cat.color }}
+                                    >
+                                      {cat.name}
+                                    </span>
+                                    <span className="finTxnSep">·</span>
                                   </>
                                 )}
+                                <span
+                                  className="finTxnChip"
+                                  style={
+                                    acct?.color ? { color: acct.color } : undefined
+                                  }
+                                >
+                                  {acct?.name || 'No account'}
+                                </span>
+                                {isTransfer && toAcct && (
+                                  <>
+                                    <span className="finTxnSep">→</span>
+                                    <span
+                                      className="finTxnChip"
+                                      style={
+                                        toAcct.color
+                                          ? { color: toAcct.color }
+                                          : undefined
+                                      }
+                                    >
+                                      {toAcct.name}
+                                    </span>
+                                  </>
+                                )}
+                                {!isTransfer && t.paymentMethod && (
+                                  <>
+                                    <span className="finTxnSep">·</span>
+                                    <span>{formatMethodLabel(t.paymentMethod)}</span>
+                                  </>
+                                )}
+                                <span className="finTxnSep">·</span>
+                                <span className="finTxnDate">{formatShortDate(t.date)}</span>
                               </div>
                             </div>
                             <div
