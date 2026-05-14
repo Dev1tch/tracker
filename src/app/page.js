@@ -7,6 +7,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import HabitTracker from '@/features/habits/HabitTracker';
 import TasksBoard from '@/features/tasks';
 import Calendar from '@/features/calendar/Calendar';
+import Finance from '@/features/finance/Finance';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 
 const DEFAULT_TAB = 'habits';
@@ -140,12 +141,7 @@ export default function Home() {
       case 'calendar':
         return <Calendar />;
       case 'finance':
-        return (
-          <div style={{ padding: '40px 60px', color: 'var(--text-primary)', position: 'relative', zIndex: 1 }}>
-            {/* <h1 className="pageTitle">Finance</h1> */}
-            <p style={{ marginTop: '20px', color: 'var(--text-secondary)' }}>Finance tracking coming soon.</p>
-          </div>
-        );
+        return <Finance />;
       default:
         return <HabitTracker />;
     }

@@ -308,6 +308,46 @@
     color: var(--text-primary);
 }
 
+.customSelectSearchWrap {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 10px;
+    /* --panel-solid is ~92%/94% opaque, so scrolling options would bleed
+       through. Layer it over --bg-color to make the sticky bar fully opaque
+       while keeping the visual identical to the rest of the dropdown. */
+    background-color: var(--bg-color);
+    background-image: linear-gradient(var(--panel-solid), var(--panel-solid));
+    border-bottom: 1px solid var(--border-color-dim);
+}
+
+.customSelectSearch {
+    width: 100%;
+    /* Opaque base so scrolling options can't show through the input either.
+       Surface-03 tint kept as an overlay to preserve the original look. */
+    background-color: var(--bg-color);
+    background-image: linear-gradient(var(--surface-03), var(--surface-03));
+    border: 1px solid var(--border-color-dim);
+    color: var(--text-primary);
+    font-size: 12px;
+    padding: 9px 10px;
+    outline: none;
+}
+
+.customSelectSearch:focus {
+    border-color: var(--surface-40);
+}
+
+.customSelectSearch::placeholder {
+    color: var(--text-muted);
+}
+
+.customSelectEmpty {
+    padding: 14px 16px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+}
+
 .customSelectOption.createNew {
     border-top: 1px solid var(--border-color-dim);
     color: var(--text-tertiary);
