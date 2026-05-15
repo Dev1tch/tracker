@@ -2,120 +2,57 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   padding: 0;
-  transition: var(--transition-fast);
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
 }
 
 .themeToggle:hover {
   color: var(--text-primary);
+  opacity: 1;
+}
+
+.themeToggle:active {
+  transform: scale(0.94);
 }
 
 .themeToggle:focus-visible {
-  outline: 2px solid var(--surface-35);
-  outline-offset: 3px;
+  outline: 1px solid var(--surface-35);
+  outline-offset: 4px;
   border-radius: 999px;
 }
 
-.themeToggleRail {
-  position: relative;
-  width: 50px;
-  height: 28px;
-  border-radius: 999px;
-  border: 1px solid var(--border-color);
-  background: var(--surface-03);
-  box-shadow:
-    inset 0 1px 0 var(--surface-08),
-    0 0 0 1px rgba(0, 0, 0, 0.02);
-  backdrop-filter: blur(12px);
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px;
-  overflow: hidden;
-  transition:
-    background 0.45s ease,
-    border-color 0.3s ease,
-    box-shadow 0.3s ease;
-}
-
-.themeToggle:hover .themeToggleRail {
-  border-color: var(--surface-28);
-  box-shadow:
-    inset 0 1px 0 var(--surface-08),
-    0 0 14px var(--surface-08);
-}
-
-.themeToggleIconSlot {
-  position: relative;
-  z-index: 1;
+.themeToggleIcon {
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 10px;
-  height: 10px;
-  transition:
-    color 0.3s ease,
-    opacity 0.3s ease,
-    transform 0.3s ease;
-}
-
-.themeToggleIconSlotStart {
-  color: var(--text-tertiary);
-}
-
-.themeToggleIconSlotEnd {
-  color: var(--text-tertiary);
-  opacity: 0.5;
-}
-
-.themeToggleRail.isLight .themeToggleIconSlotStart {
-  opacity: 0.4;
-  transform: translateX(-1px);
-}
-
-.themeToggleRail.isLight .themeToggleIconSlotEnd {
-  opacity: 1;
-  color: var(--text-primary);
-  transform: translateX(0);
-}
-
-.themeToggleRail.isDark .themeToggleIconSlotStart {
-  opacity: 1;
-  color: var(--text-primary);
-  transform: translateX(0);
-}
-
-.themeToggleRail.isDark .themeToggleIconSlotEnd {
-  transform: translateX(1px);
-}
-
-.themeToggleThumb {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 20px;
-  height: 20px;
+  color: var(--text-secondary);
   border-radius: 50%;
-  background: var(--surface-contrast);
-  box-shadow:
-    0 4px 10px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 var(--surface-20);
   transition:
-    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-    background 0.35s ease,
-    box-shadow 0.35s ease;
+    color 160ms ease,
+    filter 160ms ease;
 }
 
-.themeToggleRail.isLight .themeToggleThumb {
-  transform: translateX(22px);
-  background: var(--surface-contrast);
-  box-shadow:
-    0 4px 10px rgba(15, 23, 42, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+.themeToggle:hover .themeToggleIcon {
+  color: var(--text-primary);
+  filter: drop-shadow(0 0 5px var(--glow-color));
+}
+
+.themeToggleIcon.isLight {
+  color: rgba(15, 23, 42, 0.72);
+}
+
+.themeToggleIcon.isDark {
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .themeToggleLabel {

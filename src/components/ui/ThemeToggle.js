@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useSyncExternalStore } from 'react';
-import { MoonStar, SunMedium } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import {
   DEFAULT_THEME,
   getThemeSnapshot,
@@ -27,8 +27,8 @@ export default function ThemeToggle({
 
   const isLight = theme === 'light';
   const nextThemeLabel = isLight ? 'dark' : 'light';
-  const themeLabel = isLight ? 'Light mode' : 'Dark mode';
   const resolvedClassName = ['themeToggle', className].filter(Boolean).join(' ');
+  const Icon = isLight ? Sun : Moon;
 
   return (
     <button
@@ -38,18 +38,12 @@ export default function ThemeToggle({
       aria-label={`Switch to ${nextThemeLabel} mode`}
       title={`Switch to ${nextThemeLabel} mode`}
     >
-      <span className={`themeToggleRail ${isLight ? 'isLight' : 'isDark'}`} aria-hidden="true">
-        <span className="themeToggleIconSlot themeToggleIconSlotStart">
-          <MoonStar size={11} strokeWidth={1.8} />
-        </span>
-        <span className="themeToggleThumb" />
-        <span className="themeToggleIconSlot themeToggleIconSlotEnd">
-          <SunMedium size={11} strokeWidth={1.8} />
-        </span>
+      <span className={`themeToggleIcon ${isLight ? 'isLight' : 'isDark'}`} aria-hidden="true">
+        <Icon size={16} strokeWidth={1.6} />
       </span>
       {labelPosition !== 'hidden' ? (
         <span className={`themeToggleLabel themeToggleLabel${labelPosition === 'stacked' ? 'Stacked' : ''}`}>
-          {themeLabel}
+          {isLight ? 'Light mode' : 'Dark mode'}
         </span>
       ) : null}
     </button>
