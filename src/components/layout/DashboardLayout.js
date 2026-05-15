@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { CheckCircle2, ListTodo, CalendarDays, LineChart, LogOut } from 'lucide-react';
+import { CheckCircle2, ListTodo, CalendarDays, LineChart, LayoutDashboard, LogOut } from 'lucide-react';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import './Dashboard.css';
 
@@ -107,29 +107,36 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
             className={`navItem ${activeTab === 'habits' ? 'active' : ''}`}
             onClick={() => onTabChange('habits')}
           >
-            <CheckCircle2 size={24} strokeWidth={1.5} />
+            <CheckCircle2 size={17} strokeWidth={1.5} />
             <span className="navLabel">Habits</span>
           </button>
           <button 
             className={`navItem ${activeTab === 'tasks' ? 'active' : ''}`}
             onClick={() => onTabChange('tasks')}
           >
-            <ListTodo size={24} strokeWidth={1.5} />
+            <ListTodo size={17} strokeWidth={1.5} />
             <span className="navLabel">Tasks</span>
           </button>
           <button 
             className={`navItem ${activeTab === 'calendar' ? 'active' : ''}`}
             onClick={() => onTabChange('calendar')}
           >
-            <CalendarDays size={24} strokeWidth={1.5} />
+            <CalendarDays size={17} strokeWidth={1.5} />
             <span className="navLabel">Calendar</span>
           </button>
-          <button 
+          <button
             className={`navItem ${activeTab === 'finance' ? 'active' : ''}`}
             onClick={() => onTabChange('finance')}
           >
-            <LineChart size={24} strokeWidth={1.5} />
+            <LineChart size={17} strokeWidth={1.5} />
             <span className="navLabel">Finance</span>
+          </button>
+          <button
+            className={`navItem ${activeTab === 'board' ? 'active' : ''}`}
+            onClick={() => onTabChange('board')}
+          >
+            <LayoutDashboard size={17} strokeWidth={1.5} />
+            <span className="navLabel">Board</span>
           </button>
         </div>
       </nav>

@@ -27,7 +27,7 @@
      Geometry-wise we keep the original inset:0 from .calEventPageOverlay;
      the header's gradient fades to transparent at the bottom so the gate
      page underneath is still readable. */
-  bottom: 74px;
+  bottom: 54px;
   padding-bottom: 24px;
   z-index: 900;
   align-items: center;
@@ -38,7 +38,7 @@
   width: min(720px, 100%) !important;
   max-width: 720px !important;
   min-height: auto !important;
-  max-height: calc(100dvh - 158px) !important;
+  max-height: calc(100dvh - 138px) !important;
 }
 
 .financeGatePage .calEventPageTitle {
@@ -1857,7 +1857,7 @@ html[data-theme="light"] .financeBudgetTotals.over { color: #b03434; }
 
 @media (max-width: 900px) {
   .finShell {
-    padding-bottom: 110px;
+    padding-bottom: 90px;
     overflow: visible;
   }
   .finLayout {
@@ -1913,11 +1913,11 @@ html[data-theme="light"] .financeBudgetTotals.over { color: #b03434; }
     flex-direction: column;
   }
   .financeGateOverlay {
-    bottom: 70px;
+    bottom: 50px;
     padding: 20px 12px 18px;
   }
   .financeGatePage {
-    max-height: calc(100dvh - 108px) !important;
+    max-height: calc(100dvh - 88px) !important;
   }
   .financeGateBodyExtra {
     margin: 4px 16px 24px;

@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import './ColorPicker.css';
 
 const DEFAULT_PRESETS = [
@@ -116,6 +117,13 @@ export default function ColorPicker({
   const [popoverStyle, setPopoverStyle] = useState(null);
   const wrapperRef = useRef(null);
   const wheelRef = useRef(null);
+  const popoverRef = useRef(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Avoid SSR mismatches when portaling.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const currentColor = normalizeHexColor(value) || '#ffffff';
 
@@ -175,7 +183,9 @@ export default function ColorPicker({
     if (!isOpen) return undefined;
 
     function handleOutside(event) {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+      const inWrapper = wrapperRef.current?.contains(event.target);
+      const inPopover = popoverRef.current?.contains(event.target);
+      if (!inWrapper && !inPopover) {
         setIsOpen(false);
       }
     }
@@ -288,8 +298,13 @@ export default function ColorPicker({
         aria-label="Choose color"
       />
 
-      {isOpen ? (
-        <div className="salColorPickerPopover" style={popoverStyle || undefined}>
+      {isOpen && mounted
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              className="salColorPickerPopover"
+              style={popoverStyle || undefined}
+            >
           <div
             ref={wheelRef}
             className="salColorPickerWheel"
@@ -335,8 +350,10 @@ export default function ColorPicker({
               spellCheck={false}
             />
           </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

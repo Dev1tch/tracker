@@ -1,0 +1,475 @@
+/* =========================================================================
+   Board — infinite pan/zoom whiteboard
+   No page header. The board occupies the full main area between the fixed
+   top header and the bottom nav. Dotted grid background tracks pan/zoom.
+   ========================================================================= */
+
+.boardShell {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* clear the fixed top header which is ~44px tall */
+  padding-top: 50px;
+  overflow: hidden;
+}
+
+.boardLayout {
+  flex: 1;
+  position: relative;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ---------- Floating toolbar cluster (left, vertically centered) ----------
+   The cluster wraps the tool list and, when a text is being edited, a small
+   popout panel that hangs off its right side. */
+.boardToolbarCluster {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none; /* children re-enable */
+}
+
+.boardToolbar {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-color-dim);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* The text-edit popout — sits to the right of the tool list, vertically
+   centered with the toolbar. Houses the size input + color picker. */
+.boardToolbarPopout {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-color-dim);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.boardPopoutSize {
+  width: 46px;
+  height: 26px;
+  background: var(--surface-03);
+  border: 1px solid var(--border-color-dim);
+  color: var(--text-primary);
+  font-size: 11px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  outline: none;
+  /* hide native number spinner — typing only */
+  appearance: textfield;
+  -moz-appearance: textfield;
+  font-family: inherit;
+}
+
+.boardPopoutSize::-webkit-outer-spin-button,
+.boardPopoutSize::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.boardPopoutSize:focus {
+  border-color: var(--text-secondary);
+}
+
+.boardPopoutDivider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-color-dim);
+}
+
+.boardToolBtn {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-fast);
+  padding: 0;
+}
+
+.boardToolBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-05);
+}
+
+.boardToolBtn.active {
+  color: var(--text-primary);
+  background: var(--surface-10);
+  border-color: var(--surface-30);
+}
+
+.boardToolBtn.danger:hover:not(:disabled) {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.boardToolBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.boardToolDivider {
+  height: 1px;
+  background: var(--border-color-dim);
+  margin: 4px 2px;
+}
+
+/* ---------- Zoom controls (bottom-right) ---------- */
+.boardZoomControls {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-color-dim);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.boardZoomBtn {
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-fast);
+  padding: 0;
+}
+
+.boardZoomBtn:hover {
+  color: var(--text-primary);
+  background: var(--surface-05);
+}
+
+/* ---------- Infinite canvas wrapper ---------- */
+.boardWrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-color);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    var(--surface-15) 1.2px,
+    transparent 1.6px
+  );
+  background-repeat: repeat;
+  cursor: grab;
+  user-select: none;
+  /* hide any incidental scrollbar */
+  scrollbar-width: none;
+}
+
+.boardWrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.boardCursor-select {
+  cursor: grab;
+}
+
+.boardCursor-text {
+  cursor: text;
+}
+
+.boardCursor-arrow {
+  cursor: crosshair;
+}
+
+.boardWrapper.isPanning {
+  cursor: grabbing;
+}
+
+.boardArrowDrawing {
+  cursor: crosshair;
+}
+
+/* ---------- The world (transformed) ---------- */
+.boardSurface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  /* This element holds the world. Children are absolute-positioned in world
+     coordinates. We rely on overflow:visible so nothing gets clipped to the
+     0x0 box. */
+  pointer-events: auto;
+}
+
+/* ---------- Arrows (SVG; overflow:visible so it draws beyond 1x1) ---------- */
+.boardArrows {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  color: var(--text-secondary);
+}
+
+/* Visible edge path. pointer-events: none so the wider hit path catches the
+   click (line-of-pixels hit-test is too thin otherwise). */
+.boardArrowLine {
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  fill: none;
+  pointer-events: none;
+  transition: stroke-width 120ms ease, stroke 120ms ease;
+}
+
+.boardArrowLine.selected {
+  stroke: var(--text-primary);
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 6px var(--glow-color));
+}
+
+/* Wide invisible click target sitting on top of the visible line. */
+.boardArrowHit {
+  stroke: transparent;
+  stroke-width: 14;
+  fill: none;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.boardArrowGhost {
+  stroke: var(--text-tertiary);
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 5 4;
+  fill: none;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* Delete badge that floats at the elbow of a selected edge. */
+.boardArrowDeleteBtn {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.boardArrowDeleteCircle {
+  fill: var(--panel-solid);
+  stroke: var(--text-primary);
+  stroke-width: 1.2;
+  transition: fill 120ms ease;
+}
+
+.boardArrowDeleteBtn:hover .boardArrowDeleteCircle {
+  fill: rgba(248, 113, 113, 0.18);
+  stroke: #f87171;
+}
+
+.boardArrowDeleteX {
+  stroke: var(--text-primary);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.boardArrowDeleteBtn:hover .boardArrowDeleteX {
+  stroke: #f87171;
+}
+
+/* ---------- Generic node ---------- */
+.boardNode {
+  position: absolute;
+  user-select: none;
+  box-sizing: border-box;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.boardNode.selected {
+  box-shadow: 0 0 0 1px var(--surface-40), 0 0 0 4px rgba(255, 255, 255, 0.06);
+}
+
+.boardNode.arrowTarget {
+  cursor: crosshair;
+}
+
+.boardNode.arrowTarget:hover {
+  box-shadow: 0 0 0 1px var(--text-primary), 0 0 14px var(--glow-color);
+}
+
+/* ---------- Text node ---------- */
+.boardTextNode {
+  /* No max-width: while typing the line grows until the user presses Enter
+     (Enter inserts a newline in the contentEditable). The final box ends up
+     hugging the natural width of the longest line. */
+  min-width: 24px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  cursor: grab;
+}
+
+.boardTextNode.editing {
+  cursor: text;
+  border-color: var(--surface-50);
+  box-shadow: 0 0 0 1px var(--surface-40);
+}
+
+.boardTextContent {
+  outline: none;
+  /* pre = honour newlines (Enter) but never auto-wrap on whitespace. */
+  white-space: pre;
+  min-width: 24px;
+  min-height: 1.2em;
+}
+
+/* Once the user has explicitly resized the box, fall back to wrapping so the
+   content respects the chosen width. */
+.boardTextNode.sized .boardTextContent {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.boardTextContent:empty::before {
+  content: 'Type...';
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ---------- Image node ---------- */
+.boardImageNode {
+  padding: 0;
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-03);
+  cursor: grab;
+  overflow: hidden;
+}
+
+.boardImageNode img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* fill so the image actually stretches when the box is resized to a
+     non-original aspect ratio — gives independent W/H control. */
+  object-fit: fill;
+  pointer-events: none;
+}
+
+/* ---------- Selection frame (resize + rotate) ---------- */
+.boardSelectionFrame {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.boardSelectionOutline {
+  position: absolute;
+  inset: 0;
+  border-style: solid;
+  border-color: var(--text-primary);
+  pointer-events: none;
+}
+
+.boardResizeHandle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--bg-color);
+  border: 1px solid var(--text-primary);
+  pointer-events: auto;
+  transition: background 120ms ease;
+}
+
+.boardResizeHandle:hover {
+  background: var(--text-primary);
+}
+
+.boardRotateLink {
+  position: absolute;
+  background: var(--text-primary);
+  pointer-events: none;
+}
+
+.boardRotateHandle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg-color);
+  border: 1px solid var(--text-primary);
+  pointer-events: auto;
+  cursor: grab;
+  transition: background 120ms ease;
+}
+
+.boardRotateHandle:hover {
+  background: var(--text-primary);
+}
+
+.boardRotateHandle:active {
+  cursor: grabbing;
+}
+
+/* Trim the global ColorPicker swatch a touch when it sits in this compact bar. */
+.boardToolbarPopout .salColorPickerBtn {
+  width: 24px;
+  height: 24px;
+}
+
+/* ---------- Light theme: darker dots ---------- */
+html[data-theme='light'] .boardWrapper {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(15, 23, 42, 0.18) 1.2px,
+    transparent 1.6px
+  );
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 720px) {
+  .boardToolbar {
+    left: 8px;
+    padding: 4px;
+  }
+  .boardToolBtn {
+    width: 32px;
+    height: 32px;
+  }
+  .boardZoomControls {
+    right: 8px;
+    bottom: 8px;
+  }
+}
