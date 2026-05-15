@@ -27,8 +27,9 @@ const MAX_ZOOM = 3;
 const MIN_NODE_SIZE = 30;
 const BOARD_HISTORY_LIMIT = 80;
 const WHEEL_ZOOM_STEP = 1.04;
+const MOUSE_WHEEL_ZOOM_STEP = 1.12;
 const BUTTON_ZOOM_STEP = 1.1;
-const ALIGN_GUIDE_TOLERANCE_PX = 10;
+const ALIGN_GUIDE_TOLERANCE_PX = 6;
 const ALIGN_GUIDE_PADDING = 28;
 const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 
@@ -304,6 +305,10 @@ function nodeCenterOf(node, bounds) {
 
 function nodeRectAt(node, bounds, x = node.x, y = node.y) {
   const { w, h } = nodeSize(node, bounds);
+  return rectFromBox(x, y, w, h);
+}
+
+function rectFromBox(x, y, w, h) {
   return {
     left: x,
     top: y,
@@ -312,6 +317,51 @@ function nodeRectAt(node, bounds, x = node.x, y = node.y) {
     centerX: x + w / 2,
     centerY: y + h / 2,
   };
+}
+
+function verticalGuide(x, moving, target) {
+  return {
+    x,
+    y1: Math.min(moving.top, target.top) - ALIGN_GUIDE_PADDING,
+    y2: Math.max(moving.bottom, target.bottom) + ALIGN_GUIDE_PADDING,
+  };
+}
+
+function horizontalGuide(y, moving, target) {
+  return {
+    y,
+    x1: Math.min(moving.left, target.left) - ALIGN_GUIDE_PADDING,
+    x2: Math.max(moving.right, target.right) + ALIGN_GUIDE_PADDING,
+  };
+}
+
+function spacingHorizontalGuide(moving, neighbor) {
+  return {
+    y: moving.centerY,
+    x1: Math.min(moving.right, neighbor.right, moving.left, neighbor.left),
+    x2: Math.max(moving.right, neighbor.right, moving.left, neighbor.left),
+  };
+}
+
+function spacingVerticalGuide(moving, neighbor) {
+  return {
+    x: moving.centerX,
+    y1: Math.min(moving.bottom, neighbor.bottom, moving.top, neighbor.top),
+    y2: Math.max(moving.bottom, neighbor.bottom, moving.top, neighbor.top),
+  };
+}
+
+function getWheelZoomFactor(deltaY) {
+  const direction = deltaY < 0 ? 1 : -1;
+  const absDelta = Math.abs(deltaY);
+  const isMouseWheel = absDelta >= 40;
+  const step = isMouseWheel ? MOUSE_WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
+  if (isMouseWheel) {
+    const notches = Math.max(1, Math.min(3, Math.round(absDelta / 100)));
+    const factor = Math.pow(step, notches);
+    return direction > 0 ? factor : 1 / factor;
+  }
+  return direction > 0 ? step : 1 / step;
 }
 
 function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
@@ -328,10 +378,13 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
   ];
   let vertical = null;
   let horizontal = null;
+  let spacingX = null;
+  let spacingY = null;
+  const targets = nodes
+    .filter((other) => other.id !== node.id)
+    .map((other) => nodeRectAt(other, bounds));
 
-  nodes.forEach((other) => {
-    if (other.id === node.id) return;
-    const target = nodeRectAt(other, bounds);
+  targets.forEach((target) => {
     [target.left, target.centerX, target.right].forEach((x) => {
       movingVerticals.forEach((movingX) => {
         const distance = Math.abs(movingX.value - x);
@@ -340,8 +393,7 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
           distance,
           x,
           snappedX: x - movingX.offset,
-          y1: Math.min(moving.top, target.top) - ALIGN_GUIDE_PADDING,
-          y2: Math.max(moving.bottom, target.bottom) + ALIGN_GUIDE_PADDING,
+          target,
         };
       });
     });
@@ -353,18 +405,167 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
           distance,
           y,
           snappedY: y - movingY.offset,
-          x1: Math.min(moving.left, target.left) - ALIGN_GUIDE_PADDING,
-          x2: Math.max(moving.right, target.right) + ALIGN_GUIDE_PADDING,
+          target,
         };
       });
     });
   });
 
+  for (let i = 0; i < targets.length; i += 1) {
+    for (let j = i + 1; j < targets.length; j += 1) {
+      const a = targets[i];
+      const b = targets[j];
+      const left = a.left <= b.left ? a : b;
+      const right = left === a ? b : a;
+      const horizontalGap = right.left - left.right;
+      if (horizontalGap > 0) {
+        [
+          { x: left.left - horizontalGap - moving.right + moving.left, neighbor: left },
+          { x: right.right + horizontalGap, neighbor: right },
+        ].forEach((candidate) => {
+          const distance = Math.abs(nextX - candidate.x);
+          if (distance <= tolerance && (!spacingX || distance < spacingX.distance)) {
+            spacingX = { ...candidate, distance };
+          }
+        });
+      }
+
+      const top = a.top <= b.top ? a : b;
+      const bottom = top === a ? b : a;
+      const verticalGap = bottom.top - top.bottom;
+      if (verticalGap > 0) {
+        [
+          { y: top.top - verticalGap - moving.bottom + moving.top, neighbor: top },
+          { y: bottom.bottom + verticalGap, neighbor: bottom },
+        ].forEach((candidate) => {
+          const distance = Math.abs(nextY - candidate.y);
+          if (distance <= tolerance && (!spacingY || distance < spacingY.distance)) {
+            spacingY = { ...candidate, distance };
+          }
+        });
+      }
+    }
+  }
+
+  if (spacingX && (!vertical || spacingX.distance < vertical.distance)) {
+    const snappedMoving = nodeRectAt(node, bounds, spacingX.x, nextY);
+    vertical = null;
+    spacingX.guide = spacingHorizontalGuide(snappedMoving, spacingX.neighbor);
+  } else {
+    spacingX = null;
+  }
+
+  if (spacingY && (!horizontal || spacingY.distance < horizontal.distance)) {
+    const snappedMoving = nodeRectAt(node, bounds, spacingX ? spacingX.x : nextX, spacingY.y);
+    horizontal = null;
+    spacingY.guide = spacingVerticalGuide(snappedMoving, spacingY.neighbor);
+  } else {
+    spacingY = null;
+  }
+
+  const finalX = spacingX ? spacingX.x : vertical ? vertical.snappedX : nextX;
+  const finalY = spacingY ? spacingY.y : horizontal ? horizontal.snappedY : nextY;
+  const snappedMoving = nodeRectAt(node, bounds, finalX, finalY);
   return {
-    x: vertical ? vertical.snappedX : nextX,
-    y: horizontal ? horizontal.snappedY : nextY,
-    vertical: vertical ? [{ x: vertical.x, y1: vertical.y1, y2: vertical.y2 }] : [],
-    horizontal: horizontal ? [{ y: horizontal.y, x1: horizontal.x1, x2: horizontal.x2 }] : [],
+    x: finalX,
+    y: finalY,
+    vertical: vertical ? [verticalGuide(vertical.x, snappedMoving, vertical.target)] : spacingY ? [spacingY.guide] : [],
+    horizontal: horizontal ? [horizontalGuide(horizontal.y, snappedMoving, horizontal.target)] : spacingX ? [spacingX.guide] : [],
+  };
+}
+
+function getResizeAlignment(node, next, handleId, nodes, bounds, tolerance) {
+  const dir = HANDLE_DIRS[handleId];
+  const moving = rectFromBox(next.x, next.y, next.w, next.h);
+  let vertical = null;
+  let horizontal = null;
+
+  const verticalCandidates = [];
+  if (dir.sx < 0) {
+    verticalCandidates.push(
+      { value: moving.left, kind: 'left' },
+      { value: moving.centerX, kind: 'center' }
+    );
+  } else if (dir.sx > 0) {
+    verticalCandidates.push(
+      { value: moving.right, kind: 'right' },
+      { value: moving.centerX, kind: 'center' }
+    );
+  }
+
+  const horizontalCandidates = [];
+  if (dir.sy < 0) {
+    horizontalCandidates.push(
+      { value: moving.top, kind: 'top' },
+      { value: moving.centerY, kind: 'middle' }
+    );
+  } else if (dir.sy > 0) {
+    horizontalCandidates.push(
+      { value: moving.bottom, kind: 'bottom' },
+      { value: moving.centerY, kind: 'middle' }
+    );
+  }
+
+  nodes.forEach((other) => {
+    if (other.id === node.id) return;
+    const target = nodeRectAt(other, bounds);
+    [target.left, target.centerX, target.right].forEach((x) => {
+      verticalCandidates.forEach((candidate) => {
+        const distance = Math.abs(candidate.value - x);
+        if (distance > tolerance || (vertical && distance >= vertical.distance)) return;
+        vertical = { distance, x, kind: candidate.kind, target };
+      });
+    });
+    [target.top, target.centerY, target.bottom].forEach((y) => {
+      horizontalCandidates.forEach((candidate) => {
+        const distance = Math.abs(candidate.value - y);
+        if (distance > tolerance || (horizontal && distance >= horizontal.distance)) return;
+        horizontal = { distance, y, kind: candidate.kind, target };
+      });
+    });
+  });
+
+  const snapped = { ...next };
+  if (vertical) {
+    const right = next.x + next.w;
+    if (vertical.kind === 'left') {
+      snapped.x = Math.min(vertical.x, right - MIN_NODE_SIZE);
+      snapped.w = right - snapped.x;
+    } else if (vertical.kind === 'right') {
+      snapped.w = Math.max(MIN_NODE_SIZE, vertical.x - next.x);
+    } else if (vertical.kind === 'center') {
+      if (dir.sx < 0) {
+        snapped.x = Math.min(2 * vertical.x - right, right - MIN_NODE_SIZE);
+        snapped.w = right - snapped.x;
+      } else if (dir.sx > 0) {
+        snapped.w = Math.max(MIN_NODE_SIZE, 2 * (vertical.x - next.x));
+      }
+    }
+  }
+  if (horizontal) {
+    const bottom = next.y + next.h;
+    if (horizontal.kind === 'top') {
+      snapped.y = Math.min(horizontal.y, bottom - MIN_NODE_SIZE);
+      snapped.h = bottom - snapped.y;
+    } else if (horizontal.kind === 'bottom') {
+      snapped.h = Math.max(MIN_NODE_SIZE, horizontal.y - next.y);
+    } else if (horizontal.kind === 'middle') {
+      if (dir.sy < 0) {
+        snapped.y = Math.min(2 * horizontal.y - bottom, bottom - MIN_NODE_SIZE);
+        snapped.h = bottom - snapped.y;
+      } else if (dir.sy > 0) {
+        snapped.h = Math.max(MIN_NODE_SIZE, 2 * (horizontal.y - next.y));
+      }
+    }
+  }
+
+  const snappedRect = rectFromBox(snapped.x, snapped.y, snapped.w, snapped.h);
+  const verticalTarget = vertical?.target;
+  const horizontalTarget = horizontal?.target;
+  return {
+    next: snapped,
+    vertical: vertical ? [verticalGuide(vertical.x, snappedRect, verticalTarget)] : [],
+    horizontal: horizontal ? [horizontalGuide(horizontal.y, snappedRect, horizontalTarget)] : [],
   };
 }
 
@@ -658,8 +859,7 @@ export default function Board() {
       const rect = wrap.getBoundingClientRect();
       const cursorX = e.clientX - rect.left;
       const cursorY = e.clientY - rect.top;
-      const direction = e.deltaY < 0 ? 1 : -1;
-      const factor = direction > 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP;
+      const factor = getWheelZoomFactor(e.deltaY);
       setViewport((prev) => {
         const nextZoom = Math.max(
           MIN_ZOOM,
@@ -1032,6 +1232,7 @@ export default function Board() {
       fontSize: node.type === 'text' ? node.fontSize || 16 : null,
     };
     const startWorld = screenToWorld(e.clientX, e.clientY);
+    const baseFontSize = start.fontSize;
 
     function onMove(ev) {
       const world = screenToWorld(ev.clientX, ev.clientY);
@@ -1040,13 +1241,36 @@ export default function Board() {
         y: world.y - startWorld.y,
       };
       const next = computeResize(start, handleId, delta, ev.shiftKey);
+      const aligned = getResizeAlignment(
+        node,
+        next,
+        handleId,
+        nodes,
+        nodeBounds,
+        ALIGN_GUIDE_TOLERANCE_PX / viewport.zoom
+      );
+      let finalNext = aligned.next;
+      if (baseFontSize) {
+        const wRatio = finalNext.w / start.w;
+        const hRatio = finalNext.h / start.h;
+        const scale = Math.sqrt(Math.max(wRatio, 0.01) * Math.max(hRatio, 0.01));
+        finalNext = {
+          ...finalNext,
+          fontSize: Math.max(8, Math.min(120, baseFontSize * scale)),
+        };
+      }
+      setAlignmentGuides({
+        vertical: aligned.vertical,
+        horizontal: aligned.horizontal,
+      });
       setNodes((prev) =>
-        prev.map((n) => (n.id === node.id ? { ...n, ...next } : n))
+        prev.map((n) => (n.id === node.id ? { ...n, ...finalNext } : n))
       );
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      setAlignmentGuides({ vertical: [], horizontal: [] });
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
