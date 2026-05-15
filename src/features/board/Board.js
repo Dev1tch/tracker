@@ -70,11 +70,43 @@ function nodeTransform(node) {
   return node.rotation ? `rotate(${node.rotation}deg)` : undefined;
 }
 
+function readEditablePlainText(root) {
+  if (!root) return '';
+  const parts = [];
+
+  function pushLineBreak() {
+    if (parts.length === 0 || parts[parts.length - 1] === '\n') return;
+    parts.push('\n');
+  }
+
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(node.nodeValue || '');
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const tagName = node.tagName;
+    if (tagName === 'BR') {
+      parts.push('\n');
+      return;
+    }
+
+    const isBlockLine = tagName === 'DIV' || tagName === 'P' || tagName === 'LI';
+    if (isBlockLine) pushLineBreak();
+    node.childNodes.forEach(walk);
+  }
+
+  root.childNodes.forEach(walk);
+  return parts.join('').replace(/\n+$/, '');
+}
+
 /* ---------- Text node ---------- */
 function TextNode({
   node,
   editing,
   selected,
+  connected,
   tool,
   registerRef,
   onDoubleClick,
@@ -108,7 +140,7 @@ function TextNode({
 
   return (
     <div
-      className={`boardNode boardTextNode ${selected ? 'selected' : ''} ${editing ? 'editing' : ''} ${tool === 'arrow' ? 'arrowTarget' : ''} ${hasExplicitSize ? 'sized' : ''}`}
+      className={`boardNode boardTextNode ${selected ? 'selected' : ''} ${connected ? 'connected' : ''} ${editing ? 'editing' : ''} ${tool === 'arrow' ? 'arrowTarget' : ''} ${hasExplicitSize ? 'sized' : ''}`}
       style={{
         left: node.x,
         top: node.y,
@@ -572,7 +604,7 @@ export default function Board() {
      contentEditable), so the source of truth during editing is the DOM. */
   const readEditingText = useCallback(() => {
     const el = document.querySelector('.boardTextNode.editing .boardTextContent');
-    return el?.textContent || '';
+    return readEditablePlainText(el);
   }, []);
 
   /* Keyboard: ESC commits text edit / clears transient state, Delete removes
@@ -1151,7 +1183,7 @@ export default function Board() {
             isPanning ? ' isPanning' : ''
           }${arrowSource ? ' boardArrowDrawing' : ''}`}
           style={{
-            backgroundSize: `${24 * viewport.zoom}px ${24 * viewport.zoom}px`,
+            backgroundSize: `${48 * viewport.zoom}px ${48 * viewport.zoom}px`,
             backgroundPosition: `${viewport.x}px ${viewport.y}px`,
           }}
           onMouseDown={handleSurfaceMouseDown}
@@ -1198,6 +1230,7 @@ export default function Board() {
                   node={node}
                   editing={editingId === node.id}
                   selected={selectedId === node.id || arrowSource === node.id}
+                  connected={edges.some((edge) => edge.from === node.id || edge.to === node.id)}
                   tool={tool}
                   registerRef={registerNodeRef}
                   onDoubleClick={handleNodeDoubleClick}

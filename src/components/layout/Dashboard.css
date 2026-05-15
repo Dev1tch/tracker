@@ -17,7 +17,7 @@
   display: flex;
   flex-direction: column;
   /* Add padding bottom to ensure content isn't hidden behind the bottom nav */
-  padding-bottom: 56px;
+  padding-bottom: 62px;
 }
 
 /* Optional Particle Background for Dashboard */
@@ -111,12 +111,12 @@
   z-index: 100;
   display: flex;
   justify-content: center;
-  padding: 10px 0;
+  padding: 11px 0;
 }
 
 .navContainer {
   display: flex;
-  gap: 28px;
+  gap: 31px;
 }
 
 .navItem {
@@ -141,6 +141,8 @@
 }
 
 .navItem svg {
+  width: 18.7px;
+  height: 18.7px;
   transition: transform 0.3s ease;
 }
 
@@ -150,7 +152,7 @@
 }
 
 .navLabel {
-  font-size: 6px;
+  font-size: 6.6px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -165,11 +167,11 @@
   }
   
   .navContainer {
-    gap: 21px;
+    gap: 23px;
   }
 
   .mainContent {
-    padding-bottom: 50px;
+    padding-bottom: 55px;
   }
 }
 

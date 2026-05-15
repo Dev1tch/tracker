@@ -334,12 +334,18 @@
   min-width: 24px;
   padding: 6px 10px;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.4;
   letter-spacing: 0.01em;
   cursor: grab;
+}
+
+.boardTextNode.connected {
+  background: transparent;
+  border-color: var(--surface-30);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .boardTextNode.editing {
