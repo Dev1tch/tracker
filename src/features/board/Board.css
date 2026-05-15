@@ -306,6 +306,15 @@
   stroke: #f87171;
 }
 
+/* ---------- Drag alignment guides ---------- */
+.boardAlignmentGuide {
+  position: absolute;
+  z-index: 8;
+  background: #ef4444;
+  pointer-events: none;
+  box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+}
+
 /* ---------- Generic node ---------- */
 .boardNode {
   position: absolute;
@@ -344,7 +353,7 @@
 
 .boardTextNode.connected {
   background: transparent;
-  border-color: var(--surface-30);
+  border: 2px solid var(--surface-40);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 

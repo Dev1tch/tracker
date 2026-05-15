@@ -25,6 +25,11 @@ const MAX_IMAGE_WIDTH = 320;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
 const MIN_NODE_SIZE = 30;
+const BOARD_HISTORY_LIMIT = 80;
+const WHEEL_ZOOM_STEP = 1.04;
+const BUTTON_ZOOM_STEP = 1.1;
+const ALIGN_GUIDE_TOLERANCE_PX = 10;
+const ALIGN_GUIDE_PADDING = 28;
 const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 
 const HANDLE_DIRS = {
@@ -68,6 +73,19 @@ function loadState() {
 
 function nodeTransform(node) {
   return node.rotation ? `rotate(${node.rotation}deg)` : undefined;
+}
+
+function serializeBoardState(nodes, edges) {
+  return JSON.stringify({ nodes, edges });
+}
+
+function isTextInputTarget(target) {
+  return (
+    target &&
+    (target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.isContentEditable)
+  );
 }
 
 function readEditablePlainText(root) {
@@ -284,6 +302,72 @@ function nodeCenterOf(node, bounds) {
   return { x: node.x + w / 2, y: node.y + h / 2 };
 }
 
+function nodeRectAt(node, bounds, x = node.x, y = node.y) {
+  const { w, h } = nodeSize(node, bounds);
+  return {
+    left: x,
+    top: y,
+    right: x + w,
+    bottom: y + h,
+    centerX: x + w / 2,
+    centerY: y + h / 2,
+  };
+}
+
+function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
+  const moving = nodeRectAt(node, bounds, nextX, nextY);
+  const movingVerticals = [
+    { value: moving.left, offset: moving.left - nextX },
+    { value: moving.centerX, offset: moving.centerX - nextX },
+    { value: moving.right, offset: moving.right - nextX },
+  ];
+  const movingHorizontals = [
+    { value: moving.top, offset: moving.top - nextY },
+    { value: moving.centerY, offset: moving.centerY - nextY },
+    { value: moving.bottom, offset: moving.bottom - nextY },
+  ];
+  let vertical = null;
+  let horizontal = null;
+
+  nodes.forEach((other) => {
+    if (other.id === node.id) return;
+    const target = nodeRectAt(other, bounds);
+    [target.left, target.centerX, target.right].forEach((x) => {
+      movingVerticals.forEach((movingX) => {
+        const distance = Math.abs(movingX.value - x);
+        if (distance > tolerance || (vertical && distance >= vertical.distance)) return;
+        vertical = {
+          distance,
+          x,
+          snappedX: x - movingX.offset,
+          y1: Math.min(moving.top, target.top) - ALIGN_GUIDE_PADDING,
+          y2: Math.max(moving.bottom, target.bottom) + ALIGN_GUIDE_PADDING,
+        };
+      });
+    });
+    [target.top, target.centerY, target.bottom].forEach((y) => {
+      movingHorizontals.forEach((movingY) => {
+        const distance = Math.abs(movingY.value - y);
+        if (distance > tolerance || (horizontal && distance >= horizontal.distance)) return;
+        horizontal = {
+          distance,
+          y,
+          snappedY: y - movingY.offset,
+          x1: Math.min(moving.left, target.left) - ALIGN_GUIDE_PADDING,
+          x2: Math.max(moving.right, target.right) + ALIGN_GUIDE_PADDING,
+        };
+      });
+    });
+  });
+
+  return {
+    x: vertical ? vertical.snappedX : nextX,
+    y: horizontal ? horizontal.snappedY : nextY,
+    vertical: vertical ? [{ x: vertical.x, y1: vertical.y1, y2: vertical.y2 }] : [],
+    horizontal: horizontal ? [{ y: horizontal.y, x1: horizontal.x1, x2: horizontal.x2 }] : [],
+  };
+}
+
 function getAnchor(node, bounds, side, offset) {
   const { w, h } = nodeSize(node, bounds);
   const cx = node.x + w / 2;
@@ -495,11 +579,16 @@ export default function Board() {
   const [mousePos, setMousePos] = useState(null);
   const [nodeBounds, setNodeBounds] = useState({});
   const [isPanning, setIsPanning] = useState(false);
+  const [alignmentGuides, setAlignmentGuides] = useState({ vertical: [], horizontal: [] });
 
   const wrapperRef = useRef(null);
   const surfaceRef = useRef(null);
   const fileInputRef = useRef(null);
   const nodeElRefs = useRef({});
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
+  const restoringHistoryRef = useRef(false);
+  const lastBoardStateRef = useRef(serializeBoardState(initial.nodes, initial.edges));
 
   /* Persist */
   useEffect(() => {
@@ -512,6 +601,25 @@ export default function Board() {
       /* private mode / quota — ignore */
     }
   }, [nodes, edges, viewport]);
+
+  /* Board history: content only. Viewport changes are intentionally excluded. */
+  useEffect(() => {
+    const current = serializeBoardState(nodes, edges);
+    if (current === lastBoardStateRef.current) return;
+
+    if (restoringHistoryRef.current) {
+      restoringHistoryRef.current = false;
+      lastBoardStateRef.current = current;
+      return;
+    }
+
+    undoStackRef.current.push(JSON.parse(lastBoardStateRef.current));
+    if (undoStackRef.current.length > BOARD_HISTORY_LIMIT) {
+      undoStackRef.current.shift();
+    }
+    redoStackRef.current = [];
+    lastBoardStateRef.current = current;
+  }, [nodes, edges]);
 
   /* Measure rendered node sizes for arrow geometry */
   useLayoutEffect(() => {
@@ -551,7 +659,7 @@ export default function Board() {
       const cursorX = e.clientX - rect.left;
       const cursorY = e.clientY - rect.top;
       const direction = e.deltaY < 0 ? 1 : -1;
-      const factor = direction > 0 ? 1.1 : 1 / 1.1;
+      const factor = direction > 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP;
       setViewport((prev) => {
         const nextZoom = Math.max(
           MIN_ZOOM,
@@ -581,6 +689,11 @@ export default function Board() {
     return () => window.removeEventListener('mousemove', handleMove);
   }, [arrowSource, screenToWorld]);
 
+  const selectNode = useCallback((id) => {
+    setSelectedId(id);
+    setSelectedEdgeId(null);
+  }, []);
+
   const removeNode = useCallback((id) => {
     setNodes((prev) => prev.filter((n) => n.id !== id));
     setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
@@ -607,10 +720,50 @@ export default function Board() {
     return readEditablePlainText(el);
   }, []);
 
+  const restoreBoardState = useCallback((state) => {
+    restoringHistoryRef.current = true;
+    setNodes(Array.isArray(state.nodes) ? state.nodes : []);
+    setEdges(Array.isArray(state.edges) ? state.edges : []);
+    setSelectedId(null);
+    setSelectedEdgeId(null);
+    setEditingId(null);
+    setArrowSource(null);
+    setMousePos(null);
+    setAlignmentGuides({ vertical: [], horizontal: [] });
+  }, []);
+
+  const undoBoard = useCallback(() => {
+    const previous = undoStackRef.current.pop();
+    if (!previous) return;
+    redoStackRef.current.push(JSON.parse(lastBoardStateRef.current));
+    restoreBoardState(previous);
+  }, [restoreBoardState]);
+
+  const redoBoard = useCallback(() => {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    undoStackRef.current.push(JSON.parse(lastBoardStateRef.current));
+    restoreBoardState(next);
+  }, [restoreBoardState]);
+
   /* Keyboard: ESC commits text edit / clears transient state, Delete removes
      selection. */
   useEffect(() => {
     function handleKey(e) {
+      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey;
+      const isRedo =
+        (e.metaKey || e.ctrlKey) &&
+        ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y');
+      if ((isUndo || isRedo) && !isTextInputTarget(e.target)) {
+        e.preventDefault();
+        if (isRedo) {
+          redoBoard();
+        } else {
+          undoBoard();
+        }
+        return;
+      }
+
       if (e.key === 'Escape') {
         if (editingId) {
           commitText(editingId, readEditingText());
@@ -620,13 +773,7 @@ export default function Board() {
         setSelectedId(null);
         setSelectedEdgeId(null);
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && !editingId) {
-        const t = e.target;
-        if (
-          t &&
-          (t.tagName === 'INPUT' ||
-            t.tagName === 'TEXTAREA' ||
-            t.isContentEditable)
-        ) {
+        if (isTextInputTarget(e.target)) {
           return;
         }
         if (selectedEdgeId) {
@@ -639,7 +786,7 @@ export default function Board() {
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, selectedEdgeId, editingId, removeNode, removeEdge, readEditingText]);
+  }, [selectedId, selectedEdgeId, editingId, removeNode, removeEdge, readEditingText, undoBoard, redoBoard]);
 
   /* Commit the currently-edited text when the user clicks anywhere outside
      the text node, the toolbar popout, or the color picker UI. This is what
@@ -685,7 +832,7 @@ export default function Board() {
       { id, type: 'text', x: worldX, y: worldY, content: '', fontSize: 16 },
     ]);
     setEditingId(id);
-    setSelectedId(id);
+    selectNode(id);
   }
 
   function setTextFontSize(id, value) {
@@ -705,7 +852,7 @@ export default function Board() {
     );
   }
 
-  function addImageNode(dataUrl, worldX, worldY) {
+  const addImageNode = useCallback((dataUrl, worldX, worldY) => {
     const img = new Image();
     img.onload = () => {
       const scale =
@@ -729,7 +876,35 @@ export default function Board() {
       ]);
     };
     img.src = dataUrl;
-  }
+  }, []);
+
+  useEffect(() => {
+    function handlePaste(e) {
+      if (isTextInputTarget(e.target)) return;
+      const imageItem = Array.from(e.clipboardData?.items || []).find((item) =>
+        item.type.startsWith('image/')
+      );
+      if (!imageItem) return;
+
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      const wrap = wrapperRef.current;
+      if (!wrap) return;
+
+      e.preventDefault();
+      const rect = wrap.getBoundingClientRect();
+      const center = screenToWorld(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2
+      );
+      const reader = new FileReader();
+      reader.onload = () => addImageNode(reader.result, center.x, center.y);
+      reader.readAsDataURL(file);
+    }
+
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [addImageNode, screenToWorld]);
 
   function commitText(id, text) {
     const trimmed = (text || '').trim();
@@ -972,7 +1147,7 @@ export default function Board() {
     if (tool === 'arrow') {
       if (!arrowSource) {
         setArrowSource(node.id);
-        setSelectedId(node.id);
+        selectNode(node.id);
       } else if (arrowSource !== node.id) {
         const exists = edges.some(
           (ed) => ed.from === arrowSource && ed.to === node.id
@@ -984,19 +1159,19 @@ export default function Board() {
           ]);
         }
         setArrowSource(node.id);
-        setSelectedId(node.id);
+        selectNode(node.id);
       }
       return;
     }
     if (tool === 'select') {
-      setSelectedId(node.id);
+      selectNode(node.id);
     }
   }
 
   function handleNodeMouseDown(e, node) {
     if (tool !== 'select' || editingId === node.id) return;
     e.stopPropagation();
-    setSelectedId(node.id);
+    selectNode(node.id);
     const startX = e.clientX;
     const startY = e.clientY;
     const origX = node.x;
@@ -1010,11 +1185,26 @@ export default function Board() {
         return;
       }
       moved = true;
-      moveNode(node.id, origX + dx, origY + dy);
+      const nextX = origX + dx;
+      const nextY = origY + dy;
+      const alignment = getDragAlignmentGuides(
+        node,
+        nextX,
+        nextY,
+        nodes,
+        nodeBounds,
+        ALIGN_GUIDE_TOLERANCE_PX / zoomAtStart
+      );
+      setAlignmentGuides({
+        vertical: alignment.vertical,
+        horizontal: alignment.horizontal,
+      });
+      moveNode(node.id, alignment.x, alignment.y);
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      setAlignmentGuides({ vertical: [], horizontal: [] });
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -1116,8 +1306,6 @@ export default function Board() {
           >
             <ArrowRight size={18} />
           </button>
-
-          <div className="boardToolDivider" />
 
           <button
             type="button"
@@ -1249,13 +1437,38 @@ export default function Board() {
                 />
               )
             )}
+
+            {alignmentGuides.vertical.map((guide) => (
+              <div
+                key={`v-${guide.x}-${guide.y1}-${guide.y2}`}
+                className="boardAlignmentGuide boardAlignmentGuideVertical"
+                style={{
+                  left: guide.x,
+                  top: guide.y1,
+                  height: guide.y2 - guide.y1,
+                  width: 1 / viewport.zoom,
+                }}
+              />
+            ))}
+            {alignmentGuides.horizontal.map((guide) => (
+              <div
+                key={`h-${guide.y}-${guide.x1}-${guide.x2}`}
+                className="boardAlignmentGuide boardAlignmentGuideHorizontal"
+                style={{
+                  left: guide.x1,
+                  top: guide.y,
+                  width: guide.x2 - guide.x1,
+                  height: 1 / viewport.zoom,
+                }}
+              />
+            ))}
           </div>
 
           <div className="boardZoomControls" aria-label="Zoom controls">
             <button
               type="button"
               className="boardZoomBtn"
-              onClick={() => zoomBy(1.2)}
+              onClick={() => zoomBy(BUTTON_ZOOM_STEP)}
               title="Zoom in"
               aria-label="Zoom in"
             >
@@ -1264,7 +1477,7 @@ export default function Board() {
             <button
               type="button"
               className="boardZoomBtn"
-              onClick={() => zoomBy(1 / 1.2)}
+              onClick={() => zoomBy(1 / BUTTON_ZOOM_STEP)}
               title="Zoom out"
               aria-label="Zoom out"
             >
