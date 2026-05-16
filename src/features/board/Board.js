@@ -384,6 +384,13 @@ function verticalSegment(x, y1, y2) {
    between B and C. Two same-length parallel lines = visual confirmation
    that the spacings are equal. */
 function spacingHorizontalGuides(moving, left, right, side) {
+  if (side === 'between') {
+    return [
+      horizontalSegment((moving.centerY + left.centerY) / 2, left.right, moving.left),
+      horizontalSegment((moving.centerY + right.centerY) / 2, moving.right, right.left),
+    ];
+  }
+
   const staticY = (left.centerY + right.centerY) / 2;
   const movingGap = side === 'before'
     ? horizontalSegment(
@@ -403,6 +410,13 @@ function spacingHorizontalGuides(moving, left, right, side) {
 }
 
 function spacingVerticalGuides(moving, top, bottom, side) {
+  if (side === 'between') {
+    return [
+      verticalSegment((moving.centerX + top.centerX) / 2, top.bottom, moving.top),
+      verticalSegment((moving.centerX + bottom.centerX) / 2, moving.bottom, bottom.top),
+    ];
+  }
+
   const staticX = (top.centerX + bottom.centerX) / 2;
   const movingGap = side === 'before'
     ? verticalSegment(
@@ -489,7 +503,11 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
       const right = left === a ? b : a;
       const horizontalGap = right.left - left.right;
       if (horizontalGap > 0) {
+        const movingWidth = moving.right - moving.left;
         [
+          ...(horizontalGap >= movingWidth
+            ? [{ x: left.right + (horizontalGap - movingWidth) / 2, left, right, side: 'between' }]
+            : []),
           { x: left.left - horizontalGap - moving.right + moving.left, left, right, side: 'before' },
           { x: right.right + horizontalGap, left, right, side: 'after' },
         ].forEach((candidate) => {
@@ -504,7 +522,11 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
       const bottom = top === a ? b : a;
       const verticalGap = bottom.top - top.bottom;
       if (verticalGap > 0) {
+        const movingHeight = moving.bottom - moving.top;
         [
+          ...(verticalGap >= movingHeight
+            ? [{ y: top.bottom + (verticalGap - movingHeight) / 2, top, bottom, side: 'between' }]
+            : []),
           { y: top.top - verticalGap - moving.bottom + moving.top, top, bottom, side: 'before' },
           { y: bottom.bottom + verticalGap, top, bottom, side: 'after' },
         ].forEach((candidate) => {
@@ -892,6 +914,8 @@ function FrameNode({
         }}
         contentEditable={editing}
         suppressContentEditableWarning
+        role="textbox"
+        aria-label="Frame name"
         onClick={(e) => {
           if (editing) {
             e.stopPropagation();
@@ -901,10 +925,15 @@ function FrameNode({
           onClick(e);
         }}
         onDoubleClick={(e) => {
+          e.preventDefault();
           e.stopPropagation();
           onLabelDoubleClick();
         }}
         onMouseDown={(e) => {
+          if (e.detail > 1) {
+            e.stopPropagation();
+            return;
+          }
           // The label also works as a grab handle, while editing keeps text
           // selection isolated from board dragging.
           if (editing) {
@@ -2005,7 +2034,13 @@ export default function Board() {
           if (!frame) return null;
           return (
             <div className="boardToolbarPopout" aria-label="Frame style">
-              <span className="boardPopoutLabel">Frame</span>
+              <input
+                className="boardPopoutLabel boardFrameNameInput"
+                value={frame.name || ''}
+                placeholder="Frame"
+                onChange={(e) => setFrameName(frame.id, e.target.value)}
+                aria-label="Frame name"
+              />
               <span className="boardPopoutDivider" aria-hidden="true" />
               <ColorPicker
                 value={frame.color}

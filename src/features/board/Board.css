@@ -437,6 +437,24 @@
   padding: 0 4px;
 }
 
+.boardFrameNameInput {
+  width: 72px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  outline: none;
+  padding: 0 4px;
+  font-family: inherit;
+  text-align: center;
+}
+
+.boardFrameNameInput:focus {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
 /* ---------- Generic node ---------- */
 .boardNode {
   position: absolute;
