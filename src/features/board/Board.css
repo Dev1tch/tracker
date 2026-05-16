@@ -276,6 +276,22 @@
   opacity: 0.85;
 }
 
+.boardArrowEndpointHandle {
+  fill: var(--panel-solid);
+  stroke: var(--text-primary);
+  stroke-width: 1.4;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.boardArrowEndpointHandle:hover {
+  fill: var(--surface-15);
+}
+
+.boardArrowEndpointHandle:active {
+  cursor: grabbing;
+}
+
 /* Delete badge that floats at the elbow of a selected edge. */
 .boardArrowDeleteBtn {
   pointer-events: auto;
@@ -378,6 +394,8 @@
   bottom: 100%;
   left: -2px;
   margin-bottom: 4px;
+  border: 1px solid color-mix(in srgb, var(--frame-color, #f87171) 78%, transparent);
+  background: transparent;
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--frame-color, #f87171);
@@ -512,6 +530,18 @@
   min-height: 1.2em;
 }
 
+.boardTextLink {
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+  display: block;
+}
+
+.boardTextLink:visited {
+  color: #a78bfa;
+}
+
 /* Once the user has explicitly resized the box, fall back to wrapping so the
    content respects the chosen width. */
 .boardTextNode.sized .boardTextContent {
@@ -603,6 +633,37 @@
 .boardToolbarPopout .salColorPickerBtn {
   width: 24px;
   height: 24px;
+}
+
+.boardFrameFillToggle {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-color-dim);
+}
+
+.boardFrameFillBtn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-right: 1px solid var(--border-color-dim);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: var(--transition-fast);
+}
+
+.boardFrameFillBtn:last-child {
+  border-right: none;
+}
+
+.boardFrameFillBtn:hover,
+.boardFrameFillBtn.active {
+  color: var(--text-primary);
+  background: var(--surface-10);
 }
 
 /* ---------- Light theme: darker dots ---------- */

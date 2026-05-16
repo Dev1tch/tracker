@@ -25,6 +25,8 @@ const DEFAULT_PRESETS = [
   '#4ade80',
   '#f97316',
 ];
+const RECENT_COLORS_STORAGE_KEY = 'sal.recentColors';
+const RECENT_COLOR_LIMIT = 12;
 
 function isValidHexColor(value) {
   return /^#([0-9a-f]{6})$/i.test(value);
@@ -36,6 +38,26 @@ function normalizeHexColor(value) {
   const candidate = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
   if (!isValidHexColor(candidate)) return null;
   return candidate.toLowerCase();
+}
+
+function readRecentColors() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(RECENT_COLORS_STORAGE_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeHexColor).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentColors(colors) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RECENT_COLORS_STORAGE_KEY, JSON.stringify(colors));
+  } catch {
+    // Ignore storage failures; the picker still works without history.
+  }
 }
 
 function hexToRgb(hex) {
@@ -115,6 +137,7 @@ export default function ColorPicker({
   const [isWheelDragging, setIsWheelDragging] = useState(false);
   const [hexInput, setHexInput] = useState(value || '');
   const [popoverStyle, setPopoverStyle] = useState(null);
+  const [recentColors, setRecentColors] = useState([]);
   const wrapperRef = useRef(null);
   const wheelRef = useRef(null);
   const popoverRef = useRef(null);
@@ -123,9 +146,14 @@ export default function ColorPicker({
   // Avoid SSR mismatches when portaling.
   useEffect(() => {
     setMounted(true);
+    setRecentColors(readRecentColors());
   }, []);
 
   const currentColor = normalizeHexColor(value) || '#ffffff';
+  const swatchColors = useMemo(() => {
+    const fallback = presets.map(normalizeHexColor).filter(Boolean);
+    return [...new Set([...recentColors, ...fallback])].slice(0, RECENT_COLOR_LIMIT);
+  }, [presets, recentColors]);
 
   const currentHsv = useMemo(
     () => rgbToHsv(hexToRgb(currentColor)),
@@ -155,6 +183,16 @@ export default function ColorPicker({
     },
     [onChange]
   );
+
+  const rememberColor = useCallback((nextColor) => {
+    const normalized = normalizeHexColor(nextColor);
+    if (!normalized) return;
+    setRecentColors((prev) => {
+      const next = [normalized, ...prev.filter((color) => color !== normalized)].slice(0, RECENT_COLOR_LIMIT);
+      writeRecentColors(next);
+      return next;
+    });
+  }, []);
 
   const handleWheelPointerDown = useCallback(
     (event) => {
@@ -276,6 +314,7 @@ export default function ColorPicker({
     }
 
     function handleUp() {
+      rememberColor(hexInput);
       setIsWheelDragging(false);
     }
 
@@ -285,7 +324,7 @@ export default function ColorPicker({
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
     };
-  }, [applyColor, isWheelDragging]);
+  }, [applyColor, hexInput, isWheelDragging, rememberColor]);
 
   return (
     <div className="salColorPickerWrap" ref={wrapperRef}>
@@ -318,7 +357,7 @@ export default function ColorPicker({
           </div>
 
           <div className="salColorPickerSwatches">
-            {presets.map((color) => (
+            {swatchColors.map((color) => (
               <button
                 key={color}
                 type="button"
@@ -327,6 +366,7 @@ export default function ColorPicker({
                 onClick={() => {
                   applyColor(color);
                   setHexInput(color);
+                  rememberColor(color);
                 }}
                 aria-label={`Set color ${color}`}
               />
@@ -342,7 +382,10 @@ export default function ColorPicker({
                 const v = event.target.value;
                 setHexInput(v);
                 const normalized = normalizeHexColor(v);
-                if (normalized) applyColor(normalized);
+                if (normalized) {
+                  applyColor(normalized);
+                  rememberColor(normalized);
+                }
               }}
               onBlur={() => setHexInput(currentColor)}
               placeholder={placeholder}

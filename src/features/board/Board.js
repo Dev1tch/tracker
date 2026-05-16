@@ -11,6 +11,7 @@ import {
   ArrowRight,
   Frame as FrameIcon,
   Image as ImageIcon,
+  Layers,
   Maximize,
   MousePointer2,
   Trash2,
@@ -38,12 +39,23 @@ const FRAME_COLORS = [
   '#fb923c', // orange
 ];
 const BOARD_HISTORY_LIMIT = 80;
+const URL_PATTERN = /^(https?:\/\/[^\s]+|www\.[^\s]+)$/i;
+
+function normalizeUrl(value) {
+  const text = (value || '').trim();
+  if (!URL_PATTERN.test(text)) return null;
+  return text.startsWith('http://') || text.startsWith('https://')
+    ? text
+    : `https://${text}`;
+}
 const WHEEL_ZOOM_STEP = 1.04;
 const MOUSE_WHEEL_ZOOM_STEP = 1.12;
 const BUTTON_ZOOM_STEP = 1.1;
 const ALIGN_GUIDE_TOLERANCE_PX = 6;
 const ALIGN_GUIDE_PADDING = 28;
 const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+const PASTED_TEXT_SCREEN_WIDTH = 420;
+const DEFAULT_ARROW_STROKE_WIDTH = 1.6;
 
 const HANDLE_DIRS = {
   tl: { sx: -1, sy: -1, cursor: 'nwse-resize' },
@@ -210,15 +222,36 @@ function TextNode({
       onClick={onClick}
       onDoubleClick={() => onDoubleClick(node.id)}
     >
-      <div
-        ref={ref}
-        className="boardTextContent"
-        contentEditable={editing}
-        suppressContentEditableWarning
-        onMouseDown={editing ? (e) => e.stopPropagation() : undefined}
-      >
-        {node.content || ''}
-      </div>
+      {node.href && !editing ? (
+        <a
+          ref={ref}
+          className="boardTextContent boardTextLink"
+          href={node.href}
+          target="_blank"
+          rel="noreferrer"
+          draggable={false}
+          onClick={(e) => {
+            if (!selected) {
+              e.preventDefault();
+            }
+          }}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+          }}
+        >
+          {node.content || node.href}
+        </a>
+      ) : (
+        <div
+          ref={ref}
+          className="boardTextContent"
+          contentEditable={editing}
+          suppressContentEditableWarning
+          onMouseDown={editing ? (e) => e.stopPropagation() : undefined}
+        >
+          {node.content || ''}
+        </div>
+      )}
     </div>
   );
 }
@@ -565,7 +598,7 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
   };
 }
 
-function getResizeAlignment(node, next, handleId, nodes, bounds, tolerance) {
+function getResizeAlignment(node, next, handleId, nodes, bounds, tolerance, minSize = MIN_NODE_SIZE) {
   const dir = HANDLE_DIRS[handleId];
   const moving = rectFromBox(next.x, next.y, next.w, next.h);
   let vertical = null;
@@ -620,32 +653,32 @@ function getResizeAlignment(node, next, handleId, nodes, bounds, tolerance) {
   if (vertical) {
     const right = next.x + next.w;
     if (vertical.kind === 'left') {
-      snapped.x = Math.min(vertical.x, right - MIN_NODE_SIZE);
+      snapped.x = Math.min(vertical.x, right - minSize);
       snapped.w = right - snapped.x;
     } else if (vertical.kind === 'right') {
-      snapped.w = Math.max(MIN_NODE_SIZE, vertical.x - next.x);
+      snapped.w = Math.max(minSize, vertical.x - next.x);
     } else if (vertical.kind === 'center') {
       if (dir.sx < 0) {
-        snapped.x = Math.min(2 * vertical.x - right, right - MIN_NODE_SIZE);
+        snapped.x = Math.min(2 * vertical.x - right, right - minSize);
         snapped.w = right - snapped.x;
       } else if (dir.sx > 0) {
-        snapped.w = Math.max(MIN_NODE_SIZE, 2 * (vertical.x - next.x));
+        snapped.w = Math.max(minSize, 2 * (vertical.x - next.x));
       }
     }
   }
   if (horizontal) {
     const bottom = next.y + next.h;
     if (horizontal.kind === 'top') {
-      snapped.y = Math.min(horizontal.y, bottom - MIN_NODE_SIZE);
+      snapped.y = Math.min(horizontal.y, bottom - minSize);
       snapped.h = bottom - snapped.y;
     } else if (horizontal.kind === 'bottom') {
-      snapped.h = Math.max(MIN_NODE_SIZE, horizontal.y - next.y);
+      snapped.h = Math.max(minSize, horizontal.y - next.y);
     } else if (horizontal.kind === 'middle') {
       if (dir.sy < 0) {
-        snapped.y = Math.min(2 * horizontal.y - bottom, bottom - MIN_NODE_SIZE);
+        snapped.y = Math.min(2 * horizontal.y - bottom, bottom - minSize);
         snapped.h = bottom - snapped.y;
       } else if (dir.sy > 0) {
-        snapped.h = Math.max(MIN_NODE_SIZE, 2 * (horizontal.y - next.y));
+        snapped.h = Math.max(minSize, 2 * (horizontal.y - next.y));
       }
     }
   }
@@ -740,63 +773,126 @@ function edgeMidpoint(s, t, axis) {
   return { x: (s.x + t.x) / 2, y: midY };
 }
 
+function resolveEdgePoints(edge, nodeById, bounds) {
+  const source = edge.from ? nodeById.get(edge.from) : null;
+  const target = edge.to ? nodeById.get(edge.to) : null;
+  let s;
+  let t;
+  let axis;
+
+  if (source && target) {
+    const [sSide, tSide] = pickSides(source, target, bounds);
+    s = getAnchor(source, bounds, sSide, 0);
+    t = getAnchor(target, bounds, tSide, 6);
+    axis = sSide === 'right' || sSide === 'left' ? 'horizontal' : 'vertical';
+    return { s, t, axis };
+  }
+
+  if (source && edge.end) {
+    const sc = nodeCenterOf(source, bounds);
+    const dx = edge.end.x - sc.x;
+    const dy = edge.end.y - sc.y;
+    const side =
+      Math.abs(dx) >= Math.abs(dy)
+        ? dx >= 0 ? 'right' : 'left'
+        : dy >= 0 ? 'bottom' : 'top';
+    s = getAnchor(source, bounds, side, 0);
+    t = edge.end;
+    axis = side === 'right' || side === 'left' ? 'horizontal' : 'vertical';
+    return { s, t, axis };
+  }
+
+  if (edge.start && target) {
+    const tc = nodeCenterOf(target, bounds);
+    const dx = tc.x - edge.start.x;
+    const dy = tc.y - edge.start.y;
+    const side =
+      Math.abs(dx) >= Math.abs(dy)
+        ? dx >= 0 ? 'left' : 'right'
+        : dy >= 0 ? 'top' : 'bottom';
+    s = edge.start;
+    t = getAnchor(target, bounds, side, 6);
+    axis = side === 'left' || side === 'right' ? 'horizontal' : 'vertical';
+    return { s, t, axis };
+  }
+
+  if (edge.start && edge.end) {
+    s = edge.start;
+    t = edge.end;
+    axis = Math.abs(t.x - s.x) >= Math.abs(t.y - s.y) ? 'horizontal' : 'vertical';
+    return { s, t, axis };
+  }
+
+  return null;
+}
+
 /* ---------- Arrows layer (SVG over the world) ---------- */
 function ArrowsLayer({
   nodes,
+  frames,
   edges,
   bounds,
+  zoom,
   arrowSource,
+  arrowPointSource,
   mousePos,
   selectedEdgeId,
   onSelectEdge,
   onRemoveEdge,
+  onEdgeEndpointMouseDown,
 }) {
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const itemById = new Map([...frames, ...nodes].map((item) => [item.id, item]));
 
   return (
     <svg className="boardArrows" width="1" height="1" overflow="visible">
       <defs>
         <marker
           id="boardArrowHead"
-          markerWidth="10"
-          markerHeight="10"
-          refX="8"
+          markerWidth="6"
+          markerHeight="6"
+          refX="5"
           refY="3"
           orient="auto"
-          markerUnits="userSpaceOnUse"
+          markerUnits="strokeWidth"
         >
-          <path d="M0,0 L8,3 L0,6 Z" fill="currentColor" />
+          <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
         </marker>
         <marker
           id="boardArrowHeadGhost"
-          markerWidth="10"
-          markerHeight="10"
-          refX="8"
+          markerWidth="6"
+          markerHeight="6"
+          refX="5"
           refY="3"
           orient="auto"
-          markerUnits="userSpaceOnUse"
+          markerUnits="strokeWidth"
         >
-          <path d="M0,0 L8,3 L0,6 Z" fill="var(--text-tertiary)" />
+          <path d="M0,0 L6,3 L0,6 Z" fill="var(--text-tertiary)" />
         </marker>
       </defs>
 
       {edges.map((edge) => {
-        const source = nodeById.get(edge.from);
-        const target = nodeById.get(edge.to);
-        if (!source || !target) return null;
-        const [sSide, tSide] = pickSides(source, target, bounds);
-        const s = getAnchor(source, bounds, sSide, 0);
-        const t = getAnchor(target, bounds, tSide, 6);
-        const axis = sSide === 'right' || sSide === 'left' ? 'horizontal' : 'vertical';
+        const points = resolveEdgePoints(edge, itemById, bounds);
+        if (!points) return null;
+        const { s, t, axis } = points;
         const d = orthogonalPath(s, t, axis);
         const isSelected = selectedEdgeId === edge.id;
         const mid = edgeMidpoint(s, t, axis);
+        const baseStrokeWidth = edge.strokeWidth || DEFAULT_ARROW_STROKE_WIDTH;
+        const strokeWidth = (isSelected ? baseStrokeWidth + 0.6 : baseStrokeWidth) / zoom;
+        const hitStrokeWidth = Math.max(14, baseStrokeWidth + 10) / zoom;
+        const handleRadius = 6 / zoom;
+        const handleStrokeWidth = 1.4 / zoom;
+        const deleteRadius = 11 / zoom;
+        const deleteStrokeWidth = 1.2 / zoom;
+        const deleteXOffset = 3.5 / zoom;
+        const deleteXStrokeWidth = 1.6 / zoom;
         return (
           <g key={edge.id}>
             {/* Wide invisible hit area so the line is easy to click. */}
             <path
               d={d}
               className="boardArrowHit"
+              style={{ strokeWidth: hitStrokeWidth }}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectEdge(edge.id);
@@ -805,8 +901,29 @@ function ArrowsLayer({
             <path
               d={d}
               className={`boardArrowLine ${isSelected ? 'selected' : ''}`}
+              style={{ strokeWidth }}
               markerEnd="url(#boardArrowHead)"
             />
+            {isSelected && edge.start && (
+              <circle
+                cx={s.x}
+                cy={s.y}
+                r={handleRadius}
+                className="boardArrowEndpointHandle"
+                style={{ strokeWidth: handleStrokeWidth }}
+                onMouseDown={(e) => onEdgeEndpointMouseDown(e, edge.id, 'start')}
+              />
+            )}
+            {isSelected && edge.end && (
+              <circle
+                cx={t.x}
+                cy={t.y}
+                r={handleRadius}
+                className="boardArrowEndpointHandle"
+                style={{ strokeWidth: handleStrokeWidth }}
+                onMouseDown={(e) => onEdgeEndpointMouseDown(e, edge.id, 'end')}
+              />
+            )}
             {isSelected && (
               <g
                 className="boardArrowDeleteBtn"
@@ -819,12 +936,14 @@ function ArrowsLayer({
                 <circle
                   cx={mid.x}
                   cy={mid.y}
-                  r="11"
+                  r={deleteRadius}
                   className="boardArrowDeleteCircle"
+                  style={{ strokeWidth: deleteStrokeWidth }}
                 />
                 <path
-                  d={`M ${mid.x - 3.5},${mid.y - 3.5} L ${mid.x + 3.5},${mid.y + 3.5} M ${mid.x + 3.5},${mid.y - 3.5} L ${mid.x - 3.5},${mid.y + 3.5}`}
+                  d={`M ${mid.x - deleteXOffset},${mid.y - deleteXOffset} L ${mid.x + deleteXOffset},${mid.y + deleteXOffset} M ${mid.x + deleteXOffset},${mid.y - deleteXOffset} L ${mid.x - deleteXOffset},${mid.y + deleteXOffset}`}
                   className="boardArrowDeleteX"
+                  style={{ strokeWidth: deleteXStrokeWidth }}
                 />
               </g>
             )}
@@ -832,23 +951,21 @@ function ArrowsLayer({
         );
       })}
 
-      {arrowSource && mousePos && (() => {
-        const source = nodeById.get(arrowSource);
-        if (!source) return null;
-        const sCenter = nodeCenterOf(source, bounds);
-        const dx = mousePos.x - sCenter.x;
-        const dy = mousePos.y - sCenter.y;
-        const side =
-          Math.abs(dx) >= Math.abs(dy)
-            ? dx >= 0 ? 'right' : 'left'
-            : dy >= 0 ? 'bottom' : 'top';
-        const sAnchor = getAnchor(source, bounds, side, 0);
-        const axis = side === 'right' || side === 'left' ? 'horizontal' : 'vertical';
-        const d = orthogonalPath(sAnchor, mousePos, axis);
+      {(arrowSource || arrowPointSource) && mousePos && (() => {
+        const ghostEdge = arrowSource
+          ? { from: arrowSource, end: mousePos }
+          : { start: arrowPointSource, end: mousePos };
+        const points = resolveEdgePoints(ghostEdge, itemById, bounds);
+        if (!points) return null;
+        const d = orthogonalPath(points.s, points.t, points.axis);
         return (
           <path
             d={d}
             className="boardArrowGhost"
+            style={{
+              strokeWidth: 1.3 / zoom,
+              strokeDasharray: `${5 / zoom} ${4 / zoom}`,
+            }}
             markerEnd="url(#boardArrowHeadGhost)"
           />
         );
@@ -866,6 +983,7 @@ function FrameNode({
   frame,
   selected,
   editing,
+  zoom,
   onMouseDown,
   onClick,
   onLabelDoubleClick,
@@ -885,10 +1003,17 @@ function FrameNode({
     sel.addRange(range);
   }, [editing]);
 
-  const labelFontSize = Math.round(Math.max(14, Math.min(72, frame.w * 0.055)));
+  const labelFontSize = Math.round(Math.max(12, Math.min(42, frame.w * 0.032)));
   const labelPaddingY = Math.max(5, Math.round(labelFontSize * 0.22));
   const labelPaddingX = Math.max(12, Math.round(labelFontSize * 0.58));
   const labelMaxWidth = Math.max(140, frame.w);
+  const labelBorderWidth = 1.5 / zoom;
+  const frameBorderWidth = labelBorderWidth;
+  const fillMode = frame.fillMode || 'translucent';
+  const frameBackground =
+    fillMode === 'solid'
+      ? frame.color
+      : `color-mix(in srgb, ${frame.color} 12%, transparent)`;
 
   return (
     <div
@@ -899,6 +1024,8 @@ function FrameNode({
         width: frame.w,
         height: frame.h,
         borderColor: frame.color,
+        borderWidth: frameBorderWidth,
+        background: frameBackground,
         '--frame-color': frame.color,
       }}
       onMouseDown={onMouseDown}
@@ -911,6 +1038,7 @@ function FrameNode({
           fontSize: `${labelFontSize}px`,
           padding: `${labelPaddingY}px ${labelPaddingX}px`,
           maxWidth: labelMaxWidth,
+          borderWidth: labelBorderWidth,
         }}
         contentEditable={editing}
         suppressContentEditableWarning
@@ -976,6 +1104,7 @@ export default function Board() {
   const [editingFrameId, setEditingFrameId] = useState(null);
   const [frameDraft, setFrameDraft] = useState(null);
   const [arrowSource, setArrowSource] = useState(null);
+  const [arrowPointSource, setArrowPointSource] = useState(null);
   const [mousePos, setMousePos] = useState(null);
   const [nodeBounds, setNodeBounds] = useState({});
   const [isPanning, setIsPanning] = useState(false);
@@ -1080,13 +1209,13 @@ export default function Board() {
 
   /* Track mouse for the ghost arrow (in world coords). */
   useEffect(() => {
-    if (!arrowSource) return undefined;
+    if (!arrowSource && !arrowPointSource) return undefined;
     function handleMove(e) {
       setMousePos(screenToWorld(e.clientX, e.clientY));
     }
     window.addEventListener('mousemove', handleMove);
     return () => window.removeEventListener('mousemove', handleMove);
-  }, [arrowSource, screenToWorld]);
+  }, [arrowSource, arrowPointSource, screenToWorld]);
 
   const selectNode = useCallback((id) => {
     setSelectedId(id);
@@ -1107,11 +1236,43 @@ export default function Board() {
     setSelectedEdgeId((cur) => (cur === id ? null : cur));
   }, []);
 
+  function setEdgeStrokeWidth(id, value) {
+    const strokeWidth = Math.max(1, Math.min(12, Number(value) || DEFAULT_ARROW_STROKE_WIDTH));
+    setEdges((prev) =>
+      prev.map((edge) => (edge.id === id ? { ...edge, strokeWidth } : edge))
+    );
+  }
+
   const selectEdge = useCallback((id) => {
     setSelectedEdgeId(id);
     setSelectedId(null);
     setSelectedFrameId(null);
+    setArrowSource(null);
+    setArrowPointSource(null);
   }, []);
+
+  const handleEdgeEndpointMouseDown = useCallback((e, edgeId, endpoint) => {
+    e.stopPropagation();
+    e.preventDefault();
+    selectEdge(edgeId);
+
+    function onMove(ev) {
+      const point = screenToWorld(ev.clientX, ev.clientY);
+      setEdges((prev) =>
+        prev.map((edge) =>
+          edge.id === edgeId ? { ...edge, [endpoint]: point } : edge
+        )
+      );
+    }
+
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [screenToWorld, selectEdge]);
 
   const selectFrame = useCallback((id) => {
     setSelectedFrameId(id);
@@ -1121,8 +1282,10 @@ export default function Board() {
 
   const removeFrame = useCallback((id) => {
     setFrames((prev) => prev.filter((f) => f.id !== id));
+    setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
     setSelectedFrameId((cur) => (cur === id ? null : cur));
     setEditingFrameId((cur) => (cur === id ? null : cur));
+    setArrowSource((cur) => (cur === id ? null : cur));
   }, []);
 
   /* Read current DOM text of the frame whose name is being edited. */
@@ -1147,6 +1310,7 @@ export default function Board() {
     setSelectedEdgeId(null);
     setEditingId(null);
     setArrowSource(null);
+    setArrowPointSource(null);
     setMousePos(null);
     setAlignmentGuides({ vertical: [], horizontal: [] });
   }, []);
@@ -1194,6 +1358,7 @@ export default function Board() {
           return;
         }
         setArrowSource(null);
+        setArrowPointSource(null);
         setSelectedId(null);
         setSelectedEdgeId(null);
         setSelectedFrameId(null);
@@ -1287,6 +1452,7 @@ export default function Board() {
   const selectTool = useCallback((next) => {
     setTool(next);
     setArrowSource(null);
+    setArrowPointSource(null);
     setFrameDraft(null);
   }, []);
 
@@ -1302,6 +1468,12 @@ export default function Board() {
     );
   }
 
+  function setFrameFillMode(id, fillMode) {
+    setFrames((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, fillMode } : f))
+    );
+  }
+
   /* ---------- mutations ---------- */
 
   function addTextNode(worldX, worldY) {
@@ -1313,6 +1485,29 @@ export default function Board() {
     setEditingId(id);
     selectNode(id);
   }
+
+  const addPastedTextNode = useCallback((text, worldX, worldY, fontSize = 16, width) => {
+    const content = (text || '').replace(/\r\n?/g, '\n').trim();
+    if (!content) return;
+    const id = generateId();
+    const href = normalizeUrl(content);
+    const shouldWrap = !href && width;
+    setNodes((prev) => [
+      ...prev,
+      {
+        id,
+        type: 'text',
+        x: shouldWrap ? worldX - width / 2 : worldX,
+        y: worldY,
+        w: shouldWrap ? width : undefined,
+        content,
+        href: href || undefined,
+        fontSize,
+      },
+    ]);
+    setEditingId(null);
+    selectNode(id);
+  }, [selectNode]);
 
   function setTextFontSize(id, value) {
     const v = Math.max(8, Math.min(120, Math.round(value)));
@@ -1363,35 +1558,54 @@ export default function Board() {
       const imageItem = Array.from(e.clipboardData?.items || []).find((item) =>
         item.type.startsWith('image/')
       );
-      if (!imageItem) return;
-
-      const file = imageItem.getAsFile();
-      if (!file) return;
       const wrap = wrapperRef.current;
       if (!wrap) return;
-
-      e.preventDefault();
       const rect = wrap.getBoundingClientRect();
       const center = screenToWorld(
         rect.left + rect.width / 2,
         rect.top + rect.height / 2
       );
-      const reader = new FileReader();
-      reader.onload = () => addImageNode(reader.result, center.x, center.y);
-      reader.readAsDataURL(file);
+
+      if (imageItem) {
+        const file = imageItem.getAsFile();
+        if (!file) return;
+
+        e.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => addImageNode(reader.result, center.x, center.y);
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const text = e.clipboardData?.getData('text/plain')?.trim();
+      if (!text) return;
+
+      e.preventDefault();
+      addPastedTextNode(
+        text,
+        center.x,
+        center.y,
+        Math.round(16 / viewport.zoom),
+        Math.round(PASTED_TEXT_SCREEN_WIDTH / viewport.zoom)
+      );
     }
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [addImageNode, screenToWorld]);
+  }, [addImageNode, addPastedTextNode, screenToWorld, viewport.zoom]);
 
   function commitText(id, text) {
     const trimmed = (text || '').trim();
     if (!trimmed) {
       removeNode(id);
     } else {
+      const href = normalizeUrl(trimmed);
       setNodes((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, content: text } : n))
+        prev.map((n) =>
+          n.id === id
+            ? { ...n, content: text, href: href || undefined }
+            : n
+        )
       );
     }
     setEditingId((cur) => (cur === id ? null : cur));
@@ -1616,7 +1830,7 @@ export default function Board() {
         if (w < MIN_FRAME_SIZE || h < MIN_FRAME_SIZE) return;
         const id = generateId();
         const color = FRAME_COLORS[frames.length % FRAME_COLORS.length];
-        setFrames((prev) => [...prev, { id, x, y, w, h, color, name: '' }]);
+        setFrames((prev) => [...prev, { id, x, y, w, h, color, name: '', fillMode: 'translucent' }]);
         selectFrame(id);
         setEditingFrameId(id);
         // Auto-switch back to select tool so the user can move things right
@@ -1658,7 +1872,31 @@ export default function Board() {
         const w = screenToWorld(ev.clientX, ev.clientY);
         addTextNode(w.x, w.y);
       } else if (tool === 'arrow') {
-        setArrowSource(null);
+        const w = screenToWorld(ev.clientX, ev.clientY);
+        if (arrowSource) {
+          setEdges((prev) => [
+            ...prev,
+            { id: generateId(), from: arrowSource, end: w },
+          ]);
+          setArrowSource(null);
+          setArrowPointSource(null);
+          setMousePos(null);
+        } else if (arrowPointSource) {
+          if (Math.hypot(w.x - arrowPointSource.x, w.y - arrowPointSource.y) >= 4) {
+            const id = generateId();
+            setEdges((prev) => [
+              ...prev,
+              { id, start: arrowPointSource, end: w },
+            ]);
+            selectEdge(id);
+          }
+          setArrowPointSource(null);
+          setMousePos(null);
+        } else {
+          setSelectedId(null);
+          setArrowPointSource(w);
+          setMousePos(w);
+        }
       } else {
         setSelectedId(null);
       }
@@ -1672,6 +1910,44 @@ export default function Board() {
   function handleFrameClick(e, frame) {
     e.stopPropagation();
     if (editingFrameId === frame.id) return;
+    if (tool === 'arrow') {
+      if (arrowPointSource) {
+        const id = generateId();
+        setEdges((prev) => [
+          ...prev,
+          { id, start: arrowPointSource, to: frame.id },
+        ]);
+        setArrowSource(null);
+        setArrowPointSource(null);
+        setMousePos(null);
+        selectEdge(id);
+      } else if (!arrowSource) {
+        setArrowSource(frame.id);
+        setArrowPointSource(null);
+        selectFrame(frame.id);
+      } else if (arrowSource !== frame.id) {
+        const exists = edges.some(
+          (ed) => ed.from === arrowSource && ed.to === frame.id
+        );
+        let id = null;
+        if (!exists) {
+          id = generateId();
+          setEdges((prev) => [
+            ...prev,
+            { id, from: arrowSource, to: frame.id },
+          ]);
+        }
+        setArrowSource(null);
+        setArrowPointSource(null);
+        setMousePos(null);
+        if (id) {
+          selectEdge(id);
+        } else {
+          selectFrame(frame.id);
+        }
+      }
+      return;
+    }
     selectFrame(frame.id);
   }
 
@@ -1700,6 +1976,7 @@ export default function Board() {
     const zoomAtStart = viewport.zoom;
     const members = nodesInsideFrame(frame, nodes, nodeBounds);
     const memberStarts = members.map((m) => ({ id: m.id, x: m.x, y: m.y }));
+    const alignmentTargets = frames;
     let moved = false;
 
     function onMove(ev) {
@@ -1709,16 +1986,32 @@ export default function Board() {
         return;
       }
       moved = true;
+      const nextX = origFrameX + dx;
+      const nextY = origFrameY + dy;
+      const alignment = getDragAlignmentGuides(
+        frame,
+        nextX,
+        nextY,
+        alignmentTargets,
+        nodeBounds,
+        ALIGN_GUIDE_TOLERANCE_PX / zoomAtStart
+      );
+      const alignedDx = alignment.x - origFrameX;
+      const alignedDy = alignment.y - origFrameY;
+      setAlignmentGuides({
+        vertical: alignment.vertical,
+        horizontal: alignment.horizontal,
+      });
       setFrames((prev) =>
         prev.map((f) =>
-          f.id === frame.id ? { ...f, x: origFrameX + dx, y: origFrameY + dy } : f
+          f.id === frame.id ? { ...f, x: alignment.x, y: alignment.y } : f
         )
       );
       if (memberStarts.length) {
         setNodes((prev) =>
           prev.map((n) => {
             const ms = memberStarts.find((m) => m.id === n.id);
-            return ms ? { ...n, x: ms.x + dx, y: ms.y + dy } : n;
+            return ms ? { ...n, x: ms.x + alignedDx, y: ms.y + alignedDy } : n;
           })
         );
       }
@@ -1726,6 +2019,7 @@ export default function Board() {
     function onUp() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      setAlignmentGuides({ vertical: [], horizontal: [] });
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -1737,6 +2031,7 @@ export default function Board() {
     const start = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
     const startWorld = screenToWorld(e.clientX, e.clientY);
     const dir = HANDLE_DIRS[handleId];
+    const alignmentTargets = frames;
 
     function onMove(ev) {
       const world = screenToWorld(ev.clientX, ev.clientY);
@@ -1758,15 +2053,30 @@ export default function Board() {
         nextH = Math.max(MIN_FRAME_SIZE, start.h - dy);
         nextY = start.y + (start.h - nextH);
       }
+      const aligned = getResizeAlignment(
+        frame,
+        { x: nextX, y: nextY, w: nextW, h: nextH },
+        handleId,
+        alignmentTargets,
+        nodeBounds,
+        ALIGN_GUIDE_TOLERANCE_PX / viewport.zoom,
+        MIN_FRAME_SIZE
+      );
+      const finalNext = aligned.next;
+      setAlignmentGuides({
+        vertical: aligned.vertical,
+        horizontal: aligned.horizontal,
+      });
       setFrames((prev) =>
         prev.map((f) =>
-          f.id === frame.id ? { ...f, x: nextX, y: nextY, w: nextW, h: nextH } : f
+          f.id === frame.id ? { ...f, ...finalNext } : f
         )
       );
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      setAlignmentGuides({ vertical: [], horizontal: [] });
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -1794,21 +2104,40 @@ export default function Board() {
     if (editingId === node.id) return;
     setSelectedEdgeId(null);
     if (tool === 'arrow') {
-      if (!arrowSource) {
+      if (arrowPointSource) {
+        const id = generateId();
+        setEdges((prev) => [
+          ...prev,
+          { id, start: arrowPointSource, to: node.id },
+        ]);
+        setArrowSource(null);
+        setArrowPointSource(null);
+        setMousePos(null);
+        selectEdge(id);
+      } else if (!arrowSource) {
         setArrowSource(node.id);
+        setArrowPointSource(null);
         selectNode(node.id);
       } else if (arrowSource !== node.id) {
         const exists = edges.some(
           (ed) => ed.from === arrowSource && ed.to === node.id
         );
+        let id = null;
         if (!exists) {
+          id = generateId();
           setEdges((prev) => [
             ...prev,
-            { id: generateId(), from: arrowSource, to: node.id },
+            { id, from: arrowSource, to: node.id },
           ]);
         }
-        setArrowSource(node.id);
-        selectNode(node.id);
+        setArrowSource(null);
+        setArrowPointSource(null);
+        setMousePos(null);
+        if (id) {
+          selectEdge(id);
+        } else {
+          selectNode(node.id);
+        }
       }
       return;
     }
@@ -2025,6 +2354,28 @@ export default function Board() {
         })()}
 
         {(() => {
+          if (!selectedEdgeId || editingId || editingFrameId) return null;
+          const edge = edges.find((item) => item.id === selectedEdgeId);
+          if (!edge) return null;
+          const strokeWidth = edge.strokeWidth || DEFAULT_ARROW_STROKE_WIDTH;
+          return (
+            <div className="boardToolbarPopout" aria-label="Arrow style">
+              <ArrowRight size={16} />
+              <input
+                type="number"
+                className="boardPopoutSize"
+                min={1}
+                max={12}
+                step={0.5}
+                value={strokeWidth}
+                onChange={(e) => setEdgeStrokeWidth(edge.id, e.target.value)}
+                aria-label="Arrow thickness"
+              />
+            </div>
+          );
+        })()}
+
+        {(() => {
           /* Frame popout: shows whenever a frame is selected OR being named.
              Houses the frame's color picker so the user can pick a custom
              colour, plus a hint to rename via the label. */
@@ -2046,6 +2397,26 @@ export default function Board() {
                 value={frame.color}
                 onChange={(c) => setFrameColor(frame.id, c)}
               />
+              <div className="boardFrameFillToggle" aria-label="Frame fill">
+                <button
+                  className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'translucent' ? 'active' : ''}`}
+                  onClick={() => setFrameFillMode(frame.id, 'translucent')}
+                  type="button"
+                  title="Transparent fill"
+                  aria-label="Transparent fill"
+                >
+                  <FrameIcon size={13} />
+                </button>
+                <button
+                  className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'solid' ? 'active' : ''}`}
+                  onClick={() => setFrameFillMode(frame.id, 'solid')}
+                  type="button"
+                  title="Solid fill"
+                  aria-label="Solid fill"
+                >
+                  <Layers size={13} />
+                </button>
+              </div>
             </div>
           );
         })()}
@@ -2055,7 +2426,7 @@ export default function Board() {
           ref={wrapperRef}
           className={`boardWrapper boardCursor-${tool}${
             isPanning ? ' isPanning' : ''
-          }${arrowSource ? ' boardArrowDrawing' : ''}`}
+          }${arrowSource || arrowPointSource ? ' boardArrowDrawing' : ''}`}
           style={{
             backgroundSize: `${48 * viewport.zoom}px ${48 * viewport.zoom}px`,
             backgroundPosition: `${viewport.x}px ${viewport.y}px`,
@@ -2079,6 +2450,7 @@ export default function Board() {
                 frame={frame}
                 selected={selectedFrameId === frame.id}
                 editing={editingFrameId === frame.id}
+                zoom={viewport.zoom}
                 onClick={(e) => handleFrameClick(e, frame)}
                 onMouseDown={(e) => handleFrameMouseDown(e, frame)}
                 onLabelDoubleClick={() => handleFrameLabelDoubleClick(frame.id)}
@@ -2095,19 +2467,24 @@ export default function Board() {
                   top: Math.min(frameDraft.y1, frameDraft.y2),
                   width: Math.abs(frameDraft.x2 - frameDraft.x1),
                   height: Math.abs(frameDraft.y2 - frameDraft.y1),
+                  borderWidth: 2 / viewport.zoom,
                 }}
               />
             )}
 
             <ArrowsLayer
               nodes={nodes}
+              frames={frames}
               edges={edges}
               bounds={nodeBounds}
+              zoom={viewport.zoom}
               arrowSource={arrowSource}
+              arrowPointSource={arrowPointSource}
               mousePos={mousePos}
               selectedEdgeId={selectedEdgeId}
               onSelectEdge={selectEdge}
               onRemoveEdge={removeEdge}
+              onEdgeEndpointMouseDown={handleEdgeEndpointMouseDown}
             />
             {(() => {
               const selected = selectedId
