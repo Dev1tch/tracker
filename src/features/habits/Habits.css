@@ -10,9 +10,79 @@
 
 .habitHeader {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
   flex-shrink: 0;
+}
+
+.habitMonthChooser {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  --habit-month-grid-line: var(--surface-14);
+}
+
+.habitMonthChooserHeader {
+  width: 46px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.habitMonthChooserHeader .monthNavBtn {
+  width: 24px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.habitMonthGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 64px);
+  gap: 0;
+}
+
+.habitMonthBtn {
+  height: 24px;
+  border: none;
+  border-left: 2px solid var(--habit-month-grid-line);
+  border-top: 2px solid var(--habit-month-grid-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.habitMonthBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--habit-month-grid-line);
+  background: var(--surface-05);
+}
+
+.habitMonthBtn:nth-child(6n) {
+  border-right: 2px solid var(--habit-month-grid-line);
+}
+
+.habitMonthBtn:nth-last-child(-n + 6) {
+  border-bottom: 2px solid var(--habit-month-grid-line);
+}
+
+.habitMonthBtn.active {
+  border-color: var(--surface-contrast);
+  box-shadow: inset 0 0 0 1px var(--surface-contrast);
+  color: var(--text-primary);
 }
 
 .habitToolbar {
@@ -21,6 +91,10 @@
   margin-bottom: 20px;
   align-items: center;
   flex-shrink: 0;
+}
+
+.habitToolbar .habitMonthChooser {
+  margin-left: auto;
 }
 
 .searchInput {
@@ -36,6 +110,7 @@
   overflow-y: auto;
   flex: 1;
   position: relative;
+  --habit-grid-line: var(--surface-14);
   /* border-top: 1px solid var(--surface-10); */
   /* border-bottom: 1px solid var(--surface-10); */
 }
@@ -44,7 +119,6 @@
   display: flex;
   align-items: center;
   padding: 15px 0;
-  border-bottom: 1px solid var(--surface-10);
   position: sticky;
   top: 0;
   background: var(--bg-color); /* Match page background */
@@ -86,26 +160,28 @@
 }
 
 .timetableDaysHeader {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(31, minmax(0, 1fr));
   flex: 1;
-  padding: 0 10px;
+  padding: 0;
 }
 
 .timetableDayLabel {
-  flex: 1;
   min-width: 0;
   text-align: center;
   font-size: 10px;
   color: var(--text-tertiary);
   padding: 0;
-  border-left: 1px solid var(--surface-05);
-  border-right: 1px solid var(--surface-05);
-  margin-left: -1px;
+  border-left: 2px solid var(--habit-grid-line);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
+}
+
+.timetableDayLabel:last-child {
+  border-right: 2px solid var(--habit-grid-line);
 }
 
 .dayNameShort {
@@ -119,10 +195,6 @@
   font-size: 12px;
 }
 
-.timetableDayLabel.weekStart {
-  border-left: 2px solid var(--surface-contrast); /* Full white for prominence */
-}
-
 .timetableDayLabel.todayLabel {
   color: var(--text-primary);
   font-weight: bold;
@@ -133,7 +205,6 @@
   display: flex;
   align-items: stretch;
   padding: 0;
-  border-bottom: 1px solid var(--surface-05);
   transition: background 0.2s;
   position: relative;
   z-index: 1;
@@ -153,6 +224,7 @@
   min-width: 250px;
   max-width: 250px;
   padding: 5px 35px 5px 20px;
+  border-bottom: 2px solid var(--habit-grid-line);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -160,6 +232,10 @@
   gap: 8px;
   position: relative;
   box-sizing: border-box;
+}
+
+.timetableRow:first-child .timetableHabitInfo {
+  border-top: 2px solid var(--habit-grid-line);
 }
 
 .clickableText {
@@ -249,9 +325,11 @@
 }
 
 .timetableGrid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(31, minmax(0, 1fr));
   flex: 1;
-  padding: 0 10px;
+  padding: 0;
+  align-items: stretch;
 }
 
 /* Checkbox Button */
@@ -288,19 +366,25 @@
 
 /* Day Cubes Grid */
 .dayCube {
-  flex: 1;
-  aspect-ratio: 1 / 1;
+  min-height: 52px;
   min-width: 0;
   background: transparent;
-  border-left: 1px solid var(--surface-05);
-  border-right: 1px solid var(--surface-05);
-  margin-left: -1px; /* Overlap borders */
+  border-left: 2px solid var(--habit-grid-line);
+  border-bottom: 2px solid var(--habit-grid-line);
   cursor: pointer;
   transition: var(--transition-fast);
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.dayCube:last-child {
+  border-right: 2px solid var(--habit-grid-line);
+}
+
+.timetableRow:first-child .dayCube {
+  border-top: 2px solid var(--habit-grid-line);
 }
 
 .dayCube:hover {
@@ -330,7 +414,7 @@
 .dayCube.today:hover {
   transform: none;
   z-index: 10;
-  border-color: var(--surface-05); /* Reset border */
+  border-color: var(--habit-grid-line); /* Reset border */
   box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast);
 }
 
@@ -374,66 +458,37 @@
   box-shadow: inset 2px 0 0 0 var(--surface-contrast), inset -2px 0 0 0 var(--surface-contrast), inset 0 2px 0 0 var(--surface-contrast), inset 0 -2px 0 0 var(--surface-contrast), 0 0 10px var(--glow-color);
 }
 
-.dayCube.weekStart {
-  border-left: 2px solid var(--surface-contrast); /* Full white for prominence */
-}
-
-.dayCube.weekStart:hover,
-.dayCube.weekStart.today:hover,
-.timetableRow:first-child .dayCube.weekStart.today:hover,
-.timetableRow:last-child .dayCube.weekStart.today:hover {
-  border-left-color: var(--surface-40);
-}
-
-.dayCube.weekStart:not(.today):hover::before {
-  background: var(--surface-40);
-}
-
-.dayCube.weekStart.today:hover::before {
-  box-shadow: -2px 0 0 0 var(--surface-40);
-}
-
-/* Bridge the 1px habit-row separator so the today outline and week separator
-   read as single continuous vertical lines instead of stacked per-cube segments. */
+/* Bridge the habit-row separator so the today outline reads as a single
+   continuous vertical line instead of stacked per-cube segments. */
 .dayCube.today::before,
-.dayCube.today::after,
-.dayCube.weekStart::before {
+.dayCube.today::after {
   content: '';
   position: absolute;
-  bottom: -1px;
-  height: 1px;
+  bottom: -2px;
+  height: 2px;
   width: 2px;
   background: var(--surface-contrast);
   pointer-events: none;
-  z-index: 2;
+  z-index: 12;
 }
 
 .dayCube.today::before { left: 0; }
 .dayCube.today::after { right: 0; }
-.dayCube.weekStart::before { left: -2px; }
-
-/* When a cube is both weekStart and today, draw the weekStart extension via a
-   box-shadow copy of the today ::before so we still get both stripes bridged. */
-.dayCube.weekStart.today::before {
-  left: 0;
-  box-shadow: -2px 0 0 0 var(--surface-contrast);
-}
 
 .timetableRow:last-child .dayCube.today::before,
-.timetableRow:last-child .dayCube.today::after,
-.timetableRow:last-child .dayCube.weekStart::before {
+.timetableRow:last-child .dayCube.today::after {
   display: none;
 }
 
 .dayCube.future {
-  opacity: 0.3;
-  cursor: var(--cursor-unavail), not-allowed;
-  border-color: transparent;
+  cursor: default;
 }
 
 .dayCube.future:hover {
   transform: none;
-  border-color: var(--surface-05);
+  outline: none;
+  border-color: var(--habit-grid-line);
+  z-index: 1;
 }
 
 /* Modal Styles */
@@ -743,23 +798,11 @@ html[data-theme="light"] .statusIndicator.success svg * {
   stroke: #ffffff !important;
 }
 
-/* Light mode: weekStart stripes and today column outlines need explicit black so the
-   left/right/top/bottom frame of the active day reads clearly on the bright canvas.
-   We match every first/last/only/hover variant because the original rules use chained
-   class selectors with higher specificity than a plain html[data-theme="light"]. */
-html[data-theme="light"] .timetableDayLabel.weekStart,
-html[data-theme="light"] .dayCube.weekStart {
-  border-left-color: #000000 !important;
-}
-
+/* Light mode: today column outlines need explicit black so the left/right/top/bottom
+   frame of the active day reads clearly on the bright canvas. */
 html[data-theme="light"] .dayCube.today::before,
-html[data-theme="light"] .dayCube.today::after,
-html[data-theme="light"] .dayCube.weekStart::before {
+html[data-theme="light"] .dayCube.today::after {
   background: #000000 !important;
-}
-
-html[data-theme="light"] .dayCube.weekStart.today::before {
-  box-shadow: -2px 0 0 0 #000000 !important;
 }
 
 html[data-theme="light"] .habitTimetable .dayCube.today {

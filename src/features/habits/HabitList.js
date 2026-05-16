@@ -1,7 +1,7 @@
 import React from 'react';
-import { Check, X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Check, X, Trash2 } from 'lucide-react';
 
-export default function HabitList({ habits, categories, logs, days, onToggleToday, onOpenDay, onPrevPeriod, onNextPeriod, onDelete, onEdit, onEditCategory }) {
+export default function HabitList({ habits, categories, logs, days, onToggleToday, onOpenDay, onDelete, onEdit, onEditCategory }) {
   if (days.length === 0) return null;
   
   const getHeaderLabel = () => {
@@ -36,13 +36,7 @@ export default function HabitList({ habits, categories, logs, days, onToggleToda
     <div className="habitTimetable">
       <div className="timetableHeaderRow">
         <div className="timetableMonthHeader">
-          <button className="monthNavBtn" onClick={onPrevPeriod} title="Previous">
-            <ChevronLeft size={16} />
-          </button>
           <span>{headerLabel}</span>
-          <button className="monthNavBtn" onClick={onNextPeriod} title="Next">
-            <ChevronRight size={16} />
-          </button>
         </div>
         <div className="timetableDaysHeader">
           {days.map((date) => {

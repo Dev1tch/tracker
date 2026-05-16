@@ -676,18 +676,18 @@
 
 .tasksBoardScroller::-webkit-scrollbar {
   height: 3px;
-  cursor: var(--cursor-horizontal), ew-resize;
+  cursor: ew-resize;
 }
 
 .tasksBoardScroller::-webkit-scrollbar-track {
   background: transparent;
-  cursor: var(--cursor-horizontal), ew-resize;
+  cursor: ew-resize;
 }
 
 .tasksBoardScroller::-webkit-scrollbar-thumb {
   background: var(--surface-25);
   border-radius: 10px;
-  cursor: var(--cursor-horizontal), ew-resize;
+  cursor: ew-resize;
 }
 
 .tasksBoardScroller::-webkit-scrollbar-thumb:hover {
@@ -734,14 +734,14 @@
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  cursor: var(--cursor-move), move;
+  cursor: move;
   user-select: none;
   transition: opacity 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 
 .tasksColumnHeader:active,
 .tasksColumnHeader.isDragging {
-  cursor: var(--cursor-move), move;
+  cursor: move;
 }
 
 .tasksColumnHeader.isDragging {
@@ -826,7 +826,7 @@
 
 body.tasksDragging,
 body.tasksDragging * {
-  cursor: var(--cursor-move), move !important;
+  cursor: move !important;
 }
 
 .status-todo .tasksColumnHeader {
@@ -870,7 +870,7 @@ body.tasksDragging * {
 }
 
 .tasksCard[draggable="true"] {
-  cursor: var(--cursor-move), move;
+  cursor: move;
 }
 
 .tasksCard.hasTypeAccent,

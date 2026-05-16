@@ -172,7 +172,7 @@
 .mobileDayCol.futureCol {
   opacity: 0.3;
   pointer-events: none;
-  cursor: var(--cursor-unavail), not-allowed;
+  cursor: not-allowed;
 }
 
 .statusIndicator {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
 import './Habits.css';
 import { habitsApi, logsApi } from '@/lib/api';
 import HabitList from './HabitList';
@@ -15,6 +15,8 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import HabitEditModal from './components/HabitEditModal';
 import CategoryEditModal from './components/CategoryEditModal';
 import { useToast } from '@/components/ui/ToastProvider';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default function HabitTracker() {
   const isMobile = useIsMobile(768);
@@ -203,7 +205,7 @@ export default function HabitTracker() {
       if (isMobile) {
         newDate.setDate(prev.getDate() - 7);
       } else {
-        newDate.setMonth(prev.getMonth() - 1);
+        newDate.setFullYear(prev.getFullYear(), prev.getMonth() - 1, 1);
       }
       return newDate;
     });
@@ -215,10 +217,22 @@ export default function HabitTracker() {
       if (isMobile) {
         newDate.setDate(prev.getDate() + 7);
       } else {
-        newDate.setMonth(prev.getMonth() + 1);
+        newDate.setFullYear(prev.getFullYear(), prev.getMonth() + 1, 1);
       }
       return newDate;
     });
+  };
+
+  const handleSelectMonth = (monthIndex) => {
+    setCurrentDisplayDate(prev => new Date(prev.getFullYear(), monthIndex, 1));
+  };
+
+  const handlePrevYear = () => {
+    setCurrentDisplayDate(prev => new Date(prev.getFullYear() - 1, prev.getMonth(), 1));
+  };
+
+  const handleNextYear = () => {
+    setCurrentDisplayDate(prev => new Date(prev.getFullYear() + 1, prev.getMonth(), 1));
   };
 
   const handleOpenDay = (habit, date) => {
@@ -394,6 +408,32 @@ export default function HabitTracker() {
               placeholder="Sort Options"
             />
           </div>
+
+          {!isMobile && (
+            <div className="habitMonthChooser" aria-label="Choose month">
+              <div className="habitMonthChooserHeader">
+                <button className="monthNavBtn" onClick={handlePrevYear} title="Previous Year" aria-label="Previous Year">
+                  <ChevronUp size={15} />
+                </button>
+                <span>{currentDisplayDate.getFullYear()}</span>
+                <button className="monthNavBtn" onClick={handleNextYear} title="Next Year" aria-label="Next Year">
+                  <ChevronDown size={15} />
+                </button>
+              </div>
+              <div className="habitMonthGrid">
+                {MONTHS.map((month, index) => (
+                  <button
+                    key={month}
+                    className={`habitMonthBtn ${index === currentDisplayDate.getMonth() ? 'active' : ''}`}
+                    onClick={() => handleSelectMonth(index)}
+                    type="button"
+                  >
+                    {month}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {isMobile && (
@@ -433,8 +473,6 @@ export default function HabitTracker() {
           days={getDisplayDates()} 
           onToggleToday={handleToggleToday}
           onOpenDay={handleOpenDay}
-          onPrevPeriod={handlePrevPeriod}
-          onNextPeriod={handleNextPeriod}
           onDelete={setHabitToDelete}
           onEdit={setHabitToEdit}
           onEditCategory={setCategoryToEdit}

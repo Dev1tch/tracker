@@ -62,23 +62,6 @@
   --transition-smooth: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: all 0.4s ease;
 
-  --cursor-arrow: url('/cursors/arrow.cur');
-  --cursor-busy: url('/cursors/busy.ani');
-  --cursor-working: url('/cursors/working.ani');
-  --cursor-link: url('/cursors/link.cur');
-  --cursor-text: url('/cursors/text.cur');
-  --cursor-unavail: url('/cursors/unavail.cur');
-  --cursor-cross: url('/cursors/cross.cur');
-  --cursor-help: url('/cursors/helpsel.cur');
-  --cursor-move: url('/cursors/up.cur');
-  --cursor-pen: url('/cursors/pen.cur');
-  --cursor-person: url('/cursors/person.cur');
-  --cursor-pin: url('/cursors/pin.cur');
-  --cursor-up: url('/cursors/up.cur');
-  --cursor-horizontal: url('/cursors/horizontal.cur');
-  --cursor-vertical: url('/cursors/vertical.cur');
-  --cursor-dgn1: url('/cursors/dgn1.cur');
-  --cursor-dgn2: url('/cursors/dgn2.cur');
 }
 
 html[data-theme="light"] {
@@ -127,7 +110,6 @@ html, body {
   font-family: var(--font-main);
   min-height: 100vh;
   width: 100%;
-  cursor: var(--cursor-arrow), auto;
   transition:
     background-color 0.45s ease,
     color 0.3s ease;
@@ -164,18 +146,18 @@ input[type="color"]:not(:disabled),
 .mobileDayCol:not(.futureCol),
 .weekGridSlot,
 .account-trigger {
-  cursor: var(--cursor-link), pointer !important;
+  cursor: pointer !important;
 }
 
 input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 textarea,
 [contenteditable="true"] {
-  cursor: var(--cursor-text), text;
+  cursor: text;
 }
 
 :disabled,
 [aria-disabled="true"] {
-  cursor: var(--cursor-unavail), not-allowed !important;
+  cursor: not-allowed !important;
 }
 
 [aria-busy="true"],
@@ -183,92 +165,92 @@ textarea,
 .cursor-working,
 .spin,
 .infinite-spin {
-  cursor: var(--cursor-working), progress !important;
+  cursor: progress !important;
 }
 
 [data-cursor="busy"],
 .cursor-busy {
-  cursor: var(--cursor-busy), wait !important;
+  cursor: wait !important;
 }
 
 [draggable="true"],
 [data-cursor="move"],
 .cursor-move {
-  cursor: var(--cursor-move), move !important;
+  cursor: move !important;
 }
 
 [data-cursor="cross"],
 .cursor-cross {
-  cursor: var(--cursor-cross), crosshair !important;
+  cursor: crosshair !important;
 }
 
 [data-cursor="help"],
 .cursor-help {
-  cursor: var(--cursor-help), help !important;
+  cursor: help !important;
 }
 
 [data-cursor="pen"],
 .cursor-pen {
-  cursor: var(--cursor-pen), crosshair !important;
+  cursor: crosshair !important;
 }
 
 [data-cursor="person"],
 .cursor-person {
-  cursor: var(--cursor-person), pointer !important;
+  cursor: pointer !important;
 }
 
 [data-cursor="pin"],
 .cursor-pin {
-  cursor: var(--cursor-pin), pointer !important;
+  cursor: pointer !important;
 }
 
 [data-cursor="up"],
 .cursor-up {
-  cursor: var(--cursor-up), n-resize !important;
+  cursor: n-resize !important;
 }
 
 [data-cursor="horizontal"],
 .cursor-horizontal,
 .cursor-col-resize {
-  cursor: var(--cursor-horizontal), ew-resize !important;
+  cursor: ew-resize !important;
 }
 
 [data-cursor="vertical"],
 .cursor-vertical,
 .cursor-row-resize {
-  cursor: var(--cursor-vertical), ns-resize !important;
+  cursor: ns-resize !important;
 }
 
 [data-cursor="dgn1"],
 .cursor-dgn1,
 .cursor-nwse-resize {
-  cursor: var(--cursor-dgn1), nwse-resize !important;
+  cursor: nwse-resize !important;
 }
 
 [data-cursor="dgn2"],
 .cursor-dgn2,
 .cursor-nesw-resize {
-  cursor: var(--cursor-dgn2), nesw-resize !important;
+  cursor: nesw-resize !important;
 }
 
 [data-cursor="arrow"],
 .cursor-arrow {
-  cursor: var(--cursor-arrow), auto !important;
+  cursor: auto !important;
 }
 
 [data-cursor="link"],
 .cursor-link {
-  cursor: var(--cursor-link), pointer !important;
+  cursor: pointer !important;
 }
 
 [data-cursor="text"],
 .cursor-text {
-  cursor: var(--cursor-text), text !important;
+  cursor: text !important;
 }
 
 [data-cursor="unavail"],
 .cursor-unavail {
-  cursor: var(--cursor-unavail), not-allowed !important;
+  cursor: not-allowed !important;
 }
 
 /* Base Typography */

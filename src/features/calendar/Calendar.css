@@ -472,7 +472,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  cursor: var(--cursor-link), pointer;
+  cursor: pointer;
   padding: 4px 0;
   margin-bottom: 4px;
   transition: var(--transition-fast);
@@ -498,7 +498,7 @@
   background: transparent;
   border: none;
   color: var(--text-tertiary);
-  cursor: var(--cursor-link), pointer;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -516,7 +516,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  cursor: var(--cursor-link), pointer;
+  cursor: pointer;
   transition: var(--transition-fast);
   padding: 4px 8px;
   border-left: 3px solid var(--toggle-color, transparent);
@@ -537,7 +537,7 @@
   border: 1.5px solid var(--border-color);
   border-radius: 3px;
   background: var(--surface-02);
-  cursor: var(--cursor-link), pointer;
+  cursor: pointer;
   position: relative;
   transition: var(--transition-fast);
   flex-shrink: 0;
