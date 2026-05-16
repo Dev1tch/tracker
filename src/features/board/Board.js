@@ -8,14 +8,21 @@ import React, {
   useState,
 } from 'react';
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   ArrowRight,
+  Bold,
   Frame as FrameIcon,
   Image as ImageIcon,
+  Italic,
   Layers,
+  List,
   Maximize,
   MousePointer2,
   Trash2,
   Type,
+  Underline,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -213,6 +220,10 @@ function TextNode({
         height: node.h,
         fontSize: node.fontSize ? `${node.fontSize}px` : undefined,
         color: node.color || undefined,
+        fontWeight: node.bold ? 700 : undefined,
+        fontStyle: node.italic ? 'italic' : undefined,
+        textDecoration: node.underline ? 'underline' : undefined,
+        textAlign: node.align || undefined,
         lineHeight: 1.3,
         transform: nodeTransform(node),
         transformOrigin: 'center',
@@ -936,6 +947,12 @@ function ArrowsLayer({
                 <circle
                   cx={mid.x}
                   cy={mid.y}
+                  r={deleteRadius + strokeWidth}
+                  className="boardArrowDeleteMask"
+                />
+                <circle
+                  cx={mid.x}
+                  cy={mid.y}
                   r={deleteRadius}
                   className="boardArrowDeleteCircle"
                   style={{ strokeWidth: deleteStrokeWidth }}
@@ -1409,6 +1426,8 @@ export default function Board() {
       if (
         t.closest &&
         (t.closest('.boardTextNode.editing') ||
+          t.closest('.boardSelectionFrame') ||
+          t.closest('.boardTextFloatingToolbar') ||
           t.closest('.boardToolbarPopout') ||
           t.closest('.salColorPickerWrap') ||
           t.closest('.salColorPickerPopover'))
@@ -1503,6 +1522,7 @@ export default function Board() {
         content,
         href: href || undefined,
         fontSize,
+        align: 'left',
       },
     ]);
     setEditingId(null);
@@ -1524,6 +1544,18 @@ export default function Board() {
         n.id === id && n.type === 'text' ? { ...n, color } : n
       )
     );
+  }
+
+  function updateTextStyle(id, patch) {
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id && n.type === 'text' ? { ...n, ...patch } : n
+      )
+    );
+  }
+
+  function toggleBulletList() {
+    document.execCommand('insertUnorderedList');
   }
 
   const addImageNode = useCallback((dataUrl, worldX, worldY) => {
@@ -2326,34 +2358,6 @@ export default function Board() {
         </aside>
 
         {(() => {
-          if (!editingId) return null;
-          const node = nodes.find((n) => n.id === editingId);
-          if (!node || node.type !== 'text') return null;
-          const fontSize = Math.round(node.fontSize || 16);
-          return (
-            <div className="boardToolbarPopout" aria-label="Text formatting">
-              <input
-                type="number"
-                className="boardPopoutSize"
-                min={8}
-                max={120}
-                value={fontSize}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  if (Number.isFinite(v)) setTextFontSize(editingId, v);
-                }}
-                aria-label="Font size"
-              />
-              <span className="boardPopoutDivider" aria-hidden="true" />
-              <ColorPicker
-                value={node.color || '#ffffff'}
-                onChange={(c) => changeTextColor(editingId, c)}
-              />
-            </div>
-          );
-        })()}
-
-        {(() => {
           if (!selectedEdgeId || editingId || editingFrameId) return null;
           const edge = edges.find((item) => item.id === selectedEdgeId);
           if (!edge) return null;
@@ -2490,7 +2494,7 @@ export default function Board() {
               const selected = selectedId
                 ? nodes.find((n) => n.id === selectedId)
                 : null;
-              if (!selected || editingId === selected.id) return null;
+              if (!selected) return null;
               return (
                 <SelectionFrame
                   node={selected}
@@ -2499,6 +2503,98 @@ export default function Board() {
                   onResizeStart={handleResizeStart}
                   onRotateStart={handleRotateStart}
                 />
+              );
+            })()}
+
+            {(() => {
+              if (!editingId) return null;
+              const node = nodes.find((item) => item.id === editingId);
+              if (!node || node.type !== 'text') return null;
+              const size = nodeSize(node, nodeBounds);
+              const fontSize = Math.round(node.fontSize || 16);
+              const toolbarScale = 1 / viewport.zoom;
+              return (
+                <div
+                  className="boardTextFloatingToolbar"
+                  style={{
+                    left: node.x + size.w / 2,
+                    top: node.y - 10 / viewport.zoom,
+                    transform: `translate(-50%, -100%) scale(${toolbarScale})`,
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="number"
+                    className="boardPopoutSize"
+                    min={8}
+                    max={120}
+                    value={fontSize}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      if (Number.isFinite(v)) setTextFontSize(editingId, v);
+                    }}
+                    aria-label="Font size"
+                  />
+                  <button
+                    type="button"
+                    className={`boardTextFormatBtn ${node.bold ? 'active' : ''}`}
+                    onClick={() => updateTextStyle(editingId, { bold: !node.bold })}
+                    title="Bold"
+                    aria-label="Bold"
+                  >
+                    <Bold size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`boardTextFormatBtn ${node.italic ? 'active' : ''}`}
+                    onClick={() => updateTextStyle(editingId, { italic: !node.italic })}
+                    title="Italic"
+                    aria-label="Italic"
+                  >
+                    <Italic size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`boardTextFormatBtn ${node.underline ? 'active' : ''}`}
+                    onClick={() => updateTextStyle(editingId, { underline: !node.underline })}
+                    title="Underline"
+                    aria-label="Underline"
+                  >
+                    <Underline size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="boardTextFormatBtn"
+                    onClick={toggleBulletList}
+                    title="Bullet list"
+                    aria-label="Bullet list"
+                  >
+                    <List size={15} />
+                  </button>
+                  <span className="boardPopoutDivider" aria-hidden="true" />
+                  {[
+                    ['left', AlignLeft],
+                    ['center', AlignCenter],
+                    ['right', AlignRight],
+                  ].map(([align, Icon]) => (
+                    <button
+                      key={align}
+                      type="button"
+                      className={`boardTextFormatBtn ${(node.align || 'left') === align ? 'active' : ''}`}
+                      onClick={() => updateTextStyle(editingId, { align })}
+                      title={`Align ${align}`}
+                      aria-label={`Align ${align}`}
+                    >
+                      <Icon size={15} />
+                    </button>
+                  ))}
+                  <span className="boardPopoutDivider" aria-hidden="true" />
+                  <ColorPicker
+                    value={node.color || '#ffffff'}
+                    onChange={(c) => changeTextColor(editingId, c)}
+                  />
+                </div>
               );
             })()}
 

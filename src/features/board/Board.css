@@ -298,11 +298,16 @@
   cursor: pointer;
 }
 
+.boardArrowDeleteMask {
+  fill: var(--bg-color);
+  stroke: none;
+}
+
 .boardArrowDeleteCircle {
   fill: var(--panel-solid);
   stroke: var(--text-primary);
   stroke-width: 1.2;
-  transition: fill 120ms ease;
+  transition: stroke 120ms ease, fill 120ms ease;
 }
 
 .boardArrowDeleteBtn:hover .boardArrowDeleteCircle {
@@ -530,6 +535,17 @@
   min-height: 1.2em;
 }
 
+.boardTextContent ul,
+.boardTextContent ol {
+  margin: 0;
+  padding-left: 1.35em;
+  list-style-position: inside;
+}
+
+.boardTextContent li {
+  margin: 0;
+}
+
 .boardTextLink {
   color: #60a5fa;
   text-decoration: underline;
@@ -633,6 +649,47 @@
 .boardToolbarPopout .salColorPickerBtn {
   width: 24px;
   height: 24px;
+}
+
+.boardTextFloatingToolbar {
+  position: absolute;
+  z-index: 20;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-color-dim);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38);
+  transform-origin: center bottom;
+}
+
+.boardTextFloatingToolbar .salColorPickerBtn {
+  width: 24px;
+  height: 24px;
+}
+
+.boardTextFormatBtn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: var(--transition-fast);
+}
+
+.boardTextFormatBtn:hover,
+.boardTextFormatBtn.active {
+  color: var(--text-primary);
+  background: var(--surface-10);
+  border-color: var(--surface-25);
 }
 
 .boardFrameFillToggle {
