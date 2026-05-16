@@ -322,33 +322,69 @@ function rectFromBox(x, y, w, h) {
 function verticalGuide(x, moving, target) {
   return {
     x,
-    y1: Math.min(moving.top, target.top) - ALIGN_GUIDE_PADDING,
-    y2: Math.max(moving.bottom, target.bottom) + ALIGN_GUIDE_PADDING,
+    y1: Math.min(moving.top, target.top),
+    y2: Math.max(moving.bottom, target.bottom),
   };
 }
 
 function horizontalGuide(y, moving, target) {
   return {
     y,
-    x1: Math.min(moving.left, target.left) - ALIGN_GUIDE_PADDING,
-    x2: Math.max(moving.right, target.right) + ALIGN_GUIDE_PADDING,
+    x1: Math.min(moving.left, target.left),
+    x2: Math.max(moving.right, target.right),
   };
 }
 
-function spacingHorizontalGuide(moving, neighbor) {
-  return {
-    y: moving.centerY,
-    x1: Math.min(moving.right, neighbor.right, moving.left, neighbor.left),
-    x2: Math.max(moving.right, neighbor.right, moving.left, neighbor.left),
-  };
+function horizontalSegment(y, x1, x2) {
+  return { y, x1: Math.min(x1, x2), x2: Math.max(x1, x2), kind: 'spacing' };
 }
 
-function spacingVerticalGuide(moving, neighbor) {
-  return {
-    x: moving.centerX,
-    y1: Math.min(moving.bottom, neighbor.bottom, moving.top, neighbor.top),
-    y2: Math.max(moving.bottom, neighbor.bottom, moving.top, neighbor.top),
-  };
+function verticalSegment(x, y1, y2) {
+  return { x, y1: Math.min(y1, y2), y2: Math.max(y1, y2), kind: 'spacing' };
+}
+
+/* Each spacing guide line sits INSIDE the gap it measures — placed at the
+   vertical (or horizontal) midpoint of the two items it spans — instead of
+   being parked on a single ruler below/beside all items. Reading order:
+   gap A↔B has its line floating between A and B; gap B↔C has its own line
+   between B and C. Two same-length parallel lines = visual confirmation
+   that the spacings are equal. */
+function spacingHorizontalGuides(moving, left, right, side) {
+  const staticY = (left.centerY + right.centerY) / 2;
+  const movingGap = side === 'before'
+    ? horizontalSegment(
+        (moving.centerY + left.centerY) / 2,
+        moving.right,
+        left.left
+      )
+    : horizontalSegment(
+        (moving.centerY + right.centerY) / 2,
+        right.right,
+        moving.left
+      );
+  return [
+    horizontalSegment(staticY, left.right, right.left),
+    movingGap,
+  ];
+}
+
+function spacingVerticalGuides(moving, top, bottom, side) {
+  const staticX = (top.centerX + bottom.centerX) / 2;
+  const movingGap = side === 'before'
+    ? verticalSegment(
+        (moving.centerX + top.centerX) / 2,
+        moving.bottom,
+        top.top
+      )
+    : verticalSegment(
+        (moving.centerX + bottom.centerX) / 2,
+        bottom.bottom,
+        moving.top
+      );
+  return [
+    verticalSegment(staticX, top.bottom, bottom.top),
+    movingGap,
+  ];
 }
 
 function getWheelZoomFactor(deltaY) {
@@ -420,8 +456,8 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
       const horizontalGap = right.left - left.right;
       if (horizontalGap > 0) {
         [
-          { x: left.left - horizontalGap - moving.right + moving.left, neighbor: left },
-          { x: right.right + horizontalGap, neighbor: right },
+          { x: left.left - horizontalGap - moving.right + moving.left, left, right, side: 'before' },
+          { x: right.right + horizontalGap, left, right, side: 'after' },
         ].forEach((candidate) => {
           const distance = Math.abs(nextX - candidate.x);
           if (distance <= tolerance && (!spacingX || distance < spacingX.distance)) {
@@ -435,8 +471,8 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
       const verticalGap = bottom.top - top.bottom;
       if (verticalGap > 0) {
         [
-          { y: top.top - verticalGap - moving.bottom + moving.top, neighbor: top },
-          { y: bottom.bottom + verticalGap, neighbor: bottom },
+          { y: top.top - verticalGap - moving.bottom + moving.top, top, bottom, side: 'before' },
+          { y: bottom.bottom + verticalGap, top, bottom, side: 'after' },
         ].forEach((candidate) => {
           const distance = Math.abs(nextY - candidate.y);
           if (distance <= tolerance && (!spacingY || distance < spacingY.distance)) {
@@ -447,30 +483,29 @@ function getDragAlignmentGuides(node, nextX, nextY, nodes, bounds, tolerance) {
     }
   }
 
-  if (spacingX && (!vertical || spacingX.distance < vertical.distance)) {
-    const snappedMoving = nodeRectAt(node, bounds, spacingX.x, nextY);
-    vertical = null;
-    spacingX.guide = spacingHorizontalGuide(snappedMoving, spacingX.neighbor);
-  } else {
-    spacingX = null;
-  }
-
-  if (spacingY && (!horizontal || spacingY.distance < horizontal.distance)) {
-    const snappedMoving = nodeRectAt(node, bounds, spacingX ? spacingX.x : nextX, spacingY.y);
-    horizontal = null;
-    spacingY.guide = spacingVerticalGuide(snappedMoving, spacingY.neighbor);
-  } else {
-    spacingY = null;
-  }
+  if (spacingX && vertical && spacingX.distance >= vertical.distance) spacingX = null;
+  if (spacingY && horizontal && spacingY.distance >= horizontal.distance) spacingY = null;
 
   const finalX = spacingX ? spacingX.x : vertical ? vertical.snappedX : nextX;
   const finalY = spacingY ? spacingY.y : horizontal ? horizontal.snappedY : nextY;
   const snappedMoving = nodeRectAt(node, bounds, finalX, finalY);
+  const spacingHorizontal = spacingX
+    ? spacingHorizontalGuides(snappedMoving, spacingX.left, spacingX.right, spacingX.side)
+    : [];
+  const spacingVertical = spacingY
+    ? spacingVerticalGuides(snappedMoving, spacingY.top, spacingY.bottom, spacingY.side)
+    : [];
   return {
     x: finalX,
     y: finalY,
-    vertical: vertical ? [verticalGuide(vertical.x, snappedMoving, vertical.target)] : spacingY ? [spacingY.guide] : [],
-    horizontal: horizontal ? [horizontalGuide(horizontal.y, snappedMoving, horizontal.target)] : spacingX ? [spacingX.guide] : [],
+    vertical: [
+      ...(vertical ? [verticalGuide(vertical.x, snappedMoving, vertical.target)] : []),
+      ...spacingVertical,
+    ],
+    horizontal: [
+      ...(horizontal ? [horizontalGuide(horizontal.y, snappedMoving, horizontal.target)] : []),
+      ...spacingHorizontal,
+    ],
   };
 }
 
@@ -1128,11 +1163,12 @@ export default function Board() {
      starting state and the cumulative world-space mouse delta. Handles
      rotation by working in box-local (un-rotated) space.
 
-     When shiftKey is true, the aspect ratio is preserved:
+     By default the aspect ratio is preserved:
        - Corner handles: drag is projected onto the diagonal, both axes scale
          by the same factor.
        - Edge handles: the perpendicular axis scales proportionally to the
-         dragged axis. */
+         dragged axis.
+     Holding Shift allows freeform resizing. */
   function computeResize(start, handleId, delta, shiftKey = false) {
     const dir = HANDLE_DIRS[handleId];
     const hw = start.w / 2;
@@ -1166,8 +1202,10 @@ export default function Board() {
     let newHw = hw;
     let newHh = hh;
 
-    if (shiftKey && dir.sx !== 0 && dir.sy !== 0) {
-      // Corner with Shift: project drag onto the diagonal vector
+    const shouldPreserveAspect = !shiftKey;
+
+    if (shouldPreserveAspect && dir.sx !== 0 && dir.sy !== 0) {
+      // Corner: project drag onto the diagonal vector
       // (2*dir.sx*hw, 2*dir.sy*hh) and scale both half-sizes by the same s.
       const denom = 2 * (hw * hw + hh * hh) || 1;
       const s =
@@ -1176,8 +1214,8 @@ export default function Board() {
       const clamped = Math.max(minS, s);
       newHw = clamped * hw;
       newHh = clamped * hh;
-    } else if (shiftKey && (dir.sx !== 0 || dir.sy !== 0)) {
-      // Edge with Shift: scale the dragged axis, derive the other from
+    } else if (shouldPreserveAspect && (dir.sx !== 0 || dir.sy !== 0)) {
+      // Edge: scale the dragged axis, derive the other from
       // the original aspect ratio.
       if (dir.sx !== 0) {
         newHw = Math.max(MIN_NODE_SIZE / 2, (dir.sx * localX) / 2);
@@ -1665,7 +1703,7 @@ export default function Board() {
             {alignmentGuides.vertical.map((guide) => (
               <div
                 key={`v-${guide.x}-${guide.y1}-${guide.y2}`}
-                className="boardAlignmentGuide boardAlignmentGuideVertical"
+                className={`boardAlignmentGuide boardAlignmentGuideVertical ${guide.kind === 'spacing' ? 'boardAlignmentGuideSpacing' : ''}`}
                 style={{
                   left: guide.x,
                   top: guide.y1,
@@ -1677,7 +1715,7 @@ export default function Board() {
             {alignmentGuides.horizontal.map((guide) => (
               <div
                 key={`h-${guide.y}-${guide.x1}-${guide.x2}`}
-                className="boardAlignmentGuide boardAlignmentGuideHorizontal"
+                className={`boardAlignmentGuide boardAlignmentGuideHorizontal ${guide.kind === 'spacing' ? 'boardAlignmentGuideSpacing' : ''}`}
                 style={{
                   left: guide.x1,
                   top: guide.y,

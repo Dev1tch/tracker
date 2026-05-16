@@ -315,6 +315,44 @@
   box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
 }
 
+.boardAlignmentGuideSpacing::before,
+.boardAlignmentGuideSpacing::after {
+  content: '';
+  position: absolute;
+  background: #ef4444;
+  box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+}
+
+.boardAlignmentGuideHorizontal.boardAlignmentGuideSpacing::before,
+.boardAlignmentGuideHorizontal.boardAlignmentGuideSpacing::after {
+  top: -4px;
+  width: 1px;
+  height: 9px;
+}
+
+.boardAlignmentGuideHorizontal.boardAlignmentGuideSpacing::before {
+  left: 0;
+}
+
+.boardAlignmentGuideHorizontal.boardAlignmentGuideSpacing::after {
+  right: 0;
+}
+
+.boardAlignmentGuideVertical.boardAlignmentGuideSpacing::before,
+.boardAlignmentGuideVertical.boardAlignmentGuideSpacing::after {
+  left: -4px;
+  width: 9px;
+  height: 1px;
+}
+
+.boardAlignmentGuideVertical.boardAlignmentGuideSpacing::before {
+  top: 0;
+}
+
+.boardAlignmentGuideVertical.boardAlignmentGuideSpacing::after {
+  bottom: 0;
+}
+
 /* ---------- Generic node ---------- */
 .boardNode {
   position: absolute;
