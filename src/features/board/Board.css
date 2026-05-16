@@ -353,9 +353,94 @@
   bottom: 0;
 }
 
+/* ---------- Frame (grouping rectangle) ---------- */
+.boardFrame {
+  position: absolute;
+  border: 2px solid var(--frame-color, #f87171);
+  background: color-mix(in srgb, var(--frame-color, #f87171) 12%, transparent);
+  cursor: grab;
+  z-index: 0;
+  box-sizing: border-box;
+  transition: box-shadow 120ms ease;
+}
+
+.boardFrame:active {
+  cursor: grabbing;
+}
+
+.boardFrame.selected {
+  box-shadow: 0 0 0 1px var(--frame-color, #f87171),
+              0 0 12px color-mix(in srgb, var(--frame-color, #f87171) 40%, transparent);
+}
+
+.boardFrameLabel {
+  position: absolute;
+  bottom: 100%;
+  left: -2px;
+  margin-bottom: 4px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--frame-color, #f87171);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+  pointer-events: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  outline: none;
+  user-select: none;
+  line-height: 1.15;
+}
+
+.boardFrameLabel:active {
+  cursor: grabbing;
+}
+
+.boardFrameLabel.editing {
+  cursor: text;
+  user-select: text;
+  text-overflow: clip;
+  overflow: visible;
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--frame-color, #f87171) 70%, transparent);
+}
+
+/* Draft rectangle while drawing a new frame. */
+.boardFrameDraft {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Resize handles wrapper for a selected frame (mirrors .boardSelectionFrame
+   but with no rotate arm). */
+.boardFrameSelectionFrame {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Tool cursor for the Frame tool — crosshair to make the rectangle-drag
+   intent obvious. */
+.boardCursor-frame {
+  cursor: crosshair;
+}
+
+/* Popout label used in the frame-style popout next to the toolbar. */
+.boardPopoutLabel {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 0 4px;
+}
+
 /* ---------- Generic node ---------- */
 .boardNode {
   position: absolute;
+  z-index: 2;
   user-select: none;
   box-sizing: border-box;
   transition: box-shadow 120ms ease, border-color 120ms ease;

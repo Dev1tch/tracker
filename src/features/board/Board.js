@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import {
   ArrowRight,
+  Frame as FrameIcon,
   Image as ImageIcon,
   Maximize,
   MousePointer2,
@@ -25,6 +26,17 @@ const MAX_IMAGE_WIDTH = 320;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
 const MIN_NODE_SIZE = 30;
+const MIN_FRAME_SIZE = 60;
+const FRAME_COLORS = [
+  '#f87171', // red
+  '#60a5fa', // blue
+  '#34d399', // green
+  '#fbbf24', // amber
+  '#a78bfa', // violet
+  '#f472b6', // pink
+  '#2dd4bf', // teal
+  '#fb923c', // orange
+];
 const BOARD_HISTORY_LIMIT = 80;
 const WHEEL_ZOOM_STEP = 1.04;
 const MOUSE_WHEEL_ZOOM_STEP = 1.12;
@@ -54,22 +66,44 @@ function generateId() {
 
 function loadState() {
   if (typeof window === 'undefined') {
-    return { nodes: [], edges: [], viewport: DEFAULT_VIEWPORT };
+    return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { nodes: [], edges: [], viewport: DEFAULT_VIEWPORT };
+    if (!raw) return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
     const parsed = JSON.parse(raw);
     return {
       nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
       edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+      frames: Array.isArray(parsed.frames) ? parsed.frames : [],
       viewport: parsed.viewport && typeof parsed.viewport === 'object'
         ? { ...DEFAULT_VIEWPORT, ...parsed.viewport }
         : DEFAULT_VIEWPORT,
     };
   } catch {
-    return { nodes: [], edges: [], viewport: DEFAULT_VIEWPORT };
+    return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
   }
+}
+
+/* A node's center point — used to decide whether it sits inside a frame. */
+function nodeCenterCoords(node, bounds) {
+  const w = bounds[node.id]?.w ?? node.w ?? 100;
+  const h = bounds[node.id]?.h ?? node.h ?? 40;
+  return { x: node.x + w / 2, y: node.y + h / 2 };
+}
+
+function frameContains(frame, node, bounds) {
+  const c = nodeCenterCoords(node, bounds);
+  return (
+    c.x >= frame.x &&
+    c.x <= frame.x + frame.w &&
+    c.y >= frame.y &&
+    c.y <= frame.y + frame.h
+  );
+}
+
+function nodesInsideFrame(frame, nodes, bounds) {
+  return nodes.filter((n) => frameContains(frame, n, bounds));
 }
 
 function nodeTransform(node) {
@@ -801,16 +835,117 @@ function ArrowsLayer({
   );
 }
 
+/* ---------- Frame ----------
+   A frame is a transparent grouping rectangle with a colored border and a
+   floating label above its top-left corner. Membership is derived (any node
+   whose center lies inside the rect is "in" the frame), so adding/removing
+   members is just a matter of moving things in or out. */
+function FrameNode({
+  frame,
+  selected,
+  editing,
+  onMouseDown,
+  onClick,
+  onLabelDoubleClick,
+  onLabelCommit,
+}) {
+  const labelRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!editing) return;
+    const el = labelRef.current;
+    if (!el) return;
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, [editing]);
+
+  const labelFontSize = Math.round(Math.max(14, Math.min(72, frame.w * 0.055)));
+  const labelPaddingY = Math.max(5, Math.round(labelFontSize * 0.22));
+  const labelPaddingX = Math.max(12, Math.round(labelFontSize * 0.58));
+  const labelMaxWidth = Math.max(140, frame.w);
+
+  return (
+    <div
+      className={`boardFrame ${selected ? 'selected' : ''}`}
+      style={{
+        left: frame.x,
+        top: frame.y,
+        width: frame.w,
+        height: frame.h,
+        borderColor: frame.color,
+        '--frame-color': frame.color,
+      }}
+      onMouseDown={onMouseDown}
+      onClick={onClick}
+    >
+      <div
+        ref={labelRef}
+        className={`boardFrameLabel ${editing ? 'editing' : ''}`}
+        style={{
+          fontSize: `${labelFontSize}px`,
+          padding: `${labelPaddingY}px ${labelPaddingX}px`,
+          maxWidth: labelMaxWidth,
+        }}
+        contentEditable={editing}
+        suppressContentEditableWarning
+        onClick={(e) => {
+          if (editing) {
+            e.stopPropagation();
+            return;
+          }
+          e.stopPropagation();
+          onClick(e);
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onLabelDoubleClick();
+        }}
+        onMouseDown={(e) => {
+          // The label also works as a grab handle, while editing keeps text
+          // selection isolated from board dragging.
+          if (editing) {
+            e.stopPropagation();
+            return;
+          }
+          e.stopPropagation();
+          onMouseDown(e);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+        onBlur={(e) => onLabelCommit(e.currentTarget.textContent || '')}
+      >
+        {frame.name || 'Frame'}
+      </div>
+    </div>
+  );
+}
+
 /* ============================ Main ============================ */
 export default function Board() {
   const initial = loadState();
   const [nodes, setNodes] = useState(initial.nodes);
   const [edges, setEdges] = useState(initial.edges);
+  const [frames, setFrames] = useState(initial.frames);
   const [viewport, setViewport] = useState(initial.viewport);
   const [tool, setTool] = useState('select');
   const [selectedId, setSelectedId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
+  const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [editingFrameId, setEditingFrameId] = useState(null);
+  const [frameDraft, setFrameDraft] = useState(null);
   const [arrowSource, setArrowSource] = useState(null);
   const [mousePos, setMousePos] = useState(null);
   const [nodeBounds, setNodeBounds] = useState({});
@@ -831,12 +966,12 @@ export default function Board() {
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ nodes, edges, viewport })
+        JSON.stringify({ nodes, edges, frames, viewport })
       );
     } catch {
       /* private mode / quota — ignore */
     }
-  }, [nodes, edges, viewport]);
+  }, [nodes, edges, frames, viewport]);
 
   /* Board history: content only. Viewport changes are intentionally excluded. */
   useEffect(() => {
@@ -927,6 +1062,7 @@ export default function Board() {
   const selectNode = useCallback((id) => {
     setSelectedId(id);
     setSelectedEdgeId(null);
+    setSelectedFrameId(null);
   }, []);
 
   const removeNode = useCallback((id) => {
@@ -945,6 +1081,25 @@ export default function Board() {
   const selectEdge = useCallback((id) => {
     setSelectedEdgeId(id);
     setSelectedId(null);
+    setSelectedFrameId(null);
+  }, []);
+
+  const selectFrame = useCallback((id) => {
+    setSelectedFrameId(id);
+    setSelectedId(null);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const removeFrame = useCallback((id) => {
+    setFrames((prev) => prev.filter((f) => f.id !== id));
+    setSelectedFrameId((cur) => (cur === id ? null : cur));
+    setEditingFrameId((cur) => (cur === id ? null : cur));
+  }, []);
+
+  /* Read current DOM text of the frame whose name is being edited. */
+  const readEditingFrameName = useCallback(() => {
+    const el = document.querySelector('.boardFrameLabel.editing');
+    return el?.textContent?.trim() || '';
   }, []);
 
   /* Read the current DOM-side content of the editing text node. We don't
@@ -1004,15 +1159,28 @@ export default function Board() {
           commitText(editingId, readEditingText());
           return;
         }
+        if (editingFrameId) {
+          setFrameName(editingFrameId, readEditingFrameName());
+          setEditingFrameId(null);
+          return;
+        }
         setArrowSource(null);
         setSelectedId(null);
         setSelectedEdgeId(null);
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !editingId) {
+        setSelectedFrameId(null);
+        setFrameDraft(null);
+      } else if (
+        (e.key === 'Delete' || e.key === 'Backspace') &&
+        !editingId &&
+        !editingFrameId
+      ) {
         if (isTextInputTarget(e.target)) {
           return;
         }
         if (selectedEdgeId) {
           removeEdge(selectedEdgeId);
+        } else if (selectedFrameId) {
+          removeFrame(selectedFrameId);
         } else if (selectedId) {
           removeNode(selectedId);
         }
@@ -1021,7 +1189,20 @@ export default function Board() {
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, selectedEdgeId, editingId, removeNode, removeEdge, readEditingText, undoBoard, redoBoard]);
+  }, [
+    selectedId,
+    selectedEdgeId,
+    selectedFrameId,
+    editingId,
+    editingFrameId,
+    removeNode,
+    removeEdge,
+    removeFrame,
+    readEditingText,
+    readEditingFrameName,
+    undoBoard,
+    redoBoard,
+  ]);
 
   /* Commit the currently-edited text when the user clicks anywhere outside
      the text node, the toolbar popout, or the color picker UI. This is what
@@ -1047,16 +1228,50 @@ export default function Board() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId, readEditingText]);
 
+  /* Same pattern for frame-name editing — outside click commits. */
+  useEffect(() => {
+    if (!editingFrameId) return undefined;
+    function onDocMouseDown(e) {
+      const t = e.target;
+      if (
+        t.closest &&
+        (t.closest('.boardFrameLabel.editing') ||
+          t.closest('.boardToolbarPopout') ||
+          t.closest('.salColorPickerWrap') ||
+          t.closest('.salColorPickerPopover'))
+      ) {
+        return;
+      }
+      setFrameName(editingFrameId, readEditingFrameName());
+      setEditingFrameId(null);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [editingFrameId, readEditingFrameName]);
+
   const registerNodeRef = useCallback((id, el) => {
     if (el) nodeElRefs.current[id] = el;
     else delete nodeElRefs.current[id];
   }, []);
 
-  /* Switching tools cancels any in-progress arrow. */
+  /* Switching tools cancels any in-progress arrow / frame draft. */
   const selectTool = useCallback((next) => {
     setTool(next);
     setArrowSource(null);
+    setFrameDraft(null);
   }, []);
+
+  function setFrameName(id, name) {
+    setFrames((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, name } : f))
+    );
+  }
+
+  function setFrameColor(id, color) {
+    setFrames((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, color } : f))
+    );
+  }
 
   /* ---------- mutations ---------- */
 
@@ -1346,7 +1561,44 @@ export default function Board() {
   function handleSurfaceMouseDown(e) {
     // Only react when the surface itself is the event target — not a node.
     if (e.target !== e.currentTarget) return;
-    if (editingId) return;
+    if (editingId || editingFrameId) return;
+
+    /* Frame tool: drag a rectangle on empty surface to create a new frame.
+       On release we collect every node whose centre falls inside that rect
+       (already implicit via frameContains in subsequent renders) and pop
+       open the label for the user to name it. */
+    if (tool === 'frame') {
+      const start = screenToWorld(e.clientX, e.clientY);
+      setFrameDraft({ x1: start.x, y1: start.y, x2: start.x, y2: start.y });
+
+      function onFrameMove(ev) {
+        const cur = screenToWorld(ev.clientX, ev.clientY);
+        setFrameDraft({ x1: start.x, y1: start.y, x2: cur.x, y2: cur.y });
+      }
+      function onFrameUp(ev) {
+        window.removeEventListener('mousemove', onFrameMove);
+        window.removeEventListener('mouseup', onFrameUp);
+        setFrameDraft(null);
+        const end = screenToWorld(ev.clientX, ev.clientY);
+        const x = Math.min(start.x, end.x);
+        const y = Math.min(start.y, end.y);
+        const w = Math.abs(end.x - start.x);
+        const h = Math.abs(end.y - start.y);
+        if (w < MIN_FRAME_SIZE || h < MIN_FRAME_SIZE) return;
+        const id = generateId();
+        const color = FRAME_COLORS[frames.length % FRAME_COLORS.length];
+        setFrames((prev) => [...prev, { id, x, y, w, h, color, name: '' }]);
+        selectFrame(id);
+        setEditingFrameId(id);
+        // Auto-switch back to select tool so the user can move things right
+        // after drawing the frame.
+        selectTool('select');
+      }
+      window.addEventListener('mousemove', onFrameMove);
+      window.addEventListener('mouseup', onFrameUp);
+      return;
+    }
+
     const startScreenX = e.clientX;
     const startScreenY = e.clientY;
     const startViewX = viewport.x;
@@ -1372,6 +1624,7 @@ export default function Board() {
       if (moved) return;
       // It was a click, not a drag — handle per-tool.
       setSelectedEdgeId(null);
+      setSelectedFrameId(null);
       if (tool === 'text') {
         const w = screenToWorld(ev.clientX, ev.clientY);
         addTextNode(w.x, w.y);
@@ -1380,6 +1633,111 @@ export default function Board() {
       } else {
         setSelectedId(null);
       }
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  /* ---------- frame interactions ---------- */
+
+  function handleFrameClick(e, frame) {
+    e.stopPropagation();
+    if (editingFrameId === frame.id) return;
+    selectFrame(frame.id);
+  }
+
+  function handleFrameLabelDoubleClick(id) {
+    setEditingFrameId(id);
+    selectFrame(id);
+  }
+
+  function handleFrameLabelCommit(id, name) {
+    setFrameName(id, name.trim());
+    setEditingFrameId((cur) => (cur === id ? null : cur));
+  }
+
+  /* Drag a frame and bring its members (nodes whose centre is inside the
+     frame at drag-start) along for the ride. Items that have since been
+     dragged out remain in place. */
+  function handleFrameMouseDown(e, frame) {
+    if (tool !== 'select') return;
+    if (editingFrameId === frame.id) return;
+    e.stopPropagation();
+    selectFrame(frame.id);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origFrameX = frame.x;
+    const origFrameY = frame.y;
+    const zoomAtStart = viewport.zoom;
+    const members = nodesInsideFrame(frame, nodes, nodeBounds);
+    const memberStarts = members.map((m) => ({ id: m.id, x: m.x, y: m.y }));
+    let moved = false;
+
+    function onMove(ev) {
+      const dx = (ev.clientX - startX) / zoomAtStart;
+      const dy = (ev.clientY - startY) / zoomAtStart;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) {
+        return;
+      }
+      moved = true;
+      setFrames((prev) =>
+        prev.map((f) =>
+          f.id === frame.id ? { ...f, x: origFrameX + dx, y: origFrameY + dy } : f
+        )
+      );
+      if (memberStarts.length) {
+        setNodes((prev) =>
+          prev.map((n) => {
+            const ms = memberStarts.find((m) => m.id === n.id);
+            return ms ? { ...n, x: ms.x + dx, y: ms.y + dy } : n;
+          })
+        );
+      }
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  function handleFrameResizeStart(e, handleId, frame) {
+    e.stopPropagation();
+    e.preventDefault();
+    const start = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
+    const startWorld = screenToWorld(e.clientX, e.clientY);
+    const dir = HANDLE_DIRS[handleId];
+
+    function onMove(ev) {
+      const world = screenToWorld(ev.clientX, ev.clientY);
+      const dx = world.x - startWorld.x;
+      const dy = world.y - startWorld.y;
+      let nextX = start.x;
+      let nextY = start.y;
+      let nextW = start.w;
+      let nextH = start.h;
+      if (dir.sx === 1) {
+        nextW = Math.max(MIN_FRAME_SIZE, start.w + dx);
+      } else if (dir.sx === -1) {
+        nextW = Math.max(MIN_FRAME_SIZE, start.w - dx);
+        nextX = start.x + (start.w - nextW);
+      }
+      if (dir.sy === 1) {
+        nextH = Math.max(MIN_FRAME_SIZE, start.h + dy);
+      } else if (dir.sy === -1) {
+        nextH = Math.max(MIN_FRAME_SIZE, start.h - dy);
+        nextY = start.y + (start.h - nextH);
+      }
+      setFrames((prev) =>
+        prev.map((f) =>
+          f.id === frame.id ? { ...f, x: nextX, y: nextY, w: nextW, h: nextH } : f
+        )
+      );
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -1504,6 +1862,8 @@ export default function Board() {
   function removeSelected() {
     if (selectedEdgeId) {
       removeEdge(selectedEdgeId);
+    } else if (selectedFrameId) {
+      removeFrame(selectedFrameId);
     } else if (selectedId) {
       removeNode(selectedId);
     }
@@ -1568,6 +1928,15 @@ export default function Board() {
           >
             <ArrowRight size={18} />
           </button>
+          <button
+            type="button"
+            className={`boardToolBtn ${tool === 'frame' ? 'active' : ''}`}
+            onClick={() => selectTool('frame')}
+            title="Frame — drag a rectangle to group items"
+            aria-label="Frame"
+          >
+            <FrameIcon size={18} />
+          </button>
 
           <button
             type="button"
@@ -1590,7 +1959,7 @@ export default function Board() {
             type="button"
             className="boardToolBtn danger"
             onClick={removeSelected}
-            disabled={!selectedId && !selectedEdgeId}
+            disabled={!selectedId && !selectedEdgeId && !selectedFrameId}
             title="Delete selected (Del)"
             aria-label="Delete selected"
           >
@@ -1625,6 +1994,26 @@ export default function Board() {
             </div>
           );
         })()}
+
+        {(() => {
+          /* Frame popout: shows whenever a frame is selected OR being named.
+             Houses the frame's color picker so the user can pick a custom
+             colour, plus a hint to rename via the label. */
+          const activeFrameId = editingFrameId || selectedFrameId;
+          if (!activeFrameId) return null;
+          const frame = frames.find((f) => f.id === activeFrameId);
+          if (!frame) return null;
+          return (
+            <div className="boardToolbarPopout" aria-label="Frame style">
+              <span className="boardPopoutLabel">Frame</span>
+              <span className="boardPopoutDivider" aria-hidden="true" />
+              <ColorPicker
+                value={frame.color}
+                onChange={(c) => setFrameColor(frame.id, c)}
+              />
+            </div>
+          );
+        })()}
        </div>
 
         <div
@@ -1647,6 +2036,34 @@ export default function Board() {
               transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
             }}
           >
+            {/* Frames render behind everything else so they read as a
+                grouping container, not a foreground panel. */}
+            {frames.map((frame) => (
+              <FrameNode
+                key={frame.id}
+                frame={frame}
+                selected={selectedFrameId === frame.id}
+                editing={editingFrameId === frame.id}
+                onClick={(e) => handleFrameClick(e, frame)}
+                onMouseDown={(e) => handleFrameMouseDown(e, frame)}
+                onLabelDoubleClick={() => handleFrameLabelDoubleClick(frame.id)}
+                onLabelCommit={(name) => handleFrameLabelCommit(frame.id, name)}
+              />
+            ))}
+
+            {/* Draft rectangle while the user drags out a new frame. */}
+            {frameDraft && (
+              <div
+                className="boardFrameDraft"
+                style={{
+                  left: Math.min(frameDraft.x1, frameDraft.x2),
+                  top: Math.min(frameDraft.y1, frameDraft.y2),
+                  width: Math.abs(frameDraft.x2 - frameDraft.x1),
+                  height: Math.abs(frameDraft.y2 - frameDraft.y1),
+                }}
+              />
+            )}
+
             <ArrowsLayer
               nodes={nodes}
               edges={edges}
@@ -1670,6 +2087,49 @@ export default function Board() {
                   onResizeStart={handleResizeStart}
                   onRotateStart={handleRotateStart}
                 />
+              );
+            })()}
+
+            {(() => {
+              /* Resize handles around a selected frame — same 8 corners/edges
+                 as nodes use, minus the rotate arm. */
+              if (!selectedFrameId) return null;
+              const frame = frames.find((f) => f.id === selectedFrameId);
+              if (!frame) return null;
+              const handleScale = 1 / viewport.zoom;
+              return (
+                <div
+                  className="boardFrameSelectionFrame"
+                  style={{
+                    left: frame.x,
+                    top: frame.y,
+                    width: frame.w,
+                    height: frame.h,
+                  }}
+                >
+                  {HANDLE_IDS.map((id) => {
+                    const dir = HANDLE_DIRS[id];
+                    const left =
+                      dir.sx === -1 ? 0 : dir.sx === 0 ? '50%' : '100%';
+                    const top =
+                      dir.sy === -1 ? 0 : dir.sy === 0 ? '50%' : '100%';
+                    return (
+                      <div
+                        key={id}
+                        className={`boardResizeHandle handle-${id}`}
+                        style={{
+                          left,
+                          top,
+                          cursor: dir.cursor,
+                          transform: `translate(-50%, -50%) scale(${handleScale})`,
+                        }}
+                        onMouseDown={(e) =>
+                          handleFrameResizeStart(e, id, frame)
+                        }
+                      />
+                    );
+                  })}
+                </div>
               );
             })()}
 
