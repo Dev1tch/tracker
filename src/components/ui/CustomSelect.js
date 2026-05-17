@@ -15,7 +15,8 @@ export default function CustomSelect({
   createNewText = "+ Create New",
   multiple = false,
   searchable = false,
-  searchPlaceholder = "Search"
+  searchPlaceholder = "Search",
+  listPosition = 'fixed'
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [listStyle, setListStyle] = useState(null);
@@ -39,6 +40,7 @@ export default function CustomSelect({
   // initial rect, so any ancestor scroll would otherwise leave it floating.
   useEffect(() => {
     if (!isOpen) return undefined;
+    if (listPosition !== 'fixed') return undefined;
     function handleScroll(event) {
       if (containerRef.current && containerRef.current.contains(event.target)) {
         return;
@@ -56,12 +58,15 @@ export default function CustomSelect({
       window.removeEventListener('scroll', handleScroll, true);
       window.removeEventListener('resize', handleResize);
     };
-  }, [isOpen]);
+  }, [isOpen, listPosition]);
 
   // Pin the dropdown to viewport coords so it doesn't add to any ancestor's
   // scrollable overflow (which would visually "enlarge" a parent modal).
   useLayoutEffect(() => {
     if (!isOpen) return;
+    if (listPosition !== 'fixed') {
+      return;
+    }
     const trigger = headerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
@@ -89,7 +94,7 @@ export default function CustomSelect({
       baseStyle.bottom = 'auto';
     }
     setListStyle(baseStyle);
-  }, [isOpen]);
+  }, [isOpen, listPosition]);
 
   const selectedValues = multiple
     ? (Array.isArray(value) ? value : [])
@@ -155,7 +160,11 @@ export default function CustomSelect({
       </div>
 
       {isOpen && (
-        <div className="customSelectList" style={listStyle || undefined}>
+        <div
+          className={`customSelectList ${listPosition === 'local' ? 'local' : ''}`}
+          style={listStyle || undefined}
+          onWheel={(e) => e.stopPropagation()}
+        >
           {searchable && (
             <div className="customSelectSearchWrap">
               <input

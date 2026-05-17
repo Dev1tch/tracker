@@ -27,6 +27,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import ColorPicker from '@/components/ui/ColorPicker';
+import CustomSelect from '@/components/ui/CustomSelect';
 import './Board.css';
 
 const STORAGE_KEY = 'board.state';
@@ -63,6 +64,48 @@ const ALIGN_GUIDE_PADDING = 28;
 const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 const PASTED_TEXT_SCREEN_WIDTH = 420;
 const DEFAULT_ARROW_STROKE_WIDTH = 1.6;
+const TEXT_FONT_OPTIONS = [
+  { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  { label: 'Inter', value: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Arial Black', value: '"Arial Black", Gadget, sans-serif' },
+  { label: 'Aptos', value: 'Aptos, Calibri, "Segoe UI", sans-serif' },
+  { label: 'Calibri', value: 'Calibri, Candara, "Segoe UI", sans-serif' },
+  { label: 'Cambria', value: 'Cambria, Georgia, serif' },
+  { label: 'Candara', value: 'Candara, Calibri, "Segoe UI", sans-serif' },
+  { label: 'Consolas', value: 'Consolas, "Liberation Mono", monospace' },
+  { label: 'Courier New', value: '"Courier New", Courier, monospace' },
+  { label: 'Garamond', value: 'Garamond, Georgia, serif' },
+  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
+  { label: 'Impact', value: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' },
+  { label: 'Lucida Console', value: '"Lucida Console", Monaco, monospace' },
+  { label: 'Menlo', value: 'Menlo, Monaco, Consolas, monospace' },
+  { label: 'Monaco', value: 'Monaco, "Lucida Console", monospace' },
+  { label: 'Palatino', value: 'Palatino, "Palatino Linotype", Georgia, serif' },
+  { label: 'Segoe UI', value: '"Segoe UI", Tahoma, Geneva, sans-serif' },
+  { label: 'Tahoma', value: 'Tahoma, Geneva, sans-serif' },
+  { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Trebuchet MS', value: '"Trebuchet MS", sans-serif' },
+];
+
+function quoteFontFamily(family) {
+  return `"${String(family).replace(/"/g, '\\"')}", sans-serif`;
+}
+
+function mergeFontOptions(...groups) {
+  const seen = new Set();
+  const merged = [];
+  groups.flat().forEach((option) => {
+    if (!option?.label || !option?.value) return;
+    const key = option.label.trim().toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(option);
+  });
+  return merged;
+}
 
 const HANDLE_DIRS = {
   tl: { sx: -1, sy: -1, cursor: 'nwse-resize' },
@@ -173,6 +216,35 @@ function readEditablePlainText(root) {
   return parts.join('').replace(/\n+$/, '');
 }
 
+function sanitizeTextHtml(root) {
+  if (!root) return '';
+  const clone = root.cloneNode(true);
+  clone.querySelectorAll('*').forEach((el) => {
+    [...el.attributes].forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      if (name !== 'style' && name !== 'href') {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+  return clone.innerHTML;
+}
+
+function applyFontSizeToEditingText(size) {
+  const normalized = Math.max(8, Math.min(120, Math.round(size)));
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('fontSize', false, '7');
+  document.querySelectorAll('.boardTextNode.editing font[size="7"]').forEach((font) => {
+    font.removeAttribute('size');
+    font.style.fontSize = `${normalized}px`;
+  });
+}
+
+function applyFontFamilyToEditingText(fontFamily) {
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('fontName', false, fontFamily);
+}
+
 /* ---------- Text node ---------- */
 function TextNode({
   node,
@@ -190,10 +262,12 @@ function TextNode({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (!editing && el.textContent !== (node.content || '')) {
+    if (node.html) {
+      if (el.innerHTML !== node.html) el.innerHTML = node.html;
+    } else if (!editing && el.textContent !== (node.content || '')) {
       el.textContent = node.content || '';
     }
-  }, [node.content, editing]);
+  }, [node.content, node.html, editing]);
 
   useLayoutEffect(() => {
     if (!editing) return;
@@ -259,8 +333,9 @@ function TextNode({
           contentEditable={editing}
           suppressContentEditableWarning
           onMouseDown={editing ? (e) => e.stopPropagation() : undefined}
+          dangerouslySetInnerHTML={node.html ? { __html: node.html } : undefined}
         >
-          {node.content || ''}
+          {node.html ? null : node.content || ''}
         </div>
       )}
     </div>
@@ -1126,6 +1201,8 @@ export default function Board() {
   const [nodeBounds, setNodeBounds] = useState({});
   const [isPanning, setIsPanning] = useState(false);
   const [alignmentGuides, setAlignmentGuides] = useState({ vertical: [], horizontal: [] });
+  const [fontOptions, setFontOptions] = useState(TEXT_FONT_OPTIONS);
+  const [textToolbarFont, setTextToolbarFont] = useState(TEXT_FONT_OPTIONS[0].value);
 
   const wrapperRef = useRef(null);
   const surfaceRef = useRef(null);
@@ -1134,7 +1211,43 @@ export default function Board() {
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
   const restoringHistoryRef = useRef(false);
+  const loadingLocalFontsRef = useRef(false);
   const lastBoardStateRef = useRef(serializeBoardState(initial.nodes, initial.edges));
+
+  const loadLocalFontOptions = useCallback(async () => {
+    if (
+      loadingLocalFontsRef.current ||
+      typeof window === 'undefined' ||
+      typeof window.queryLocalFonts !== 'function'
+    ) {
+      return;
+    }
+
+    loadingLocalFontsRef.current = true;
+    try {
+      const fonts = await window.queryLocalFonts();
+      const localFamilies = [...new Set(
+        fonts
+          .map((font) => font.family)
+          .filter(Boolean)
+      )]
+        .sort((a, b) => a.localeCompare(b))
+        .map((family) => ({
+          label: family,
+          value: quoteFontFamily(family),
+          searchText: family,
+        }));
+      setFontOptions(mergeFontOptions(TEXT_FONT_OPTIONS, localFamilies));
+    } catch {
+      /* Permission denied or no user activation — fallback fonts remain available. */
+      loadingLocalFontsRef.current = false;
+    }
+  }, []);
+
+  /* Local font discovery is browser/permission dependent, so keep a strong fallback list. */
+  useEffect(() => {
+    loadLocalFontOptions();
+  }, [loadLocalFontOptions]);
 
   /* Persist */
   useEffect(() => {
@@ -1200,6 +1313,18 @@ export default function Board() {
     const wrap = wrapperRef.current;
     if (!wrap) return undefined;
     function onWheel(e) {
+      // Let UI elements with their own scroll/wheel needs use the wheel
+      // natively — without this they'd be hijacked by the zoom handler.
+      const target = e.target;
+      if (target && typeof target.closest === 'function') {
+        if (
+          target.closest('.customSelectList') ||
+          target.closest('.salColorPickerPopover') ||
+          target.closest('.boardTextFloatingToolbar')
+        ) {
+          return;
+        }
+      }
       e.preventDefault();
       const rect = wrap.getBoundingClientRect();
       const cursorX = e.clientX - rect.left;
@@ -1319,6 +1444,11 @@ export default function Board() {
     return readEditablePlainText(el);
   }, []);
 
+  const readEditingHtml = useCallback(() => {
+    const el = document.querySelector('.boardTextNode.editing .boardTextContent');
+    return sanitizeTextHtml(el);
+  }, []);
+
   const restoreBoardState = useCallback((state) => {
     restoringHistoryRef.current = true;
     setNodes(Array.isArray(state.nodes) ? state.nodes : []);
@@ -1366,7 +1496,7 @@ export default function Board() {
 
       if (e.key === 'Escape') {
         if (editingId) {
-          commitText(editingId, readEditingText());
+          commitText(editingId, readEditingText(), readEditingHtml());
           return;
         }
         if (editingFrameId) {
@@ -1434,12 +1564,12 @@ export default function Board() {
       ) {
         return;
       }
-      commitText(editingId, readEditingText());
+      commitText(editingId, readEditingText(), readEditingHtml());
     }
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingId, readEditingText]);
+  }, [editingId, readEditingHtml, readEditingText]);
 
   /* Same pattern for frame-name editing — outside click commits. */
   useEffect(() => {
@@ -1531,6 +1661,10 @@ export default function Board() {
 
   function setTextFontSize(id, value) {
     const v = Math.max(8, Math.min(120, Math.round(value)));
+    if (editingId === id) {
+      applyFontSizeToEditingText(v);
+      return;
+    }
     setNodes((prev) =>
       prev.map((n) =>
         n.id === id && n.type === 'text' ? { ...n, fontSize: v } : n
@@ -1538,24 +1672,27 @@ export default function Board() {
     );
   }
 
-  function changeTextColor(id, color) {
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === id && n.type === 'text' ? { ...n, color } : n
-      )
-    );
+  function changeTextColor(color) {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('foreColor', false, color);
   }
 
-  function updateTextStyle(id, patch) {
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === id && n.type === 'text' ? { ...n, ...patch } : n
-      )
-    );
+  function toggleInlineCommand(command) {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand(command);
   }
 
   function toggleBulletList() {
     document.execCommand('insertUnorderedList');
+  }
+
+  function applyTextAlignment(alignment) {
+    const command = {
+      left: 'justifyLeft',
+      center: 'justifyCenter',
+      right: 'justifyRight',
+    }[alignment];
+    if (command) document.execCommand(command);
   }
 
   const addImageNode = useCallback((dataUrl, worldX, worldY) => {
@@ -1626,7 +1763,7 @@ export default function Board() {
     return () => document.removeEventListener('paste', handlePaste);
   }, [addImageNode, addPastedTextNode, screenToWorld, viewport.zoom]);
 
-  function commitText(id, text) {
+  function commitText(id, text, html = '') {
     const trimmed = (text || '').trim();
     if (!trimmed) {
       removeNode(id);
@@ -1635,7 +1772,7 @@ export default function Board() {
       setNodes((prev) =>
         prev.map((n) =>
           n.id === id
-            ? { ...n, content: text, href: href || undefined }
+            ? { ...n, content: text, html: href ? undefined : html || undefined, href: href || undefined }
             : n
         )
       );
@@ -2521,7 +2658,12 @@ export default function Board() {
                     top: node.y - 10 / viewport.zoom,
                     transform: `translate(-50%, -100%) scale(${toolbarScale})`,
                   }}
-                  onMouseDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    if (!['INPUT', 'SELECT'].includes(e.target.tagName)) {
+                      e.preventDefault();
+                    }
+                  }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <input
@@ -2536,10 +2678,28 @@ export default function Board() {
                     }}
                     aria-label="Font size"
                   />
+                  <div
+                    className="boardTextFontSelectWrap"
+                    onMouseDownCapture={loadLocalFontOptions}
+                    aria-label="Font family"
+                  >
+                    <CustomSelect
+                      options={fontOptions}
+                      value={textToolbarFont}
+                      onChange={(fontFamily) => {
+                        setTextToolbarFont(fontFamily);
+                        applyFontFamilyToEditingText(fontFamily);
+                      }}
+                      placeholder="Font"
+                      searchable
+                      searchPlaceholder="Search fonts"
+                      listPosition="local"
+                    />
+                  </div>
                   <button
                     type="button"
-                    className={`boardTextFormatBtn ${node.bold ? 'active' : ''}`}
-                    onClick={() => updateTextStyle(editingId, { bold: !node.bold })}
+                    className="boardTextFormatBtn"
+                    onClick={() => toggleInlineCommand('bold')}
                     title="Bold"
                     aria-label="Bold"
                   >
@@ -2547,8 +2707,8 @@ export default function Board() {
                   </button>
                   <button
                     type="button"
-                    className={`boardTextFormatBtn ${node.italic ? 'active' : ''}`}
-                    onClick={() => updateTextStyle(editingId, { italic: !node.italic })}
+                    className="boardTextFormatBtn"
+                    onClick={() => toggleInlineCommand('italic')}
                     title="Italic"
                     aria-label="Italic"
                   >
@@ -2556,8 +2716,8 @@ export default function Board() {
                   </button>
                   <button
                     type="button"
-                    className={`boardTextFormatBtn ${node.underline ? 'active' : ''}`}
-                    onClick={() => updateTextStyle(editingId, { underline: !node.underline })}
+                    className="boardTextFormatBtn"
+                    onClick={() => toggleInlineCommand('underline')}
                     title="Underline"
                     aria-label="Underline"
                   >
@@ -2581,8 +2741,8 @@ export default function Board() {
                     <button
                       key={align}
                       type="button"
-                      className={`boardTextFormatBtn ${(node.align || 'left') === align ? 'active' : ''}`}
-                      onClick={() => updateTextStyle(editingId, { align })}
+                      className="boardTextFormatBtn"
+                      onClick={() => applyTextAlignment(align)}
                       title={`Align ${align}`}
                       aria-label={`Align ${align}`}
                     >
@@ -2592,7 +2752,7 @@ export default function Board() {
                   <span className="boardPopoutDivider" aria-hidden="true" />
                   <ColorPicker
                     value={node.color || '#ffffff'}
-                    onChange={(c) => changeTextColor(editingId, c)}
+                    onChange={changeTextColor}
                   />
                 </div>
               );

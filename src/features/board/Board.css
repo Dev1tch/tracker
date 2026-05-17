@@ -659,16 +659,81 @@
   align-items: center;
   gap: 4px;
   padding: 5px 6px;
-  background: var(--panel-solid);
+  /* Fully opaque (--panel-solid layered over --bg-color) — no backdrop-filter
+     so the toolbar doesn't re-composite (and visually blur) when the font
+     dropdown opens on top of it. */
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--panel-solid), var(--panel-solid));
   border: 1px solid var(--border-color-dim);
-  backdrop-filter: blur(10px);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38);
   transform-origin: center bottom;
+  isolation: isolate;
 }
 
 .boardTextFloatingToolbar .salColorPickerBtn {
   width: 24px;
   height: 24px;
+}
+
+.boardTextFontSelectWrap {
+  width: 132px;
+  flex: 0 0 132px;
+}
+
+.boardTextFontSelectWrap .customSelectHeader {
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  background: var(--surface-03);
+  border: 1px solid var(--border-color-dim);
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.boardTextFontSelectWrap .customSelectHeader.open,
+.boardTextFontSelectWrap .customSelectHeader:hover {
+  border-color: var(--surface-35);
+  background: var(--surface-08);
+}
+
+.boardTextFontSelectWrap .selectIcon {
+  width: 13px;
+  height: 13px;
+}
+
+.boardTextFontSelectWrap .customSelectList.local {
+  left: 0;
+  right: auto;
+  top: calc(100% + 6px);
+  width: 220px;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Fully opaque + drop the inherited backdrop blur — both prevent the
+     "semi-transparent dropdown" look and stop the toolbar from re-blurring
+     when the dropdown opens. isolation: isolate keeps its rendering
+     independent from the toolbar's compositing layer. */
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--panel-solid), var(--panel-solid));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  isolation: isolate;
+  z-index: 40;
+}
+
+.boardTextFontSelectWrap .customSelectSearchWrap {
+  padding: 7px;
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--panel-solid), var(--panel-solid));
+}
+
+.boardTextFontSelectWrap .customSelectOption {
+  padding: 9px 10px;
+  font-size: 12px;
 }
 
 .boardTextFormatBtn {
