@@ -230,7 +230,39 @@ function sanitizeTextHtml(root) {
   return clone.innerHTML;
 }
 
+/* Selection stash so the inline formatting commands keep working even after
+   the toolbar's controls (dropdown trigger, search input, color picker)
+   steal focus from the contentEditable. We capture the range on toolbar
+   mousedown and replay it onto the contentEditable just before each
+   `document.execCommand` call. */
+let savedTextSelection = null;
+
+function captureTextSelection() {
+  const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  const editing = document.querySelector('.boardTextNode.editing .boardTextContent');
+  // Only stash the range while it's still inside the editing text — once
+  // focus moves to a toolbar input the selection there is irrelevant.
+  if (editing && editing.contains(range.commonAncestorContainer)) {
+    savedTextSelection = range.cloneRange();
+  }
+}
+
+function restoreTextSelection() {
+  const editing = document.querySelector('.boardTextNode.editing .boardTextContent');
+  if (!editing) return false;
+  editing.focus();
+  if (savedTextSelection && editing.contains(savedTextSelection.commonAncestorContainer)) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(savedTextSelection);
+  }
+  return true;
+}
+
 function applyFontSizeToEditingText(size) {
+  if (!restoreTextSelection()) return;
   const normalized = Math.max(8, Math.min(120, Math.round(size)));
   document.execCommand('styleWithCSS', false, true);
   document.execCommand('fontSize', false, '7');
@@ -240,10 +272,9 @@ function applyFontSizeToEditingText(size) {
   });
 }
 
-function applyFontFamilyToEditingText(fontFamily) {
-  document.execCommand('styleWithCSS', false, true);
-  document.execCommand('fontName', false, fontFamily);
-}
+/* applyFontFamilyToEditingText removed: font family is now stored on the
+   node (node.fontFamily) and applied as an inline style to the whole text,
+   so we no longer need a per-selection execCommand path. */
 
 /* ---------- Text node ---------- */
 function TextNode({
@@ -293,6 +324,7 @@ function TextNode({
         width: node.w,
         height: node.h,
         fontSize: node.fontSize ? `${node.fontSize}px` : undefined,
+        fontFamily: node.fontFamily || undefined,
         color: node.color || undefined,
         fontWeight: node.bold ? 700 : undefined,
         fontStyle: node.italic ? 'italic' : undefined,
@@ -1208,6 +1240,10 @@ export default function Board() {
   const surfaceRef = useRef(null);
   const fileInputRef = useRef(null);
   const nodeElRefs = useRef({});
+  /* When the user is mid-drag on a resize handle we want them to be free to
+     shrink the box past the content — the auto-fit ResizeObserver below
+     would otherwise immediately undo every "make smaller" move. */
+  const reflowDisabledRef = useRef(false);
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
   const restoringHistoryRef = useRef(false);
@@ -1545,6 +1581,67 @@ export default function Board() {
     redoBoard,
   ]);
 
+  /* Auto-fit the editing text node to its content while it's being edited.
+     When a font/size/format change makes the text larger than its current
+     box (which the user manually resized), grow node.w/h so the content
+     stays inside the visible rectangle. Only expands — never shrinks below
+     the user-chosen size. Skipped while a resize-drag is in progress. */
+  useEffect(() => {
+    if (!editingId) return undefined;
+    const editingEl = document.querySelector('.boardTextNode.editing');
+    if (!editingEl || typeof ResizeObserver === 'undefined') return undefined;
+    const contentEl = editingEl.querySelector('.boardTextContent');
+
+    function fit() {
+      if (reflowDisabledRef.current) return;
+      const sw = editingEl.scrollWidth;
+      const sh = editingEl.scrollHeight;
+      setNodes((prev) =>
+        prev.map((n) => {
+          if (n.id !== editingId || n.type !== 'text') return n;
+          // Only auto-fit nodes the user has already explicitly sized —
+          // otherwise CSS auto-sizing handles growth for free.
+          if (n.w == null && n.h == null) return n;
+          let nextW = n.w;
+          let nextH = n.h;
+          if (n.w != null && sw > n.w) nextW = Math.ceil(sw);
+          if (n.h != null && sh > n.h) nextH = Math.ceil(sh);
+          if (nextW === n.w && nextH === n.h) return n;
+          return { ...n, w: nextW, h: nextH };
+        })
+      );
+    }
+
+    const ro = new ResizeObserver(fit);
+    ro.observe(editingEl);
+    if (contentEl) ro.observe(contentEl);
+    return () => ro.disconnect();
+  }, [editingId]);
+
+  /* Continuously track the user's text selection while editing so the
+     formatting helpers (font, size, color, bold/italic) can always restore
+     it onto the contentEditable just before execCommand runs — even after
+     focus has hopped to a toolbar input. We only stash ranges that live
+     inside the editing element; ranges from a search field, the size
+     input, etc., are ignored. */
+  useEffect(() => {
+    if (!editingId) return undefined;
+    function onSelChange() {
+      const editing = document.querySelector(
+        '.boardTextNode.editing .boardTextContent'
+      );
+      if (!editing) return;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (editing.contains(range.commonAncestorContainer)) {
+        savedTextSelection = range.cloneRange();
+      }
+    }
+    document.addEventListener('selectionchange', onSelChange);
+    return () => document.removeEventListener('selectionchange', onSelChange);
+  }, [editingId]);
+
   /* Commit the currently-edited text when the user clicks anywhere outside
      the text node, the toolbar popout, or the color picker UI. This is what
      drives "click somewhere else to finish editing" — the contentEditable
@@ -1668,6 +1765,31 @@ export default function Board() {
     setNodes((prev) =>
       prev.map((n) =>
         n.id === id && n.type === 'text' ? { ...n, fontSize: v } : n
+      )
+    );
+  }
+
+  /* Apply font family to the WHOLE text node (not just the selected
+     fragment). We also strip any inline `font-family` from inner spans the
+     contentEditable might have accumulated from previous execCommand-style
+     edits — otherwise those overrides would shadow the node-level font. */
+  function setTextFontFamily(id, fontFamily) {
+    if (editingId === id) {
+      const editingEl = document.querySelector(
+        '.boardTextNode.editing .boardTextContent'
+      );
+      if (editingEl) {
+        editingEl.querySelectorAll('[style*="font-family"]').forEach((el) => {
+          el.style.fontFamily = '';
+          if (!el.getAttribute('style')?.trim()) {
+            el.removeAttribute('style');
+          }
+        });
+      }
+    }
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id && n.type === 'text' ? { ...n, fontFamily } : n
       )
     );
   }
@@ -1887,6 +2009,10 @@ export default function Board() {
   function handleResizeStart(e, handleId, node) {
     e.stopPropagation();
     e.preventDefault();
+    /* Disable the auto-fit reflow while the user is mid-drag; otherwise
+       the ResizeObserver below would constantly snap the node back up to
+       its content size and prevent the user from shrinking it. */
+    reflowDisabledRef.current = true;
     const size = nodeSize(node, nodeBounds);
     const start = {
       x: node.x,
@@ -1936,6 +2062,7 @@ export default function Board() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       setAlignmentGuides({ vertical: [], horizontal: [] });
+      reflowDisabledRef.current = false;
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -2660,6 +2787,10 @@ export default function Board() {
                   }}
                   onMouseDown={(e) => {
                     e.stopPropagation();
+                    // Snapshot the editable's selection BEFORE the click can
+                    // shift focus into a dropdown input — apply* helpers
+                    // restore this range right before execCommand runs.
+                    captureTextSelection();
                     if (!['INPUT', 'SELECT'].includes(e.target.tagName)) {
                       e.preventDefault();
                     }
@@ -2671,10 +2802,28 @@ export default function Board() {
                     className="boardPopoutSize"
                     min={8}
                     max={120}
-                    value={fontSize}
-                    onChange={(e) => {
+                    /* Use defaultValue + key + commit-on-blur/Enter instead
+                       of controlled value. Per-keystroke commit would call
+                       applyFontSizeToEditingText, which refocuses the
+                       contentEditable mid-typing and steals focus from this
+                       input. Now the size only applies when the user is
+                       finished editing the number. */
+                    key={`size-${editingId}-${fontSize}`}
+                    defaultValue={fontSize}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    onBlur={(e) => {
                       const v = parseInt(e.target.value, 10);
-                      if (Number.isFinite(v)) setTextFontSize(editingId, v);
+                      if (Number.isFinite(v)) {
+                        setTextFontSize(editingId, v);
+                      } else {
+                        // restore previous on invalid input
+                        e.target.value = String(fontSize);
+                      }
                     }}
                     aria-label="Font size"
                   />
@@ -2685,10 +2834,10 @@ export default function Board() {
                   >
                     <CustomSelect
                       options={fontOptions}
-                      value={textToolbarFont}
+                      value={node.fontFamily || textToolbarFont}
                       onChange={(fontFamily) => {
                         setTextToolbarFont(fontFamily);
-                        applyFontFamilyToEditingText(fontFamily);
+                        setTextFontFamily(editingId, fontFamily);
                       }}
                       placeholder="Font"
                       searchable
