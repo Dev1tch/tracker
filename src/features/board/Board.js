@@ -1127,11 +1127,24 @@ function FrameNode({
     sel.addRange(range);
   }, [editing]);
 
-  const labelFontSize = Math.round(Math.max(12, Math.min(42, frame.w * 0.032)));
-  const labelPaddingY = Math.max(5, Math.round(labelFontSize * 0.22));
-  const labelPaddingX = Math.max(12, Math.round(labelFontSize * 0.58));
-  const labelMaxWidth = Math.max(140, frame.w);
-  const labelBorderWidth = 1.5 / zoom;
+  /* Label size is computed in SCREEN pixels first (using the frame's
+     apparent on-screen width = frame.w * zoom), then converted to CSS px
+     by dividing by zoom. After the surface's `scale(zoom)` transform, the
+     label always renders at the chosen screen size — never blowing up at
+     high zoom. */
+  const screenFrameWidth = frame.w * zoom;
+  /* Smaller coefficient + a tighter cap so even huge frames at max zoom
+     show a compact tag instead of a banner. */
+  const baseFontSize = Math.round(
+    Math.max(9, Math.min(13, screenFrameWidth * 0.011))
+  );
+  const labelFontSize = baseFontSize / zoom;
+  const labelPaddingY = Math.max(2, Math.round(baseFontSize * 0.2)) / zoom;
+  const labelPaddingX = Math.max(6, Math.round(baseFontSize * 0.55)) / zoom;
+  /* Max width in CSS px = the larger of (frame width in CSS px) or 120
+     screen px. Both stay readable at any zoom. */
+  const labelMaxWidth = Math.max(120 / zoom, frame.w);
+  const labelBorderWidth = 1 / zoom;
   const frameBorderWidth = labelBorderWidth;
   const fillMode = frame.fillMode || 'translucent';
   const frameBackground =
