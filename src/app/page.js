@@ -9,13 +9,14 @@ import TasksBoard from '@/features/tasks';
 import Calendar from '@/features/calendar/Calendar';
 import Finance from '@/features/finance/Finance';
 import Board from '@/features/board/Board';
+import Notes from '@/features/notes';
 import { FinanceVaultProvider } from '@/features/finance/hooks/useVault';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 
 const DEFAULT_TAB = 'habits';
 const ACTIVE_TAB_STORAGE_KEY = 'life_tracker.active_tab';
 const ACTIVE_TAB_CHANGE_EVENT = 'life-tracker:active-tab-change';
-const VALID_TABS = new Set(['habits', 'tasks', 'calendar', 'finance', 'board']);
+const VALID_TABS = new Set(['habits', 'tasks', 'calendar', 'finance', 'board', 'notes']);
 
 function normalizeTab(tab) {
   return VALID_TABS.has(tab) ? tab : DEFAULT_TAB;
@@ -146,6 +147,8 @@ export default function Home() {
         return <Finance />;
       case 'board':
         return <Board />;
+      case 'notes':
+        return <Notes />;
       default:
         return <HabitTracker />;
     }

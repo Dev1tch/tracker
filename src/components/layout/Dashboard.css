@@ -116,7 +116,7 @@
 
 .navContainer {
   display: flex;
-  gap: 31px;
+  gap: 27px;
 }
 
 .navItem {
@@ -167,7 +167,7 @@
   }
   
   .navContainer {
-    gap: 23px;
+    gap: 18px;
   }
 
   .mainContent {
