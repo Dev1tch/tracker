@@ -339,11 +339,17 @@
   margin: 0 2px;
 }
 
+.notesFontFamilySelectWrap {
+  width: 118px;
+  flex: 0 0 118px;
+}
+
 .notesFontSizeSelectWrap {
   width: 58px;
   flex: 0 0 58px;
 }
 
+.notesFontFamilySelectWrap .customSelectHeader,
 .notesFontSizeSelectWrap .customSelectHeader {
   height: 30px;
   min-height: 30px;
@@ -357,6 +363,8 @@
   font-weight: 400;
 }
 
+.notesFontFamilySelectWrap .customSelectHeader:hover,
+.notesFontFamilySelectWrap .customSelectHeader.open,
 .notesFontSizeSelectWrap .customSelectHeader:hover,
 .notesFontSizeSelectWrap .customSelectHeader.open {
   color: var(--text-primary);
@@ -364,19 +372,21 @@
   background: var(--surface-06);
 }
 
+.notesFontFamilySelectWrap .customSelectHeader > span,
 .notesFontSizeSelectWrap .customSelectHeader > span {
   text-align: left;
 }
 
+.notesFontFamilySelectWrap .selectIcon,
 .notesFontSizeSelectWrap .selectIcon {
   width: 13px;
   height: 13px;
 }
 
+.notesFontFamilySelectWrap .customSelectList.local,
 .notesFontSizeSelectWrap .customSelectList.local {
   top: calc(100% + 6px);
   left: 0;
-  width: 74px;
   max-height: 190px;
   overflow-y: auto;
   background-color: var(--bg-color);
@@ -388,6 +398,15 @@
   z-index: 60;
 }
 
+.notesFontFamilySelectWrap .customSelectList.local {
+  width: 150px;
+}
+
+.notesFontSizeSelectWrap .customSelectList.local {
+  width: 74px;
+}
+
+.notesFontFamilySelectWrap .customSelectOption,
 .notesFontSizeSelectWrap .customSelectOption {
   padding: 8px 10px;
   font-size: 11px;

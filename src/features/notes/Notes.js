@@ -242,6 +242,18 @@ const NOTE_FONT_SIZE_SELECT_OPTIONS = NOTE_FONT_SIZE_OPTIONS.map((size) => ({
   label: size,
   value: size,
 }));
+const NOTE_FONT_OPTIONS = [
+  { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  { label: 'Inter', value: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Times', value: '"Times New Roman", Times, serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Trebuchet', value: '"Trebuchet MS", sans-serif' },
+  { label: 'Courier', value: '"Courier New", Courier, monospace' },
+  { label: 'Menlo', value: 'Menlo, Monaco, Consolas, monospace' },
+  { label: 'Impact', value: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' },
+];
 
 function escapeHtml(value) {
   return String(value || '')
@@ -710,6 +722,8 @@ function RichTextEditor({ file, onChange }) {
   const [activeColor, setActiveColor] = useState('#ffffff');
   const [colorTarget, setColorTarget] = useState('text');
   const [frameStyle, setFrameStyle] = useState('outline');
+  const [fontFamily, setFontFamily] = useState(NOTE_FONT_OPTIONS[0].value);
+  const [fontSize, setFontSize] = useState('15');
 
   const pushHistory = useCallback((before, after) => {
     if (after === before) return;
@@ -947,9 +961,35 @@ function RichTextEditor({ file, onChange }) {
     return wrappedAny;
   }, [getCurrentRange]);
 
+  const applyInlineStyle = useCallback((style) => {
+    const editor = editorRef.current;
+    if (!editor || typeof window === 'undefined') return;
+    editor.focus();
+    restoreSelection();
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+
+    const before = editor.innerHTML;
+    const wrapped = wrapSelectedTextNodes(style);
+    if (!wrapped) {
+      wrapSelection(style);
+      return;
+    }
+
+    pushHistory(before, editor.innerHTML);
+    saveSelection();
+  }, [pushHistory, restoreSelection, saveSelection, wrapSelectedTextNodes, wrapSelection]);
+
   const applyFontSize = useCallback((size) => {
-    wrapSelection({ fontSize: `${size}px` });
-  }, [wrapSelection]);
+    setFontSize(size);
+    applyInlineStyle({ fontSize: `${size}px` });
+  }, [applyInlineStyle]);
+
+  const applyFontFamily = useCallback((family) => {
+    setFontFamily(family);
+    applyInlineStyle({ fontFamily: family });
+  }, [applyInlineStyle]);
 
   const applyTextColor = useCallback((color) => {
     setTextColor(color);
@@ -1162,10 +1202,18 @@ function RichTextEditor({ file, onChange }) {
           <AlignRight size={15} strokeWidth={1.7} />
         </button>
         <span className="notesFormatDivider" />
+        <div className="notesFontFamilySelectWrap" onMouseDown={saveSelection}>
+          <CustomSelect
+            options={NOTE_FONT_OPTIONS}
+            value={fontFamily}
+            onChange={applyFontFamily}
+            listPosition="local"
+          />
+        </div>
         <div className="notesFontSizeSelectWrap" onMouseDown={saveSelection}>
           <CustomSelect
             options={NOTE_FONT_SIZE_SELECT_OPTIONS}
-            value="15"
+            value={fontSize}
             onChange={applyFontSize}
             listPosition="local"
           />
