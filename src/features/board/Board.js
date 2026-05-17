@@ -13,10 +13,12 @@ import {
   AlignRight,
   ArrowRight,
   Bold,
+  ExternalLink,
   Frame as FrameIcon,
   Image as ImageIcon,
   Italic,
   Layers,
+  Link as LinkIcon,
   List,
   Maximize,
   MousePointer2,
@@ -56,6 +58,27 @@ function normalizeUrl(value) {
     ? text
     : `https://${text}`;
 }
+
+function getLinkPreview(url) {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace(/^www\./, '');
+    const path = `${parsed.pathname || ''}${parsed.search || ''}`.replace(/\/$/, '');
+    return {
+      hostname,
+      title: hostname,
+      subtitle: path && path !== '/' ? path : parsed.protocol.replace(':', ''),
+      favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(parsed.hostname)}&sz=64`,
+    };
+  } catch {
+    return {
+      hostname: url,
+      title: url,
+      subtitle: 'link',
+      favicon: '',
+    };
+  }
+}
 const WHEEL_ZOOM_STEP = 1.04;
 const MOUSE_WHEEL_ZOOM_STEP = 1.12;
 const BUTTON_ZOOM_STEP = 1.1;
@@ -63,6 +86,8 @@ const ALIGN_GUIDE_TOLERANCE_PX = 6;
 const ALIGN_GUIDE_PADDING = 28;
 const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 const PASTED_TEXT_SCREEN_WIDTH = 420;
+const DEFAULT_LINK_PREVIEW_WIDTH = 280;
+const DEFAULT_LINK_PREVIEW_HEIGHT = 150;
 const DEFAULT_ARROW_STROKE_WIDTH = 1.6;
 const TEXT_FONT_OPTIONS = [
   { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -134,8 +159,24 @@ function loadState() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
     const parsed = JSON.parse(raw);
+    const nodes = Array.isArray(parsed.nodes)
+      ? parsed.nodes.map((node) => {
+          if (node?.type === 'text' && node.href) {
+            return {
+              ...node,
+              type: 'link',
+              href: node.href,
+              w: node.w || DEFAULT_LINK_PREVIEW_WIDTH,
+              h: node.h || DEFAULT_LINK_PREVIEW_HEIGHT,
+              html: undefined,
+              content: undefined,
+            };
+          }
+          return node;
+        })
+      : [];
     return {
-      nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+      nodes,
       edges: Array.isArray(parsed.edges) ? parsed.edges : [],
       frames: Array.isArray(parsed.frames) ? parsed.frames : [],
       viewport: parsed.viewport && typeof parsed.viewport === 'object'
@@ -398,6 +439,71 @@ function ImageNode({
       onClick={onClick}
     >
       <img src={node.src} alt="" draggable={false} />
+    </div>
+  );
+}
+
+function LinkNode({
+  node,
+  selected,
+  tool,
+  registerRef,
+  onMouseDown,
+  onClick,
+}) {
+  const preview = getLinkPreview(node.href || node.url || node.content || '');
+  const width = node.w || DEFAULT_LINK_PREVIEW_WIDTH;
+  const height = node.h || DEFAULT_LINK_PREVIEW_HEIGHT;
+  const widthScale = width / DEFAULT_LINK_PREVIEW_WIDTH;
+  const heightScale = height / DEFAULT_LINK_PREVIEW_HEIGHT;
+  const rawScale = Math.min(widthScale, heightScale);
+  const scale = Math.max(0.12, Math.min(8, Number.isFinite(rawScale) ? rawScale : 1));
+
+  return (
+    <div
+      className={`boardNode boardLinkNode ${selected ? 'selected' : ''} ${tool === 'arrow' ? 'arrowTarget' : ''}`}
+      style={{
+        left: node.x,
+        top: node.y,
+        width,
+        height,
+        '--board-link-scale': scale,
+        transform: nodeTransform(node),
+        transformOrigin: 'center',
+      }}
+      ref={(el) => registerRef(node.id, el)}
+      onMouseDown={onMouseDown}
+      onClick={onClick}
+    >
+      <div className="boardLinkPreviewTop">
+        <div className="boardLinkFavicon">
+          {preview.favicon ? (
+            <img src={preview.favicon} alt="" draggable={false} />
+          ) : (
+            <LinkIcon size={17} strokeWidth={1.6} />
+          )}
+        </div>
+        {selected ? (
+          <button
+            type="button"
+            className="boardLinkOpenBtn"
+            title="Open link"
+            aria-label="Open link"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              window.open(node.href, '_blank', 'noopener,noreferrer');
+            }}
+          >
+            <ExternalLink size={14} strokeWidth={1.7} />
+          </button>
+        ) : null}
+      </div>
+      <div className="boardLinkPreviewBody">
+        <div className="boardLinkPreviewTitle">{preview.title}</div>
+        <div className="boardLinkPreviewSubtitle">{preview.subtitle}</div>
+      </div>
+      <div className="boardLinkPreviewUrl">{node.href}</div>
     </div>
   );
 }
@@ -1750,6 +1856,23 @@ export default function Board() {
     if (!content) return;
     const id = generateId();
     const href = normalizeUrl(content);
+    if (href) {
+      setNodes((prev) => [
+        ...prev,
+        {
+          id,
+          type: 'link',
+          x: worldX - DEFAULT_LINK_PREVIEW_WIDTH / 2,
+          y: worldY - DEFAULT_LINK_PREVIEW_HEIGHT / 2,
+          w: DEFAULT_LINK_PREVIEW_WIDTH,
+          h: DEFAULT_LINK_PREVIEW_HEIGHT,
+          href,
+        },
+      ]);
+      setEditingId(null);
+      selectNode(id);
+      return;
+    }
     const shouldWrap = !href && width;
     setNodes((prev) => [
       ...prev,
@@ -1907,7 +2030,17 @@ export default function Board() {
       setNodes((prev) =>
         prev.map((n) =>
           n.id === id
-            ? { ...n, content: text, html: href ? undefined : html || undefined, href: href || undefined }
+            ? href
+              ? {
+                  ...n,
+                  type: 'link',
+                  href,
+                  content: undefined,
+                  html: undefined,
+                  w: n.w || DEFAULT_LINK_PREVIEW_WIDTH,
+                  h: n.h || DEFAULT_LINK_PREVIEW_HEIGHT,
+                }
+              : { ...n, content: text, html: html || undefined, href: undefined }
             : n
         )
       );
@@ -2963,32 +3096,35 @@ export default function Board() {
               );
             })()}
 
-            {nodes.map((node) =>
-              node.type === 'text' ? (
-                <TextNode
-                  key={node.id}
-                  node={node}
-                  editing={editingId === node.id}
-                  selected={selectedId === node.id || arrowSource === node.id}
-                  connected={edges.some((edge) => edge.from === node.id || edge.to === node.id)}
-                  tool={tool}
-                  registerRef={registerNodeRef}
-                  onDoubleClick={handleNodeDoubleClick}
-                  onClick={(e) => handleNodeClick(e, node)}
-                  onMouseDown={(e) => handleNodeMouseDown(e, node)}
-                />
-              ) : (
-                <ImageNode
-                  key={node.id}
-                  node={node}
-                  selected={selectedId === node.id || arrowSource === node.id}
-                  tool={tool}
-                  registerRef={registerNodeRef}
-                  onClick={(e) => handleNodeClick(e, node)}
-                  onMouseDown={(e) => handleNodeMouseDown(e, node)}
-                />
-              )
-            )}
+            {nodes.map((node) => {
+              const selected = selectedId === node.id || arrowSource === node.id;
+              const commonProps = {
+                node,
+                selected,
+                tool,
+                registerRef: registerNodeRef,
+                onClick: (e) => handleNodeClick(e, node),
+                onMouseDown: (e) => handleNodeMouseDown(e, node),
+              };
+
+              if (node.type === 'text') {
+                return (
+                  <TextNode
+                    key={node.id}
+                    {...commonProps}
+                    editing={editingId === node.id}
+                    connected={edges.some((edge) => edge.from === node.id || edge.to === node.id)}
+                    onDoubleClick={handleNodeDoubleClick}
+                  />
+                );
+              }
+
+              if (node.type === 'link') {
+                return <LinkNode key={node.id} {...commonProps} />;
+              }
+
+              return <ImageNode key={node.id} {...commonProps} />;
+            })}
 
             {alignmentGuides.vertical.map((guide) => (
               <div

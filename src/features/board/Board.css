@@ -590,6 +590,120 @@
   pointer-events: none;
 }
 
+/* ---------- Link preview node ---------- */
+.boardLinkNode {
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-03);
+  cursor: grab;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: calc(12px * var(--board-link-scale, 1));
+  gap: calc(10px * var(--board-link-scale, 1));
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
+.boardLinkNode.selected {
+  border-color: var(--surface-50);
+  box-shadow: 0 0 0 1px var(--surface-35), 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.boardLinkPreviewTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(10px * var(--board-link-scale, 1));
+  min-height: calc(30px * var(--board-link-scale, 1));
+}
+
+.boardLinkFavicon {
+  width: calc(30px * var(--board-link-scale, 1));
+  height: calc(30px * var(--board-link-scale, 1));
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+}
+
+.boardLinkFavicon img {
+  width: calc(18px * var(--board-link-scale, 1));
+  height: calc(18px * var(--board-link-scale, 1));
+  display: block;
+  pointer-events: none;
+}
+
+.boardLinkFavicon svg {
+  width: calc(17px * var(--board-link-scale, 1));
+  height: calc(17px * var(--board-link-scale, 1));
+}
+
+.boardLinkOpenBtn {
+  width: calc(30px * var(--board-link-scale, 1));
+  height: calc(30px * var(--board-link-scale, 1));
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-05);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: var(--transition-fast);
+}
+
+.boardLinkOpenBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--surface-35);
+  background: var(--surface-10);
+}
+
+.boardLinkOpenBtn svg {
+  width: calc(14px * var(--board-link-scale, 1));
+  height: calc(14px * var(--board-link-scale, 1));
+}
+
+.boardLinkPreviewBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(4px * var(--board-link-scale, 1));
+}
+
+.boardLinkPreviewTitle {
+  color: var(--text-primary);
+  font-size: calc(18px * var(--board-link-scale, 1));
+  line-height: 1.2;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boardLinkPreviewSubtitle {
+  color: var(--text-tertiary);
+  font-size: calc(11px * var(--board-link-scale, 1));
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boardLinkPreviewUrl {
+  border-top: 1px solid var(--border-color-dim);
+  padding-top: calc(9px * var(--board-link-scale, 1));
+  color: var(--text-muted);
+  font-size: calc(10px * var(--board-link-scale, 1));
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- Selection frame (resize + rotate) ---------- */
 .boardSelectionFrame {
   position: absolute;
