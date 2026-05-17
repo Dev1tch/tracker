@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -13,15 +14,20 @@ import {
   AlignRight,
   ArrowRight,
   Bold,
+  Calendar,
+  ChevronRight,
   ExternalLink,
   Frame as FrameIcon,
   Image as ImageIcon,
   Italic,
   Layers,
   Link as LinkIcon,
+  ListTodo,
   List,
   Maximize,
   MousePointer2,
+  RefreshCw,
+  Search,
   Trash2,
   Type,
   Underline,
@@ -30,6 +36,20 @@ import {
 } from 'lucide-react';
 import ColorPicker from '@/components/ui/ColorPicker';
 import CustomSelect from '@/components/ui/CustomSelect';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { tasksApi, TASK_STATUS } from '@/features/tasks/api';
+import TaskDetailModal from '@/features/tasks/components/TasksBoard/components/TaskDetailModal';
+import {
+  PRIORITY_META,
+  PRIORITY_ORDER,
+  STATUS_META,
+  STATUS_ORDER,
+} from '@/features/tasks/constants/task-board.constants';
+import { formatPriority, formatStatus } from '@/features/tasks/utils/task-formatters';
+import { buildUpdatePayload } from '@/features/tasks/utils/task-form.utils';
+import { formatShortDate, toIsoOrNull } from '@/features/tasks/utils/task-date.utils';
+import '@/features/tasks/components/TasksBoard/TasksBoard.css';
+import '@/features/tasks/components/TasksBoard/components/TasksListMobile.css';
 import './Board.css';
 
 const STORAGE_KEY = 'board.state';
@@ -79,6 +99,38 @@ function getLinkPreview(url) {
     };
   }
 }
+
+function getDescriptionPreview(text, maxLength = 110) {
+  if (!text) return '';
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function formatSpentTime(totalMinutes) {
+  if (!totalMinutes || totalMinutes <= 0) return '0m';
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(' ');
+}
+
+function getNormalizedSubtaskPayload(parentId, form) {
+  return {
+    title: form.title.trim(),
+    description: form.description || null,
+    task_type_id: form.task_type_id || null,
+    parent_task_id: parentId,
+    status: form.status,
+    priority: form.priority,
+    start_date: toIsoOrNull(form.start_date),
+    due_date: toIsoOrNull(form.due_date),
+  };
+}
 const WHEEL_ZOOM_STEP = 1.04;
 const MOUSE_WHEEL_ZOOM_STEP = 1.12;
 const BUTTON_ZOOM_STEP = 1.1;
@@ -88,6 +140,30 @@ const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 const PASTED_TEXT_SCREEN_WIDTH = 420;
 const DEFAULT_LINK_PREVIEW_WIDTH = 280;
 const DEFAULT_LINK_PREVIEW_HEIGHT = 150;
+const DEFAULT_TASK_NODE_WIDTH = 280;
+const DEFAULT_TASK_NODE_HEIGHT = 92;
+const DEFAULT_TASK_DETAIL_WIDTH = 950;
+const DEFAULT_TASK_DETAIL_HEIGHT = 730;
+const BOARD_TASK_CARD_VIEW_SETTINGS = {
+  title: true,
+  description: true,
+  status: true,
+  task_type: true,
+  priority: true,
+  start_date: false,
+  due_date: true,
+  created_at: false,
+  total_spent_time_minutes: true,
+};
+const BOARD_STATUS_COLORS = {
+  [TASK_STATUS.TO_DO]: '#94a3b8',
+  [TASK_STATUS.IN_PROGRESS]: '#60a5fa',
+  [TASK_STATUS.PAUSED]: '#9ca3af',
+  [TASK_STATUS.IN_REVIEW]: '#fbbf24',
+  [TASK_STATUS.COMPLETED]: '#34d399',
+  [TASK_STATUS.CANCELLED]: '#f87171',
+  [TASK_STATUS.ARCHIVED]: '#6b7280',
+};
 const DEFAULT_ARROW_STROKE_WIDTH = 1.6;
 const TEXT_FONT_OPTIONS = [
   { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -504,6 +580,273 @@ function LinkNode({
         <div className="boardLinkPreviewSubtitle">{preview.subtitle}</div>
       </div>
       <div className="boardLinkPreviewUrl">{node.href}</div>
+    </div>
+  );
+}
+
+function BoardTaskCard({ task, taskTypeById, selected }) {
+  const due = formatShortDate(task?.due_date);
+  const descriptionPreview = getDescriptionPreview(task?.description);
+  const taskType =
+    task?.task_type_id !== null && task?.task_type_id !== undefined
+      ? (taskTypeById.get(String(task.task_type_id)) || null)
+      : null;
+  const taskTypeColor = taskType?.color || '#6ea8fe';
+  const priorityMeta = PRIORITY_META[task?.priority] || {
+    label: formatPriority(task?.priority),
+    className: 'normal',
+  };
+  const taskStatusMeta = STATUS_META[task?.status] || {
+    label: formatStatus(task?.status),
+    className: 'todo',
+  };
+
+  if (!task) {
+    return (
+      <div className="tasksCard boardImportedTaskCard boardTaskMissing">
+        <div className="tasksCardTop">
+          <span className="taskStatusDot" />
+          <h4>Task unavailable</h4>
+        </div>
+        <p>This imported task could not be found.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`tasksCard boardImportedTaskCard ${taskType ? 'hasTypeAccent' : ''} ${selected ? 'selected' : ''}`}
+      style={taskType ? { '--task-type-color': taskTypeColor } : undefined}
+    >
+      <div className="tasksCardTop">
+        <span
+          className={`taskStatusDot ${taskStatusMeta.className}`}
+          title={taskStatusMeta.label}
+        />
+        <h4>{task.title}</h4>
+      </div>
+      <div className="tasksCardMeta">
+        {taskType ? (
+          <span className="taskTypeMeta" style={{ color: taskTypeColor }}>
+            {taskType.name}
+          </span>
+        ) : null}
+        <span className={`priorityBadge ${priorityMeta.className}`}>
+          {priorityMeta.label}
+        </span>
+        {task.description ? (
+          <div className="tasksDescriptionHint">
+            <List size={12} />
+            <div className="tasksDescriptionPreview">{descriptionPreview}</div>
+          </div>
+        ) : null}
+        {due ? (
+          <span className="taskDueDate">{due}</span>
+        ) : null}
+        {task.status === TASK_STATUS.COMPLETED && (task.total_spent_time_minutes ?? 0) > 0 ? (
+          <span className="taskSpentBadge">{formatSpentTime(task.total_spent_time_minutes)}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function TaskNode({
+  node,
+  selected,
+  expanded,
+  task,
+  tasks,
+  taskTypes,
+  taskTypeById,
+  statusColors,
+  isSaving,
+  tool,
+  registerRef,
+  onMouseDown,
+  onClick,
+  onCollapse,
+  onSave,
+  onDelete,
+  onUpdateStatus,
+  onCreateSubtask,
+  onDeleteSubtask,
+  onOpenTask,
+}) {
+  const width = expanded
+    ? (node.detailW || node.w || DEFAULT_TASK_DETAIL_WIDTH)
+    : (node.cardW || node.w || DEFAULT_TASK_NODE_WIDTH);
+  const height = expanded
+    ? (node.detailH || node.h || DEFAULT_TASK_DETAIL_HEIGHT)
+    : (node.cardH || node.h || DEFAULT_TASK_NODE_HEIGHT);
+  const baseWidth = expanded ? DEFAULT_TASK_DETAIL_WIDTH : DEFAULT_TASK_NODE_WIDTH;
+  const baseHeight = expanded ? DEFAULT_TASK_DETAIL_HEIGHT : DEFAULT_TASK_NODE_HEIGHT;
+  const rawScale = Math.min(width / baseWidth, height / baseHeight);
+  const taskScale = Math.max(
+    expanded ? 0.05 : 0.08,
+    Math.min(expanded ? 8 : 14, Number.isFinite(rawScale) ? rawScale : 1)
+  );
+  const className = [
+    'boardNode',
+    'boardTaskNode',
+    expanded ? 'expanded' : 'card',
+    selected ? 'selected' : '',
+    tool === 'arrow' ? 'arrowTarget' : '',
+  ].filter(Boolean).join(' ');
+
+  function handleMouseDown(event) {
+    if (
+      expanded &&
+      event.target.closest('input, textarea, button, select, [contenteditable="true"], .customSelect, .tasksDatePicker')
+    ) {
+      event.stopPropagation();
+      return;
+    }
+    onMouseDown(event);
+  }
+
+  return (
+    <div
+      className={className}
+      style={{
+        left: node.x,
+        top: node.y,
+        width,
+        height,
+        '--board-task-scale': taskScale,
+        transform: nodeTransform(node),
+        transformOrigin: 'center',
+      }}
+      ref={(el) => registerRef(node.id, el)}
+      onMouseDown={handleMouseDown}
+      onClick={onClick}
+    >
+      {expanded ? (
+        <div className="boardTaskDetailEmbed">
+          <TaskDetailModal
+            key={task?.id || 'board-task-detail'}
+            task={task}
+            allTasks={tasks}
+            taskTypes={taskTypes}
+            onClose={onCollapse}
+            onSave={onSave}
+            onDelete={onDelete}
+            onUpdateStatus={onUpdateStatus}
+            onCreateSubtask={onCreateSubtask}
+            onDeleteSubtask={onDeleteSubtask}
+            onOpenTask={onOpenTask}
+            onOpenTypeManager={() => {}}
+            cardViewSettings={BOARD_TASK_CARD_VIEW_SETTINGS}
+            statusColors={statusColors}
+            isSaving={isSaving}
+            isMobile={false}
+            embedded
+          />
+        </div>
+      ) : (
+        <BoardTaskCard task={task} taskTypeById={taskTypeById} selected={selected} />
+      )}
+    </div>
+  );
+}
+
+function TaskImportPanel({
+  tasks,
+  taskTypeById,
+  query,
+  onQueryChange,
+  onImport,
+  onRefresh,
+  loading,
+  error,
+}) {
+  return (
+    <div className="boardImportPanel" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="boardImportPanelHeader">
+        <div>
+          <strong>Import task</strong>
+          <span>{tasks.length} available</span>
+        </div>
+        <button
+          type="button"
+          className="boardImportIconBtn"
+          onClick={onRefresh}
+          title="Refresh tasks"
+          aria-label="Refresh tasks"
+        >
+          <RefreshCw size={14} className={loading ? 'spin' : ''} />
+        </button>
+      </div>
+      <label className="boardImportSearch">
+        <Search size={14} />
+        <input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Search title or content"
+        />
+      </label>
+      {error ? <div className="boardImportError">{error}</div> : null}
+      <div className="boardImportTaskList">
+        {loading ? (
+          <div className="boardImportEmpty">Loading tasks...</div>
+        ) : tasks.length === 0 ? (
+          <div className="boardImportEmpty">No tasks found</div>
+        ) : (
+          tasks.map((task) => {
+            const type =
+              task.task_type_id !== null && task.task_type_id !== undefined
+                ? taskTypeById.get(String(task.task_type_id))
+                : null;
+            const due = formatShortDate(task.due_date);
+            const statusMeta = STATUS_META[task.status] || {
+              label: formatStatus(task.status),
+              className: 'todo',
+            };
+            const dotColor = BOARD_STATUS_COLORS[task.status] || BOARD_STATUS_COLORS[TASK_STATUS.TO_DO];
+            const priorityMeta = PRIORITY_META[task.priority] || {
+              label: formatPriority(task.priority),
+              className: 'normal',
+            };
+            return (
+              <button
+                type="button"
+                key={task.id}
+                className="tasksMobileRow boardImportTaskRow"
+                onClick={() => onImport(task)}
+              >
+                <span
+                  className="tasksMobileRowDot"
+                  style={{ background: dotColor }}
+                  title={statusMeta.label}
+                />
+                <span className="tasksMobileRowTitle">
+                  {task.title}
+                </span>
+                <div className="tasksMobileRowMeta">
+                  {type ? (
+                    <span
+                      className="taskTypeMeta"
+                      style={{ color: type.color || '#6ea8fe' }}
+                    >
+                      {type.name}
+                    </span>
+                  ) : null}
+                  <span className={`priorityBadge ${priorityMeta.className}`}>
+                    {priorityMeta.label}
+                  </span>
+                  {due ? (
+                    <span className="taskDueDate">
+                      <Calendar size={8} />
+                      {due}
+                    </span>
+                  ) : null}
+                </div>
+                <ChevronRight size={12} className="tasksMobileRowChevron" />
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
@@ -1354,6 +1697,15 @@ export default function Board() {
   const [alignmentGuides, setAlignmentGuides] = useState({ vertical: [], horizontal: [] });
   const [fontOptions, setFontOptions] = useState(TEXT_FONT_OPTIONS);
   const [textToolbarFont, setTextToolbarFont] = useState(TEXT_FONT_OPTIONS[0].value);
+  const [tasks, setTasks] = useState([]);
+  const [taskTypes, setTaskTypes] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState('');
+  const [isTaskImportOpen, setIsTaskImportOpen] = useState(false);
+  const [taskImportQuery, setTaskImportQuery] = useState('');
+  const [expandedTaskNodeId, setExpandedTaskNodeId] = useState(null);
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
 
   const wrapperRef = useRef(null);
   const surfaceRef = useRef(null);
@@ -1368,6 +1720,29 @@ export default function Board() {
   const restoringHistoryRef = useRef(false);
   const loadingLocalFontsRef = useRef(false);
   const lastBoardStateRef = useRef(serializeBoardState(initial.nodes, initial.edges));
+  const nodeDragMovedRef = useRef(false);
+
+  const taskTypeById = useMemo(
+    () => new Map(taskTypes.map((type) => [String(type.id), type])),
+    [taskTypes]
+  );
+  const statusOptionColors = useMemo(
+    () =>
+      STATUS_ORDER.reduce((acc, status) => {
+        acc[status] = BOARD_STATUS_COLORS[status] || BOARD_STATUS_COLORS[TASK_STATUS.TO_DO];
+        return acc;
+      }, {}),
+    []
+  );
+  const filteredImportTasks = useMemo(() => {
+    const search = taskImportQuery.trim().toLowerCase();
+    return tasks
+      .filter((task) => !task.parent_task_id && !task.is_deleted)
+      .filter((task) => {
+        if (!search) return true;
+        return `${task.title || ''} ${task.description || ''}`.toLowerCase().includes(search);
+      });
+  }, [taskImportQuery, tasks]);
 
   const loadLocalFontOptions = useCallback(async () => {
     if (
@@ -1403,6 +1778,28 @@ export default function Board() {
   useEffect(() => {
     loadLocalFontOptions();
   }, [loadLocalFontOptions]);
+
+  const loadTaskData = useCallback(async () => {
+    setTasksLoading(true);
+    setTasksError('');
+    try {
+      const [taskItems, typeItems] = await Promise.all([
+        tasksApi.getTasks(),
+        tasksApi.getTaskTypes(),
+      ]);
+      setTasks(Array.isArray(taskItems) ? taskItems : []);
+      setTaskTypes(Array.isArray(typeItems) ? typeItems : []);
+    } catch (error) {
+      console.error('Failed to load board task imports:', error);
+      setTasksError(error?.message || 'Failed to load tasks');
+    } finally {
+      setTasksLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTaskData();
+  }, [loadTaskData]);
 
   /* Persist */
   useEffect(() => {
@@ -1473,7 +1870,10 @@ export default function Board() {
       const target = e.target;
       if (target && typeof target.closest === 'function') {
         if (
+          target.closest('.boardTaskDetailEmbed') ||
           target.closest('.customSelectList') ||
+          target.closest('.tasksDatePopover') ||
+          target.closest('.tasksTimeSelectDropdown') ||
           target.closest('.salColorPickerPopover') ||
           target.closest('.boardTextFloatingToolbar')
         ) {
@@ -1525,8 +1925,59 @@ export default function Board() {
     setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
     setSelectedId((cur) => (cur === id ? null : cur));
     setEditingId((cur) => (cur === id ? null : cur));
+    setExpandedTaskNodeId((cur) => (cur === id ? null : cur));
     setArrowSource((cur) => (cur === id ? null : cur));
   }, []);
+
+  function collapseTaskNode(id) {
+    if (!id) return;
+    const zoom = Math.max(viewport.zoom || 1, 0.01);
+    setNodes((prev) =>
+      prev.map((node) => {
+        if (node.id !== id || node.type !== 'task') return node;
+        const detailW = node.w || node.detailW || DEFAULT_TASK_DETAIL_WIDTH / zoom;
+        const detailH = node.h || node.detailH || DEFAULT_TASK_DETAIL_HEIGHT / zoom;
+        const cardW = node.cardW || DEFAULT_TASK_NODE_WIDTH / zoom;
+        const cardH = node.cardH || DEFAULT_TASK_NODE_HEIGHT / zoom;
+        return {
+          ...node,
+          detailW,
+          detailH,
+          w: cardW,
+          h: cardH,
+        };
+      })
+    );
+    setExpandedTaskNodeId((cur) => (cur === id ? null : cur));
+  }
+
+  function expandTaskNode(id) {
+    if (!id) return;
+    const zoom = Math.max(viewport.zoom || 1, 0.01);
+    setNodes((prev) =>
+      prev.map((node) => {
+        if (node.id !== id || node.type !== 'task') return node;
+        const cardW = node.w || node.cardW || DEFAULT_TASK_NODE_WIDTH / zoom;
+        const cardH = node.h || node.cardH || DEFAULT_TASK_NODE_HEIGHT / zoom;
+        const detailW = node.detailW || DEFAULT_TASK_DETAIL_WIDTH / zoom;
+        const detailH = node.detailH || DEFAULT_TASK_DETAIL_HEIGHT / zoom;
+        return {
+          ...node,
+          cardW,
+          cardH,
+          w: detailW,
+          h: detailH,
+        };
+      })
+    );
+    setExpandedTaskNodeId(id);
+  }
+
+  function collapseExpandedTaskNode() {
+    if (expandedTaskNodeId) {
+      collapseTaskNode(expandedTaskNodeId);
+    }
+  }
 
   const removeEdge = useCallback((id) => {
     setEdges((prev) => prev.filter((e) => e.id !== id));
@@ -1850,6 +2301,134 @@ export default function Board() {
     setEditingId(id);
     selectNode(id);
   }
+
+  function addTaskNode(task) {
+    if (!task?.id || !wrapperRef.current) return;
+    const zoom = Math.max(viewport.zoom || 1, 0.01);
+    const cardW = DEFAULT_TASK_NODE_WIDTH / zoom;
+    const cardH = DEFAULT_TASK_NODE_HEIGHT / zoom;
+    const detailW = DEFAULT_TASK_DETAIL_WIDTH / zoom;
+    const detailH = DEFAULT_TASK_DETAIL_HEIGHT / zoom;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const center = screenToWorld(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2
+    );
+    const id = generateId();
+    setNodes((prev) => [
+      ...prev,
+      {
+        id,
+        type: 'task',
+        taskId: task.id,
+        x: center.x - cardW / 2,
+        y: center.y - cardH / 2,
+        w: cardW,
+        h: cardH,
+        cardW,
+        cardH,
+        detailW,
+        detailH,
+      },
+    ]);
+    collapseExpandedTaskNode();
+    selectNode(id);
+    selectTool('select');
+    setIsTaskImportOpen(false);
+  }
+
+  const handleUpdateTask = useCallback(async (taskId, patch) => {
+    const current = tasks.find((task) => task.id === taskId);
+    if (!current) return;
+    setIsSavingTask(true);
+    try {
+      const payload = buildUpdatePayload(current, patch);
+      const updated = await tasksApi.updateTask(taskId, payload);
+      setTasks((prev) => prev.map((task) => (task.id === taskId ? updated : task)));
+    } catch (error) {
+      console.error('Failed to update board task:', error);
+      setTasksError(error?.message || 'Failed to update task');
+      throw error;
+    } finally {
+      setIsSavingTask(false);
+    }
+  }, [tasks]);
+
+  const handleUpdateTaskStatus = useCallback(async (taskIds, status) => {
+    const ids = Array.isArray(taskIds) ? taskIds : [taskIds];
+    if (ids.length === 0) return;
+    const previous = tasks;
+    setTasks((prev) =>
+      prev.map((task) =>
+        ids.includes(task.id)
+          ? {
+              ...task,
+              status,
+              completed_at:
+                status === TASK_STATUS.COMPLETED
+                  ? task.completed_at || new Date().toISOString()
+                  : task.completed_at,
+              pause_start_date:
+                status === TASK_STATUS.PAUSED
+                  ? task.pause_start_date || new Date().toISOString()
+                  : task.pause_start_date,
+            }
+          : task
+      )
+    );
+    try {
+      await tasksApi.updateTasksBulkStatus({ task_ids: ids, status });
+      loadTaskData();
+    } catch (error) {
+      setTasks(previous);
+      console.error('Failed to update board task status:', error);
+      setTasksError(error?.message || 'Failed to update task status');
+      throw error;
+    }
+  }, [loadTaskData, tasks]);
+
+  const handleCreateSubtask = useCallback(async (parentId, form) => {
+    const payload = getNormalizedSubtaskPayload(parentId, form);
+    if (!payload.title) return;
+    try {
+      const created = await tasksApi.createTask(payload);
+      setTasks((prev) => prev.map((task) =>
+        task.id === parentId ? { ...task, is_parent: true } : task
+      ).concat(created));
+    } catch (error) {
+      console.error('Failed to create board subtask:', error);
+      setTasksError(error?.message || 'Failed to create subtask');
+      throw error;
+    }
+  }, []);
+
+  const handleDeleteTask = useCallback(async (taskId) => {
+    if (!taskId) return;
+    const ids = new Set([taskId]);
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      tasks.forEach((task) => {
+        if (task.parent_task_id && ids.has(task.parent_task_id) && !ids.has(task.id)) {
+          ids.add(task.id);
+          expanded = true;
+        }
+      });
+    }
+    const deleteIds = Array.from(ids);
+    const previous = tasks;
+    setTasks((prev) => prev.filter((task) => !ids.has(task.id)));
+    try {
+      await tasksApi.deleteTasksBulk({ task_ids: deleteIds });
+      setPendingDeleteTaskId(null);
+      setExpandedTaskNodeId(null);
+      setNodes((prev) => prev.filter((node) => node.type !== 'task' || !ids.has(node.taskId)));
+    } catch (error) {
+      setTasks(previous);
+      console.error('Failed to delete board task:', error);
+      setTasksError(error?.message || 'Failed to delete task');
+    }
+  }, [tasks]);
 
   const addPastedTextNode = useCallback((text, worldX, worldY, fontSize = 16, width) => {
     const content = (text || '').replace(/\r\n?/g, '\n').trim();
@@ -2201,7 +2780,15 @@ export default function Board() {
         horizontal: aligned.horizontal,
       });
       setNodes((prev) =>
-        prev.map((n) => (n.id === node.id ? { ...n, ...finalNext } : n))
+        prev.map((n) => {
+          if (n.id !== node.id) return n;
+          if (n.type !== 'task') return { ...n, ...finalNext };
+          const nextTaskSize =
+            expandedTaskNodeId === n.id
+              ? { detailW: finalNext.w, detailH: finalNext.h }
+              : { cardW: finalNext.w, cardH: finalNext.h };
+          return { ...n, ...finalNext, ...nextTaskSize };
+        })
       );
     }
     function onUp() {
@@ -2341,6 +2928,7 @@ export default function Board() {
         }
       } else {
         setSelectedId(null);
+        collapseExpandedTaskNode();
       }
     }
     window.addEventListener('mousemove', onMove);
@@ -2543,6 +3131,10 @@ export default function Board() {
 
   function handleNodeClick(e, node) {
     e.stopPropagation();
+    if (nodeDragMovedRef.current) {
+      nodeDragMovedRef.current = false;
+      return;
+    }
     if (editingId === node.id) return;
     setSelectedEdgeId(null);
     if (tool === 'arrow') {
@@ -2585,12 +3177,23 @@ export default function Board() {
     }
     if (tool === 'select') {
       selectNode(node.id);
+      if (node.type === 'task') {
+        if (expandedTaskNodeId !== node.id) {
+          if (expandedTaskNodeId) {
+            collapseTaskNode(expandedTaskNodeId);
+          }
+          expandTaskNode(node.id);
+        }
+      } else {
+        collapseExpandedTaskNode();
+      }
     }
   }
 
   function handleNodeMouseDown(e, node) {
     if (tool !== 'select' || editingId === node.id) return;
     e.stopPropagation();
+    nodeDragMovedRef.current = false;
     selectNode(node.id);
     const startX = e.clientX;
     const startY = e.clientY;
@@ -2605,6 +3208,7 @@ export default function Board() {
         return;
       }
       moved = true;
+      nodeDragMovedRef.current = true;
       const nextX = origX + dx;
       const nextY = origY + dy;
       const alignment = getDragAlignmentGuides(
@@ -2757,6 +3361,19 @@ export default function Board() {
 
           <button
             type="button"
+            className={`boardToolBtn ${isTaskImportOpen ? 'active' : ''}`}
+            onClick={() => {
+              setIsTaskImportOpen((open) => !open);
+              selectTool('select');
+            }}
+            title="Import task"
+            aria-label="Import task"
+          >
+            <ListTodo size={18} />
+          </button>
+
+          <button
+            type="button"
             className="boardToolBtn danger"
             onClick={removeSelected}
             disabled={!selectedId && !selectedEdgeId && !selectedFrameId}
@@ -2766,6 +3383,19 @@ export default function Board() {
             <Trash2 size={18} />
           </button>
         </aside>
+
+        {isTaskImportOpen ? (
+          <TaskImportPanel
+            tasks={filteredImportTasks}
+            taskTypeById={taskTypeById}
+            query={taskImportQuery}
+            onQueryChange={setTaskImportQuery}
+            onImport={addTaskNode}
+            onRefresh={loadTaskData}
+            loading={tasksLoading}
+            error={tasksError}
+          />
+        ) : null}
 
         {(() => {
           if (!selectedEdgeId || editingId || editingFrameId) return null;
@@ -3123,6 +3753,36 @@ export default function Board() {
                 return <LinkNode key={node.id} {...commonProps} />;
               }
 
+              if (node.type === 'task') {
+                const task = tasks.find((item) => item.id === node.taskId) || null;
+                return (
+                  <TaskNode
+                    key={node.id}
+                    {...commonProps}
+                    expanded={expandedTaskNodeId === node.id}
+                    task={task}
+                    tasks={tasks}
+                    taskTypes={taskTypes}
+                    taskTypeById={taskTypeById}
+                    statusColors={statusOptionColors}
+                    isSaving={isSavingTask}
+                    onCollapse={() => collapseTaskNode(node.id)}
+                    onSave={handleUpdateTask}
+                    onDelete={(taskId) => setPendingDeleteTaskId(taskId)}
+                    onUpdateStatus={handleUpdateTaskStatus}
+                    onCreateSubtask={handleCreateSubtask}
+                    onDeleteSubtask={handleDeleteTask}
+                    onOpenTask={(taskId) => {
+                      setNodes((prev) =>
+                        prev.map((item) =>
+                          item.id === node.id ? { ...item, taskId } : item
+                        )
+                      );
+                    }}
+                  />
+                );
+              }
+
               return <ImageNode key={node.id} {...commonProps} />;
             })}
 
@@ -3183,6 +3843,15 @@ export default function Board() {
           </div>
         </div>
       </div>
+      <ConfirmModal
+        isOpen={Boolean(pendingDeleteTaskId)}
+        title="Delete Task"
+        message="This action will remove the task and any nested subtasks. Continue?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        onCancel={() => setPendingDeleteTaskId(null)}
+        onConfirm={() => handleDeleteTask(pendingDeleteTaskId)}
+      />
     </div>
   );
 }

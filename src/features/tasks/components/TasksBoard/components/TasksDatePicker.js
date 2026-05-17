@@ -92,7 +92,12 @@ function TasksTimeSelect({
       </button>
 
       {isOpen ? (
-        <div className="tasksTimeSelectDropdown" role="listbox" aria-label={label}>
+        <div
+          className="tasksTimeSelectDropdown"
+          role="listbox"
+          aria-label={label}
+          onWheel={(event) => event.stopPropagation()}
+        >
           {options.map((option) => (
             <button
               key={option}
@@ -326,7 +331,10 @@ export default function TasksDatePicker({
       </button>
 
       {isOpen ? (
-        <div className={`tasksDatePopover ${openUp ? 'openUp' : ''}`}>
+        <div
+          className={`tasksDatePopover ${openUp ? 'openUp' : ''}`}
+          onWheel={(event) => event.stopPropagation()}
+        >
           <div className="tasksDateHeader">
             <button
               type="button"

@@ -64,12 +64,42 @@ export default function CustomSelect({
   // scrollable overflow (which would visually "enlarge" a parent modal).
   useLayoutEffect(() => {
     if (!isOpen) return;
-    if (listPosition !== 'fixed') {
-      return;
-    }
     const trigger = headerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
+    if (listPosition === 'local') {
+      const boundary =
+        containerRef.current?.closest?.(
+          '.tasksSubtaskList, .tasksDetailMain, .tasksDetailBody, .boardTaskDetailEmbed'
+        ) || null;
+      const boundaryRect = boundary?.getBoundingClientRect?.() || {
+        top: VIEWPORT_PADDING,
+        bottom: window.innerHeight - VIEWPORT_PADDING,
+      };
+      const spaceBelow = boundaryRect.bottom - rect.bottom - LIST_GAP;
+      const spaceAbove = rect.top - boundaryRect.top - LIST_GAP;
+      const openUp = spaceBelow < MIN_OPEN_DOWN_SPACE && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(
+        96,
+        Math.min(PREFERRED_MAX_HEIGHT, openUp ? spaceAbove : spaceBelow)
+      );
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setListStyle({
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        width: '100%',
+        maxHeight,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        top: openUp ? 'auto' : `calc(100% + ${LIST_GAP}px)`,
+        bottom: openUp ? `calc(100% + ${LIST_GAP}px)` : 'auto',
+      });
+      return;
+    }
+    if (listPosition !== 'fixed') {
+      return;
+    }
     const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_PADDING;
     const spaceAbove = rect.top - VIEWPORT_PADDING;
     const openUp = spaceBelow < MIN_OPEN_DOWN_SPACE && spaceAbove > spaceBelow;

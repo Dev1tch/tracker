@@ -63,6 +63,130 @@
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
+.boardImportPanel {
+  pointer-events: auto;
+  width: 316px;
+  max-height: min(520px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-color-dim);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+  color: var(--text-primary);
+}
+
+.boardImportPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.boardImportPanelHeader div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.boardImportPanelHeader strong {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.boardImportPanelHeader span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.boardImportIconBtn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-03);
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.boardImportIconBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--surface-30);
+  background: var(--surface-05);
+}
+
+.boardImportSearch {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-03);
+  color: var(--text-tertiary);
+}
+
+.boardImportSearch:focus-within {
+  border-color: var(--surface-35);
+  color: var(--text-secondary);
+}
+
+.boardImportSearch input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.boardImportSearch input::placeholder {
+  color: var(--text-muted);
+}
+
+.boardImportTaskList {
+  min-height: 80px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-right: 2px;
+}
+
+.boardImportTaskRow.tasksMobileRow {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--surface-03);
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+}
+
+.boardImportTaskRow.tasksMobileRow:hover {
+  background: var(--surface-03);
+}
+
+.boardImportEmpty,
+.boardImportError {
+  padding: 14px 10px;
+  border: 1px solid var(--border-color-dim);
+  color: var(--text-tertiary);
+  background: var(--surface-02);
+  font-size: 12px;
+}
+
+.boardImportError {
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
 .boardPopoutSize {
   width: 46px;
   height: 26px;
@@ -702,6 +826,176 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- Imported task nodes ---------- */
+.boardTaskNode {
+  cursor: grab;
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.boardTaskNode.card {
+  overflow: visible;
+}
+
+.boardTaskNode.expanded {
+  overflow: visible;
+}
+
+/* .boardTaskNode.expanded:has(.customSelectHeader.open),
+.boardTaskNode.expanded:has(.tasksDateTrigger.open),
+.boardTaskNode.expanded:has(.tasksTimeSelect.open) {
+  z-index: 30;
+} */
+
+.boardImportedTaskCard {
+  width: calc(100% / var(--board-task-scale, 1));
+  height: calc(100% / var(--board-task-scale, 1));
+  min-height: 0;
+  box-sizing: border-box;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  transform: scale(var(--board-task-scale, 1));
+  transform-origin: top left;
+}
+
+.boardTaskNode.selected .boardImportedTaskCard {
+  border-color: var(--surface-50);
+  box-shadow: 0 0 0 1px var(--surface-35), 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.boardTaskMissing p {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  margin: 0;
+}
+
+.boardTaskDetailEmbed {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  border: 1px solid var(--border-color-dim);
+  background: var(--panel-solid);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38);
+}
+
+.boardTaskDetailEmbed .tasksModal.tasksDetailModal.embedded {
+  width: calc(100% / var(--board-task-scale, 1));
+  height: calc(100% / var(--board-task-scale, 1));
+  max-width: none;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  transform: scale(var(--board-task-scale, 1));
+  transform-origin: top left;
+}
+
+.boardTaskDetailEmbed .tasksModalHeader.sticky {
+  cursor: grab;
+  flex: 0 0 auto;
+}
+
+.boardTaskDetailEmbed .tasksDetailBody {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  overflow: visible;
+  position: relative;
+}
+
+.boardTaskDetailEmbed .tasksDetailMain,
+.boardTaskDetailEmbed .tasksSubtasksPanel {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.boardTaskDetailEmbed .tasksDetailMain {
+  overflow-y: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.boardTaskDetailEmbed .tasksSubtasksPanel {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
+}
+
+.boardTaskDetailEmbed .tasksDetailMain:has(.tasksDateTrigger.open),
+.boardTaskDetailEmbed .tasksDetailMain:has(.customSelectHeader.open) {
+  z-index: 850;
+}
+
+.boardTaskDetailEmbed .tasksDetailBody:has(.tasksDetailMain .tasksDateTrigger.open) .tasksSubtasksPanel,
+.boardTaskDetailEmbed .tasksDetailBody:has(.tasksDetailMain .customSelectHeader.open) .tasksSubtasksPanel {
+  z-index: 1;
+}
+
+.boardTaskDetailEmbed .tasksSubtasksHeader,
+.boardTaskDetailEmbed .tasksSubtaskForm {
+  flex: 0 0 auto;
+}
+
+.boardTaskDetailEmbed .tasksSubtaskList {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.boardTaskDetailEmbed .tasksSubtasksPanel:has(.tasksSubtaskStatusInline .customSelectHeader.open),
+.boardTaskDetailEmbed .tasksSubtaskList:has(.tasksSubtaskStatusInline .customSelectHeader.open) {
+  overflow: visible;
+  z-index: 900;
+}
+
+.boardTaskDetailEmbed .tasksSubtaskItem:has(.tasksSubtaskStatusInline .customSelectHeader.open) {
+  position: relative;
+  z-index: 950;
+}
+
+.boardTaskDetailEmbed .tasksSubtaskStatusInline:has(.customSelectHeader.open) .customSelectList.local {
+  z-index: 1050;
+}
+
+.boardTaskDetailEmbed .customSelectContainer,
+.boardTaskDetailEmbed .tasksDatePicker,
+.boardTaskDetailEmbed .tasksTimeSelect {
+  z-index: 320;
+}
+
+.boardTaskDetailEmbed .tasksField:has(.customSelectHeader.open),
+.boardTaskDetailEmbed .tasksField:has(.tasksDateTrigger.open),
+.boardTaskDetailEmbed .tasksSubtaskItem:has(.customSelectHeader.open),
+.boardTaskDetailEmbed .tasksSubtaskItem:has(.tasksDateTrigger.open),
+.boardTaskDetailEmbed .tasksSubtaskStatusInline:has(.customSelectHeader.open),
+.boardTaskDetailEmbed .tasksDatePicker:has(.tasksDateTrigger.open),
+.boardTaskDetailEmbed .tasksTimeSelect.open,
+.boardTaskDetailEmbed .customSelectContainer:has(.customSelectHeader.open) {
+  position: relative;
+  z-index: 900;
+}
+
+.boardTaskDetailEmbed .customSelectList.local,
+.boardTaskDetailEmbed .tasksDatePopover,
+.boardTaskDetailEmbed .tasksTimeSelectDropdown {
+  z-index: 1000;
+}
+
+.boardTaskDetailEmbed .tasksDescriptionPreview {
+  display: none;
 }
 
 /* ---------- Selection frame (resize + rotate) ---------- */

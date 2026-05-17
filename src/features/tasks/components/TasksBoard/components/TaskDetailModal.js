@@ -107,6 +107,7 @@ export default function TaskDetailModal({
   statusColors,
   isSaving,
   isMobile,
+  embedded = false,
 }) {
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [subtaskForm, setSubtaskForm] = useState(() => getDefaultSubtaskForm());
@@ -199,6 +200,7 @@ export default function TaskDetailModal({
   ];
   const taskTypeById = new Map(taskTypes.map((type) => [String(type.id), type]));
   const startDateDisplay = formatInputDateTime(form.start_date, 'Auto when task starts');
+  const selectListPosition = embedded ? 'local' : 'fixed';
 
   const handleStatusAction = (status, { closeOnSuccess = false } = {}) => {
     if (task.status === status && form.status === status) {
@@ -223,9 +225,8 @@ export default function TaskDetailModal({
     });
   };
 
-  return (
-    <div className="tasksModalOverlay" onClick={onClose}>
-      <div className="tasksModal tasksDetailModal" onClick={(e) => e.stopPropagation()}>
+  const modal = (
+      <div className={`tasksModal tasksDetailModal ${embedded ? 'embedded' : ''}`.trim()} onClick={(e) => e.stopPropagation()}>
         <div className="tasksModalHeader sticky">
           <div className="tasksModalTitleWrap">
             {isSubtask && parentTask ? (
@@ -344,6 +345,7 @@ export default function TaskDetailModal({
                     value={form.status}
                     onChange={(value) => handleStatusAction(value)}
                     placeholder="Select status"
+                    listPosition={selectListPosition}
                   />
                 </div>
 
@@ -356,6 +358,7 @@ export default function TaskDetailModal({
                     value={form.priority}
                     onChange={(value) => setForm((prev) => ({ ...prev, priority: value }))}
                     placeholder="Select priority"
+                    listPosition={selectListPosition}
                   />
                 </div>
 
@@ -371,6 +374,7 @@ export default function TaskDetailModal({
                         setForm((prev) => ({ ...prev, task_type_id: value }))
                       }
                       placeholder="Select task category"
+                      listPosition={selectListPosition}
                     />
                     <button
                       type="button"
@@ -397,6 +401,7 @@ export default function TaskDetailModal({
                       setForm((prev) => ({ ...prev, parent_task_id: value }))
                     }
                     placeholder="Select parent task"
+                    listPosition={selectListPosition}
                   />
                 </div>
 
@@ -480,6 +485,7 @@ export default function TaskDetailModal({
                         setSubtaskForm((prev) => ({ ...prev, status: value }))
                       }
                       placeholder="Select status"
+                      listPosition={selectListPosition}
                     />
                   </div>
                   <div className="tasksField">
@@ -493,6 +499,7 @@ export default function TaskDetailModal({
                         setSubtaskForm((prev) => ({ ...prev, priority: value }))
                       }
                       placeholder="Select priority"
+                      listPosition={selectListPosition}
                     />
                   </div>
                   <div className="tasksField">
@@ -671,6 +678,7 @@ export default function TaskDetailModal({
                               value={subtask.status}
                               onChange={(value) => onUpdateStatus(subtask.id, value)}
                               placeholder="Select status"
+                              listPosition={selectListPosition}
                             />
                           </div>
                         </div>
@@ -687,6 +695,13 @@ export default function TaskDetailModal({
           ) : null}
         </div>
       </div>
+  );
+
+  if (embedded) return modal;
+
+  return (
+    <div className="tasksModalOverlay" onClick={onClose}>
+      {modal}
     </div>
   );
 }
