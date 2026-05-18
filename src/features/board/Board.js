@@ -14,6 +14,7 @@ import {
   AlignRight,
   ArrowRight,
   Bold,
+  Brush as BrushIcon,
   Calendar,
   ChevronRight,
   ExternalLink,
@@ -26,6 +27,8 @@ import {
   List,
   Maximize,
   MousePointer2,
+  Pencil as PencilIcon,
+  PenTool as PenIcon,
   RefreshCw,
   Search,
   Trash2,
@@ -165,6 +168,26 @@ const BOARD_STATUS_COLORS = {
   [TASK_STATUS.ARCHIVED]: '#6b7280',
 };
 const DEFAULT_ARROW_STROKE_WIDTH = 1.6;
+const DRAWING_TOOLS = ['pen', 'pencil', 'brush'];
+const DRAWING_COLOR_PRESETS = [
+  '#ffffff',
+  '#0f172a',
+  '#94a3b8',
+  '#60a5fa',
+  '#34d399',
+  '#fbbf24',
+  '#f87171',
+  '#a78bfa',
+  '#f472b6',
+  '#2dd4bf',
+  '#fb923c',
+  '#c084fc',
+];
+const DRAWING_DEFAULTS = {
+  pen: { thickness: 2, color: '#ffffff' },
+  pencil: { thickness: 1.4, color: '#cbd5e1' },
+  brush: { thickness: 8, color: '#60a5fa' },
+};
 const TEXT_FONT_OPTIONS = [
   { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
   { label: 'Inter', value: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -548,6 +571,146 @@ function TextNode({
           onMouseDown={editing ? (e) => e.stopPropagation() : undefined}
         />
       )}
+    </div>
+  );
+}
+
+function pointsToSmoothPath(points) {
+  if (points.length === 0) return '';
+  if (points.length === 1) return `M${points[0].x},${points[0].y}`;
+  // Catmull-Rom-style smoothing: draw a quadratic to each midpoint using the
+  // previous point as the control point, so the line passes through every
+  // sampled point without harsh corners.
+  let d = `M${points[0].x},${points[0].y}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const curr = points[i];
+    const next = points[i + 1];
+    const mx = (curr.x + next.x) / 2;
+    const my = (curr.y + next.y) / 2;
+    d += ` Q${curr.x},${curr.y} ${mx},${my}`;
+  }
+  const lastPrev = points[points.length - 2];
+  const last = points[points.length - 1];
+  d += ` Q${lastPrev.x},${lastPrev.y} ${last.x},${last.y}`;
+  return d;
+}
+
+function pointsToBrushSegments(points, baseThickness) {
+  // Velocity-modulated stroke: faster pointer = thinner line, slower = wider.
+  // Each consecutive pair of points becomes its own short path with a custom
+  // stroke-width so the visible thickness varies along the stroke.
+  const segments = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const dist = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const dt = Math.max(1, (curr.t || 0) - (prev.t || 0));
+    const speed = dist / dt;
+    const widthFactor = Math.max(0.35, Math.min(1.6, 1.4 / (1 + speed * 0.18)));
+    segments.push({
+      d: `M${prev.x},${prev.y} L${curr.x},${curr.y}`,
+      width: baseThickness * widthFactor,
+    });
+  }
+  return segments;
+}
+
+function DrawingNode({
+  node,
+  selected,
+  tool,
+  registerRef,
+  onMouseDown,
+  onClick,
+}) {
+  const variant = node.variant || 'pen';
+  const color = node.color || '#ffffff';
+  const thickness = node.thickness || 2;
+  // Render points in local (bounding-box-relative) coordinates.
+  const points = node.points || [];
+
+  let pathContent = null;
+  if (variant === 'brush') {
+    const segs = pointsToBrushSegments(points, thickness);
+    pathContent = segs.map((s, i) => (
+      <path
+        key={i}
+        d={s.d}
+        stroke={color}
+        strokeWidth={s.width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    ));
+  } else if (variant === 'pencil') {
+    pathContent = (
+      <path
+        d={pointsToSmoothPath(points)}
+        stroke={color}
+        strokeWidth={thickness}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+        opacity={0.78}
+        filter={`url(#pencilGrain-${node.id})`}
+      />
+    );
+  } else {
+    pathContent = (
+      <path
+        d={pointsToSmoothPath(points)}
+        stroke={color}
+        strokeWidth={thickness}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`boardNode boardDrawingNode ${selected ? 'selected' : ''} ${tool === 'arrow' ? 'arrowTarget' : ''}`}
+      style={{
+        left: node.x,
+        top: node.y,
+        width: node.w,
+        height: node.h,
+        transform: nodeTransform(node),
+        transformOrigin: 'center',
+      }}
+      ref={(el) => registerRef(node.id, el)}
+      onMouseDown={onMouseDown}
+      onClick={onClick}
+    >
+      <svg
+        width={node.w}
+        height={node.h}
+        viewBox={`0 0 ${node.w} ${node.h}`}
+        style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}
+      >
+        {variant === 'pencil' ? (
+          <defs>
+            <filter
+              id={`pencilGrain-${node.id}`}
+              x="-10%"
+              y="-10%"
+              width="120%"
+              height="120%"
+            >
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.9"
+                numOctaves="2"
+                seed="7"
+              />
+              <feDisplacementMap in="SourceGraphic" scale="1.4" />
+            </filter>
+          </defs>
+        ) : null}
+        <g style={{ pointerEvents: 'visiblePainted' }}>{pathContent}</g>
+      </svg>
     </div>
   );
 }
@@ -1763,6 +1926,11 @@ export default function Board() {
   // rather than the node's outer-level fontSize/fontFamily.
   const [cursorFontSize, setCursorFontSize] = useState(null);
   const [cursorFontFamily, setCursorFontFamily] = useState(null);
+  // Per-drawing-tool configuration. Keyed by variant so swapping pen/pencil/
+  // brush keeps each one's last-used thickness and color.
+  const [drawingConfig, setDrawingConfig] = useState(DRAWING_DEFAULTS);
+  // The stroke the user is currently dragging out. Null when not drawing.
+  const [drawingDraft, setDrawingDraft] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -2991,8 +3159,9 @@ export default function Board() {
   /* ---------- surface interactions (pan / click) ---------- */
 
   function handleSurfaceMouseDown(e) {
-    // Only react when the surface itself is the event target — not a node.
-    if (e.target !== e.currentTarget) return;
+    // Drawing tools should always capture the mousedown, even when it lands
+    // on an existing node, so the user can draw over anything.
+    if (!DRAWING_TOOLS.includes(tool) && e.target !== e.currentTarget) return;
     if (editingId || editingFrameId) return;
 
     /* Frame tool: drag a rectangle on empty surface to create a new frame.
@@ -3028,6 +3197,73 @@ export default function Board() {
       }
       window.addEventListener('mousemove', onFrameMove);
       window.addEventListener('mouseup', onFrameUp);
+      return;
+    }
+
+    if (DRAWING_TOOLS.includes(tool)) {
+      const start = screenToWorld(e.clientX, e.clientY);
+      const t0 = performance.now();
+      const cfg = drawingConfig[tool];
+      const initialDraft = {
+        variant: tool,
+        thickness: cfg.thickness,
+        color: cfg.color,
+        points: [{ x: start.x, y: start.y, t: 0 }],
+      };
+      setDrawingDraft(initialDraft);
+      // Track the live stroke in a ref instead of state for the per-pointer
+      // append loop — calling setState for every mousemove drops frames.
+      const live = { ...initialDraft, points: [...initialDraft.points] };
+
+      function onDrawMove(ev) {
+        const world = screenToWorld(ev.clientX, ev.clientY);
+        const last = live.points[live.points.length - 1];
+        const dx = world.x - last.x;
+        const dy = world.y - last.y;
+        // Subsample: skip near-zero-movement points to keep paths tidy.
+        if (Math.hypot(dx, dy) < 0.6) return;
+        live.points.push({
+          x: world.x,
+          y: world.y,
+          t: performance.now() - t0,
+        });
+        setDrawingDraft({ ...live, points: live.points.slice() });
+      }
+      function onDrawUp() {
+        window.removeEventListener('mousemove', onDrawMove);
+        window.removeEventListener('mouseup', onDrawUp);
+        setDrawingDraft(null);
+        const pts = live.points;
+        // Throw away accidental clicks that didn't produce a stroke.
+        if (pts.length < 2) return;
+        const xs = pts.map((p) => p.x);
+        const ys = pts.map((p) => p.y);
+        const pad = Math.max(2, live.thickness);
+        const minX = Math.min(...xs) - pad;
+        const minY = Math.min(...ys) - pad;
+        const maxX = Math.max(...xs) + pad;
+        const maxY = Math.max(...ys) + pad;
+        const id = generateId();
+        setNodes((prev) => [
+          ...prev,
+          {
+            id,
+            type: 'drawing',
+            variant: live.variant,
+            thickness: live.thickness,
+            color: live.color,
+            x: minX,
+            y: minY,
+            w: maxX - minX,
+            h: maxY - minY,
+            // Store points relative to the bounding-box origin so moving the
+            // node only changes node.x/y, not every point.
+            points: pts.map((p) => ({ x: p.x - minX, y: p.y - minY, t: p.t })),
+          },
+        ]);
+      }
+      window.addEventListener('mousemove', onDrawMove);
+      window.addEventListener('mouseup', onDrawUp);
       return;
     }
 
@@ -3529,10 +3765,37 @@ export default function Board() {
             type="button"
             className={`boardToolBtn ${tool === 'frame' ? 'active' : ''}`}
             onClick={() => selectTool('frame')}
-            title="Frame — drag a rectangle to group items"
+            title="Frame - drag a rectangle to group items"
             aria-label="Frame"
           >
             <FrameIcon size={18} />
+          </button>
+          <button
+            type="button"
+            className={`boardToolBtn ${tool === 'pen' ? 'active' : ''}`}
+            onClick={() => selectTool('pen')}
+            title="Pen - clean line"
+            aria-label="Pen"
+          >
+            <PenIcon size={18} />
+          </button>
+          <button
+            type="button"
+            className={`boardToolBtn ${tool === 'pencil' ? 'active' : ''}`}
+            onClick={() => selectTool('pencil')}
+            title="Pencil - rough line"
+            aria-label="Pencil"
+          >
+            <PencilIcon size={18} />
+          </button>
+          <button
+            type="button"
+            className={`boardToolBtn ${tool === 'brush' ? 'active' : ''}`}
+            onClick={() => selectTool('brush')}
+            title="Brush - speed-varying width"
+            aria-label="Brush"
+          >
+            <BrushIcon size={18} />
           </button>
 
           <button
@@ -3612,10 +3875,45 @@ export default function Board() {
           );
         })()}
 
+        {DRAWING_TOOLS.includes(tool) && !editingId && !editingFrameId ? (
+          <div className="boardToolbarPopout" aria-label={`${tool} settings`}>
+            {tool === 'pen' ? <PenIcon size={16} /> : tool === 'pencil' ? <PencilIcon size={16} /> : <BrushIcon size={16} />}
+            <input
+              type="number"
+              className="boardPopoutSize"
+              min={1}
+              max={64}
+              step={0.5}
+              value={drawingConfig[tool].thickness}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!Number.isFinite(v)) return;
+                setDrawingConfig((prev) => ({
+                  ...prev,
+                  [tool]: { ...prev[tool], thickness: Math.max(0.5, Math.min(64, v)) },
+                }));
+              }}
+              aria-label={`${tool} thickness`}
+            />
+            <span className="boardPopoutDivider" aria-hidden="true" />
+            <ColorPicker
+              value={drawingConfig[tool].color}
+              onChange={(color) =>
+                setDrawingConfig((prev) => ({
+                  ...prev,
+                  [tool]: { ...prev[tool], color },
+                }))
+              }
+              presets={DRAWING_COLOR_PRESETS}
+              placeholder={DRAWING_DEFAULTS[tool].color}
+            />
+          </div>
+        ) : null}
+
         {(() => {
           /* Frame popout: shows whenever a frame is selected OR being named.
              Houses the frame's color picker so the user can pick a custom
-             colour, plus a hint to rename via the label. */
+             color, plus a hint to rename via the label. */
           const activeFrameId = editingFrameId || selectedFrameId;
           if (!activeFrameId) return null;
           const frame = frames.find((f) => f.id === activeFrameId);
@@ -3983,8 +4281,45 @@ export default function Board() {
                 );
               }
 
+              if (node.type === 'drawing') {
+                return <DrawingNode key={node.id} {...commonProps} />;
+              }
+
               return <ImageNode key={node.id} {...commonProps} />;
             })}
+
+            {/* Live preview of the stroke the user is currently dragging out. */}
+            {drawingDraft && drawingDraft.points.length > 0 ? (() => {
+              const pts = drawingDraft.points;
+              const xs = pts.map((p) => p.x);
+              const ys = pts.map((p) => p.y);
+              const pad = Math.max(2, drawingDraft.thickness);
+              const minX = Math.min(...xs) - pad;
+              const minY = Math.min(...ys) - pad;
+              const maxX = Math.max(...xs) + pad;
+              const maxY = Math.max(...ys) + pad;
+              const previewNode = {
+                id: 'drawing-draft',
+                variant: drawingDraft.variant,
+                thickness: drawingDraft.thickness,
+                color: drawingDraft.color,
+                x: minX,
+                y: minY,
+                w: maxX - minX,
+                h: maxY - minY,
+                points: pts.map((p) => ({ x: p.x - minX, y: p.y - minY, t: p.t })),
+              };
+              return (
+                <DrawingNode
+                  node={previewNode}
+                  selected={false}
+                  tool={tool}
+                  registerRef={() => {}}
+                  onMouseDown={() => {}}
+                  onClick={() => {}}
+                />
+              );
+            })() : null}
 
             {alignmentGuides.vertical.map((guide) => (
               <div

@@ -330,6 +330,12 @@
   cursor: crosshair;
 }
 
+.boardCursor-pen,
+.boardCursor-pencil,
+.boardCursor-brush {
+  cursor: crosshair;
+}
+
 .boardWrapper.isPanning {
   cursor: grabbing;
 }
@@ -693,6 +699,20 @@
   content: 'Type...';
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* ---------- Drawing node ---------- */
+.boardDrawingNode {
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: grab;
+  overflow: visible;
+}
+
+.boardDrawingNode.selected {
+  /* Keep the same selection box treatment as other nodes but no fill. */
+  background: transparent;
 }
 
 /* ---------- Image node ---------- */
