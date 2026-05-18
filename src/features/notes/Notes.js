@@ -255,6 +255,14 @@ const NOTE_FONT_OPTIONS = [
   { label: 'Impact', value: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' },
 ];
 
+function normalizeFontFamilyFirst(value) {
+  return String(value || '')
+    .split(',')[0]
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .toLowerCase();
+}
+
 function escapeHtml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -765,6 +773,42 @@ function RichTextEditor({ file, onChange }) {
     selection.addRange(range);
   }, []);
 
+  const detectCurrentStyle = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor || typeof window === 'undefined') return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+
+    let node = range.startContainer;
+    if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+    if (!node || !editor.contains(node)) return;
+
+    const computed = window.getComputedStyle(node);
+
+    const sizePx = Math.round(parseFloat(computed.fontSize));
+    if (Number.isFinite(sizePx)) {
+      const sizeStr = String(sizePx);
+      if (NOTE_FONT_SIZE_OPTIONS.includes(sizeStr)) {
+        setFontSize((prev) => (prev === sizeStr ? prev : sizeStr));
+      }
+    }
+
+    const computedFirst = normalizeFontFamilyFirst(computed.fontFamily);
+    const matched = NOTE_FONT_OPTIONS.find(
+      (opt) => normalizeFontFamilyFirst(opt.value) === computedFirst
+    );
+    if (matched) {
+      setFontFamily((prev) => (prev === matched.value ? prev : matched.value));
+    }
+  }, []);
+
+  const handleSelectionUpdate = useCallback(() => {
+    saveSelection();
+    detectCurrentStyle();
+  }, [saveSelection, detectCurrentStyle]);
+
   const setEditorHtml = useCallback((html) => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -964,22 +1008,81 @@ function RichTextEditor({ file, onChange }) {
   const applyInlineStyle = useCallback((style) => {
     const editor = editorRef.current;
     if (!editor || typeof window === 'undefined') return;
+
+    // Snapshot the intended range BEFORE focusing the editor. editor.focus()
+    // synchronously fires the focus event, whose handler is saveSelection —
+    // and the browser may have already collapsed the visual selection at this
+    // point, so that handler would overwrite selectionRef with a collapsed
+    // caret and clobber the range we actually want to operate on.
+    const savedRange = selectionRef.current
+      ? selectionRef.current.cloneRange()
+      : null;
+
     editor.focus();
-    restoreSelection();
 
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    if (!selection) return;
 
-    const before = editor.innerHTML;
-    const wrapped = wrapSelectedTextNodes(style);
-    if (!wrapped) {
-      wrapSelection(style);
+    selection.removeAllRanges();
+    if (savedRange && editor.contains(savedRange.commonAncestorContainer)) {
+      selection.addRange(savedRange);
+    } else {
+      const fallback = document.createRange();
+      fallback.selectNodeContents(editor);
+      fallback.collapse(false);
+      selection.addRange(fallback);
+    }
+
+    const range = selection.getRangeAt(0);
+
+    if (!range.collapsed) {
+      const before = editor.innerHTML;
+      const wrapped = wrapSelectedTextNodes(style);
+      if (!wrapped) {
+        // Fallback: wrap whatever's selected as a single span. Inlined here
+        // instead of delegating to wrapSelection because wrapSelection also
+        // re-focuses and re-restores the selection — which would reintroduce
+        // the very onFocus→saveSelection clobber we just sidestepped.
+        const span = document.createElement('span');
+        Object.assign(span.style, style);
+        try {
+          range.surroundContents(span);
+        } catch {
+          span.appendChild(range.extractContents());
+          range.insertNode(span);
+        }
+        const next = document.createRange();
+        next.selectNodeContents(span);
+        selection.removeAllRanges();
+        selection.addRange(next);
+      }
+      pushHistory(before, editor.innerHTML);
+      saveSelection();
       return;
     }
 
+    // Collapsed cursor: drop a styled span around two zero-width caret holders
+    // and park the caret between them. Using two ZWSPs (instead of one with the
+    // caret at its edge) keeps the caret in the middle of the text node so
+    // subsequent typing stays inside the span across browsers — Chrome/Safari
+    // are happy either way, but Firefox can "break out" of an inline element
+    // when the caret sits at its trailing edge.
+    const before = editor.innerHTML;
+    const span = document.createElement('span');
+    Object.assign(span.style, style);
+    const caretText = document.createTextNode('​​');
+    span.appendChild(caretText);
+    range.insertNode(span);
+
+    const caret = document.createRange();
+    caret.setStart(caretText, 1);
+    caret.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(caret);
+
     pushHistory(before, editor.innerHTML);
     saveSelection();
-  }, [pushHistory, restoreSelection, saveSelection, wrapSelectedTextNodes, wrapSelection]);
+  }, [pushHistory, saveSelection, wrapSelectedTextNodes]);
 
   const applyFontSize = useCallback((size) => {
     setFontSize(size);
@@ -1300,10 +1403,10 @@ function RichTextEditor({ file, onChange }) {
         data-placeholder="Start typing..."
         onInput={syncContent}
         onBlur={saveSelection}
-        onKeyUp={saveSelection}
+        onKeyUp={handleSelectionUpdate}
         onKeyDown={handleEditorKeyDown}
-        onMouseUp={saveSelection}
-        onFocus={saveSelection}
+        onMouseUp={handleSelectionUpdate}
+        onFocus={handleSelectionUpdate}
       />
     </div>
   );

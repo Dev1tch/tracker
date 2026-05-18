@@ -195,6 +195,14 @@ function quoteFontFamily(family) {
   return `"${String(family).replace(/"/g, '\\"')}", sans-serif`;
 }
 
+function normalizeFontFamilyFirst(value) {
+  return String(value || '')
+    .split(',')[0]
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .toLowerCase();
+}
+
 function mergeFontOptions(...groups) {
   const seen = new Set();
   const merged = [];
@@ -366,27 +374,77 @@ function captureTextSelection() {
   }
 }
 
-function restoreTextSelection() {
-  const editing = document.querySelector('.boardTextNode.editing .boardTextContent');
-  if (!editing) return false;
-  editing.focus();
-  if (savedTextSelection && editing.contains(savedTextSelection.commonAncestorContainer)) {
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(savedTextSelection);
-  }
-  return true;
-}
-
 function applyFontSizeToEditingText(size) {
-  if (!restoreTextSelection()) return;
+  const editing = document.querySelector('.boardTextNode.editing .boardTextContent');
+  if (!editing) return;
   const normalized = Math.max(8, Math.min(120, Math.round(size)));
-  document.execCommand('styleWithCSS', false, true);
-  document.execCommand('fontSize', false, '7');
-  document.querySelectorAll('.boardTextNode.editing font[size="7"]').forEach((font) => {
-    font.removeAttribute('size');
-    font.style.fontSize = `${normalized}px`;
-  });
+
+  // Snapshot the intended range BEFORE focusing. The selectionchange listener
+  // that keeps savedTextSelection up to date can overwrite it with a
+  // collapsed caret in the gap between focus() and our explicit restore.
+  const intendedRange = savedTextSelection
+    ? savedTextSelection.cloneRange()
+    : null;
+
+  editing.focus();
+
+  const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+  if (!sel) return;
+
+  sel.removeAllRanges();
+  if (
+    intendedRange &&
+    editing.contains(intendedRange.commonAncestorContainer)
+  ) {
+    sel.addRange(intendedRange);
+  } else {
+    const fallback = document.createRange();
+    fallback.selectNodeContents(editing);
+    fallback.collapse(false);
+    sel.addRange(fallback);
+  }
+
+  const range = sel.getRangeAt(0);
+
+  if (!range.collapsed) {
+    // Wrap the selection directly in a styled span. We deliberately avoid
+    // execCommand('fontSize') here: in styleWithCSS mode it produces
+    // `<span style="font-size: xx-large">` (a CSS keyword, not a px value),
+    // and the historical post-pass that converted `<font size="7">` to a px
+    // span finds nothing to fix up.
+    const span = document.createElement('span');
+    span.style.fontSize = `${normalized}px`;
+    try {
+      range.surroundContents(span);
+    } catch {
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+    }
+
+    const next = document.createRange();
+    next.selectNodeContents(span);
+    sel.removeAllRanges();
+    sel.addRange(next);
+    savedTextSelection = next.cloneRange();
+    return;
+  }
+
+  // Collapsed cursor: drop a styled span around two zero-width caret holders
+  // and park the caret between them. Using two ZWSPs keeps the caret away
+  // from the span's trailing edge so subsequent typing stays inside the span
+  // across browsers.
+  const span = document.createElement('span');
+  span.style.fontSize = `${normalized}px`;
+  const caretText = document.createTextNode('​​');
+  span.appendChild(caretText);
+  range.insertNode(span);
+
+  const caret = document.createRange();
+  caret.setStart(caretText, 1);
+  caret.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(caret);
+  savedTextSelection = caret.cloneRange();
 }
 
 /* applyFontFamilyToEditingText removed: font family is now stored on the
@@ -476,16 +534,19 @@ function TextNode({
           {node.content || node.href}
         </a>
       ) : (
+        // We deliberately render no children / no dangerouslySetInnerHTML
+        // here. The useLayoutEffect above is the single source of truth for
+        // the contentEditable's innerHTML — leaving React to manage it via
+        // dangerouslySetInnerHTML caused React to re-apply the stale
+        // node.html on every re-render of the editing node, which silently
+        // wiped each keystroke the user typed.
         <div
           ref={ref}
           className="boardTextContent"
           contentEditable={editing}
           suppressContentEditableWarning
           onMouseDown={editing ? (e) => e.stopPropagation() : undefined}
-          dangerouslySetInnerHTML={node.html ? { __html: node.html } : undefined}
-        >
-          {node.html ? null : node.content || ''}
-        </div>
+        />
       )}
     </div>
   );
@@ -1697,6 +1758,11 @@ export default function Board() {
   const [alignmentGuides, setAlignmentGuides] = useState({ vertical: [], horizontal: [] });
   const [fontOptions, setFontOptions] = useState(TEXT_FONT_OPTIONS);
   const [textToolbarFont, setTextToolbarFont] = useState(TEXT_FONT_OPTIONS[0].value);
+  // Style at the cursor inside the currently-editing text node. Lets the
+  // floating toolbar reflect whatever the user just moved their caret onto,
+  // rather than the node's outer-level fontSize/fontFamily.
+  const [cursorFontSize, setCursorFontSize] = useState(null);
+  const [cursorFontFamily, setCursorFontFamily] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -1721,6 +1787,7 @@ export default function Board() {
   const loadingLocalFontsRef = useRef(false);
   const lastBoardStateRef = useRef(serializeBoardState(initial.nodes, initial.edges));
   const nodeDragMovedRef = useRef(false);
+  const lastNodeClickRef = useRef({ id: null, time: 0 });
 
   const taskTypeById = useMemo(
     () => new Map(taskTypes.map((type) => [String(type.id), type])),
@@ -2201,16 +2268,94 @@ export default function Board() {
         '.boardTextNode.editing .boardTextContent'
       );
       if (!editing) return;
+      // Only track changes while the editor is actually the focused element.
+      // When focus moves to a toolbar input, some browsers collapse the
+      // editor's visible selection — that selectionchange would otherwise
+      // clobber the range the user actually wants to format.
+      if (document.activeElement !== editing) return;
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
-      if (editing.contains(range.commonAncestorContainer)) {
-        savedTextSelection = range.cloneRange();
+      if (!editing.contains(range.commonAncestorContainer)) return;
+
+      savedTextSelection = range.cloneRange();
+
+      // Surface the caret's resolved style so the toolbar can show the size
+      // and font the user is actually typing into.
+      let node = range.startContainer;
+      if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+      if (!node || !editing.contains(node)) return;
+      const computed = window.getComputedStyle(node);
+      const sizePx = Math.round(parseFloat(computed.fontSize));
+      if (Number.isFinite(sizePx)) {
+        setCursorFontSize((prev) => (prev === sizePx ? prev : sizePx));
+      }
+      const computedFirst = normalizeFontFamilyFirst(computed.fontFamily);
+      const matched = fontOptions.find(
+        (opt) => normalizeFontFamilyFirst(opt.value) === computedFirst
+      );
+      if (matched) {
+        setCursorFontFamily((prev) => (prev === matched.value ? prev : matched.value));
       }
     }
     document.addEventListener('selectionchange', onSelChange);
     return () => document.removeEventListener('selectionchange', onSelChange);
+  }, [editingId, fontOptions]);
+
+  // Reset detected caret style whenever a different node enters edit mode.
+  useEffect(() => {
+    setCursorFontSize(null);
+    setCursorFontFamily(null);
   }, [editingId]);
+
+
+  const editingIdRef = useRef(editingId);
+  useEffect(() => {
+    editingIdRef.current = editingId;
+  }, [editingId]);
+
+  // Document-level double-click detector for entering edit on text nodes.
+  // The React onDoubleClick / onClick path is unreliable here: once a node
+  // gets selected, the SelectionFrame's resize handles cover small text
+  // bodies and intercept the second click, so the native dblclick never
+  // dispatches to the text node. Hit-testing with elementsFromPoint at the
+  // click coordinates lets us find the underlying node regardless of what's
+  // visually on top, then we trigger edit mode on two clicks within 400ms.
+  // setEditingId is deferred via setTimeout so the current mousedown event
+  // finishes cleanly — applying it synchronously caused the commit listener
+  // to attach mid-event and tear edit mode back down on the same gesture.
+  useEffect(() => {
+    if (tool !== 'select') return undefined;
+    let lastClick = { id: null, time: 0 };
+    function onDocMouseDown(e) {
+      if (editingIdRef.current) return;
+      const els = typeof document.elementsFromPoint === 'function'
+        ? document.elementsFromPoint(e.clientX, e.clientY)
+        : [e.target];
+      const textNodeEl = els.find((el) => el?.classList?.contains?.('boardTextNode'));
+      if (!textNodeEl) {
+        lastClick = { id: null, time: 0 };
+        return;
+      }
+      let nodeId = null;
+      for (const [id, el] of Object.entries(nodeElRefs.current)) {
+        if (el === textNodeEl) {
+          nodeId = id;
+          break;
+        }
+      }
+      if (!nodeId) return;
+      const now = Date.now();
+      if (lastClick.id === nodeId && now - lastClick.time < 400) {
+        lastClick = { id: null, time: 0 };
+        setTimeout(() => setEditingId(nodeId), 0);
+        return;
+      }
+      lastClick = { id: nodeId, time: now };
+    }
+    document.addEventListener('mousedown', onDocMouseDown, true);
+    return () => document.removeEventListener('mousedown', onDocMouseDown, true);
+  }, [tool]);
 
   /* Commit the currently-edited text when the user clicks anywhere outside
      the text node, the toolbar popout, or the color picker UI. This is what
@@ -2734,6 +2879,21 @@ export default function Board() {
   function handleResizeStart(e, handleId, node) {
     e.stopPropagation();
     e.preventDefault();
+
+    // If the user just clicked this node and is now clicking its resize handle,
+    // treat that as a double-click on the node and enter edit mode instead of
+    // starting a resize. On small/medium text nodes the handles overlap the
+    // body, so a real double-click intent often lands the second click on a
+    // handle.
+    const now = Date.now();
+    const last = lastNodeClickRef.current;
+    if (last.id === node.id && now - last.time < 400) {
+      lastNodeClickRef.current = { id: null, time: 0 };
+      handleNodeDoubleClick(node.id);
+      return;
+    }
+    lastNodeClickRef.current = { id: node.id, time: now };
+
     /* Disable the auto-fit reflow while the user is mid-drag; otherwise
        the ResizeObserver below would constantly snap the node back up to
        its content size and prevent the user from shrinking it. */
@@ -3136,6 +3296,19 @@ export default function Board() {
       return;
     }
     if (editingId === node.id) return;
+
+    // Backup React-side double-click detection. The document-level mousedown
+    // listener (set up further up) is the primary path, but we also catch it
+    // here for paths where React's click event does reach the node cleanly.
+    const now = Date.now();
+    const last = lastNodeClickRef.current;
+    if (last.id === node.id && now - last.time < 400) {
+      lastNodeClickRef.current = { id: null, time: 0 };
+      handleNodeDoubleClick(node.id);
+      return;
+    }
+    lastNodeClickRef.current = { id: node.id, time: now };
+
     setSelectedEdgeId(null);
     if (tool === 'arrow') {
       if (arrowPointSource) {
@@ -3237,6 +3410,26 @@ export default function Board() {
   function handleNodeDoubleClick(id) {
     const node = nodes.find((n) => n.id === id);
     if (node?.type === 'text') {
+      setEditingId(id);
+    } else if (node?.type === 'link') {
+      // Convert the link back to a plain text node so the user can edit the
+      // URL or replace it with anything else. The href becomes the editable
+      // content; subsequent commitText will re-detect if it's still a URL.
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.id === id
+            ? {
+                ...n,
+                type: 'text',
+                content: n.href || n.content || '',
+                html: undefined,
+                href: undefined,
+                w: undefined,
+                h: undefined,
+              }
+            : n
+        )
+      );
       setEditingId(id);
     }
   }
@@ -3551,7 +3744,14 @@ export default function Board() {
               const node = nodes.find((item) => item.id === editingId);
               if (!node || node.type !== 'text') return null;
               const size = nodeSize(node, nodeBounds);
-              const fontSize = Math.round(node.fontSize || 16);
+              // Prefer the size detected at the caret over the node-level
+              // fontSize, so the input reflects whatever the user just
+              // moved the caret into.
+              const fontSize = Math.round(
+                cursorFontSize != null ? cursorFontSize : node.fontSize || 16
+              );
+              const displayedFontFamily =
+                cursorFontFamily || node.fontFamily || textToolbarFont;
               const toolbarScale = 1 / viewport.zoom;
               return (
                 <div
@@ -3610,7 +3810,7 @@ export default function Board() {
                   >
                     <CustomSelect
                       options={fontOptions}
-                      value={node.fontFamily || textToolbarFont}
+                      value={displayedFontFamily}
                       onChange={(fontFamily) => {
                         setTextToolbarFont(fontFamily);
                         setTextFontFamily(editingId, fontFamily);
