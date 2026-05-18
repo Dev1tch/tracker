@@ -63,6 +63,19 @@
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
+.boardDrawingPalette {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-color-dim);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
 .boardImportPanel {
   pointer-events: auto;
   width: 316px;
@@ -332,7 +345,8 @@
 
 .boardCursor-pen,
 .boardCursor-pencil,
-.boardCursor-brush {
+.boardCursor-brush,
+.boardCursor-eraser {
   cursor: crosshair;
 }
 
@@ -713,6 +727,16 @@
 .boardDrawingNode.selected {
   /* Keep the same selection box treatment as other nodes but no fill. */
   background: transparent;
+}
+
+.boardEraserPreview {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
 
 /* ---------- Image node ---------- */

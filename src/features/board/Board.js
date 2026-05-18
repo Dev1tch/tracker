@@ -17,6 +17,7 @@ import {
   Brush as BrushIcon,
   Calendar,
   ChevronRight,
+  Eraser,
   ExternalLink,
   Frame as FrameIcon,
   Image as ImageIcon,
@@ -169,6 +170,8 @@ const BOARD_STATUS_COLORS = {
 };
 const DEFAULT_ARROW_STROKE_WIDTH = 1.6;
 const DRAWING_TOOLS = ['pen', 'pencil', 'brush'];
+const ERASER_TOOL = 'eraser';
+const MARKUP_TOOLS = [...DRAWING_TOOLS, ERASER_TOOL];
 const DRAWING_COLOR_PRESETS = [
   '#ffffff',
   '#0f172a',
@@ -187,6 +190,7 @@ const DRAWING_DEFAULTS = {
   pen: { thickness: 2, color: '#ffffff' },
   pencil: { thickness: 1.4, color: '#cbd5e1' },
   brush: { thickness: 8, color: '#60a5fa' },
+  eraser: { thickness: 18 },
 };
 const TEXT_FONT_OPTIONS = [
   { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -613,6 +617,84 @@ function pointsToBrushSegments(points, baseThickness) {
     });
   }
   return segments;
+}
+
+function pointToSegmentDistance(point, a, b) {
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const lengthSq = vx * vx + vy * vy;
+  if (lengthSq === 0) return Math.hypot(point.x - a.x, point.y - a.y);
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * vx + (point.y - a.y) * vy) / lengthSq));
+  const x = a.x + t * vx;
+  const y = a.y + t * vy;
+  return Math.hypot(point.x - x, point.y - y);
+}
+
+function buildDrawingNodeFromWorldPoints(sourceNode, worldPoints, id) {
+  const xs = worldPoints.map((p) => p.x);
+  const ys = worldPoints.map((p) => p.y);
+  const pad = Math.max(2, sourceNode.thickness || 2);
+  const minX = Math.min(...xs) - pad;
+  const minY = Math.min(...ys) - pad;
+  const maxX = Math.max(...xs) + pad;
+  const maxY = Math.max(...ys) + pad;
+  return {
+    ...sourceNode,
+    id,
+    x: minX,
+    y: minY,
+    w: maxX - minX,
+    h: maxY - minY,
+    points: worldPoints.map((p) => ({
+      x: p.x - minX,
+      y: p.y - minY,
+      t: p.t,
+    })),
+  };
+}
+
+function splitDrawingNodeByEraser(node, eraserPoint, eraserRadius) {
+  const sourcePoints = Array.isArray(node.points) ? node.points : [];
+  if (node.type !== 'drawing' || sourcePoints.length < 2) return [node];
+  const points = sourcePoints.map((p) => ({
+    x: node.x + p.x,
+    y: node.y + p.y,
+    t: p.t,
+  }));
+  const pointHitRadius = eraserRadius + Math.min(2, Math.max(0.5, (node.thickness || 2) * 0.18));
+  const segmentBreakRadius = eraserRadius;
+  const keptRuns = [];
+  let currentRun = [];
+
+  points.forEach((point, index) => {
+    const prev = points[index - 1];
+    const shouldErase = Math.hypot(point.x - eraserPoint.x, point.y - eraserPoint.y) <= pointHitRadius;
+    if (shouldErase) {
+      if (currentRun.length >= 2) keptRuns.push(currentRun);
+      currentRun = [];
+      return;
+    }
+
+    const shouldBreakSegment = prev
+      ? pointToSegmentDistance(eraserPoint, prev, point) <= segmentBreakRadius
+      : false;
+    if (shouldBreakSegment && currentRun.length >= 2) {
+      keptRuns.push(currentRun);
+      currentRun = [point];
+      return;
+    }
+    if (shouldBreakSegment) {
+      currentRun = [point];
+      return;
+    }
+
+    currentRun.push(point);
+  });
+  if (currentRun.length >= 2) keptRuns.push(currentRun);
+
+  return keptRuns.map((run, index) =>
+    buildDrawingNodeFromWorldPoints(node, run, index === 0 ? node.id : generateId())
+  );
 }
 
 function DrawingNode({
@@ -1931,6 +2013,8 @@ export default function Board() {
   const [drawingConfig, setDrawingConfig] = useState(DRAWING_DEFAULTS);
   // The stroke the user is currently dragging out. Null when not drawing.
   const [drawingDraft, setDrawingDraft] = useState(null);
+  const [eraserPoint, setEraserPoint] = useState(null);
+  const [isDrawingPaletteOpen, setIsDrawingPaletteOpen] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -2580,6 +2664,9 @@ export default function Board() {
   /* Switching tools cancels any in-progress arrow / frame draft. */
   const selectTool = useCallback((next) => {
     setTool(next);
+    if (!MARKUP_TOOLS.includes(next)) {
+      setIsDrawingPaletteOpen(false);
+    }
     setArrowSource(null);
     setArrowPointSource(null);
     setFrameDraft(null);
@@ -3161,7 +3248,7 @@ export default function Board() {
   function handleSurfaceMouseDown(e) {
     // Drawing tools should always capture the mousedown, even when it lands
     // on an existing node, so the user can draw over anything.
-    if (!DRAWING_TOOLS.includes(tool) && e.target !== e.currentTarget) return;
+    if (!MARKUP_TOOLS.includes(tool) && e.target !== e.currentTarget) return;
     if (editingId || editingFrameId) return;
 
     /* Frame tool: drag a rectangle on empty surface to create a new frame.
@@ -3197,6 +3284,48 @@ export default function Board() {
       }
       window.addEventListener('mousemove', onFrameMove);
       window.addEventListener('mouseup', onFrameUp);
+      return;
+    }
+
+    if (tool === ERASER_TOOL) {
+      e.preventDefault();
+      const thickness = drawingConfig.eraser.thickness;
+      const radius = thickness / 2;
+
+      function eraseAt(world) {
+        setEraserPoint(world);
+        const removedIds = new Set();
+        setNodes((prev) =>
+          prev.flatMap((node) => {
+            if (node.type !== 'drawing') return [node];
+            const pieces = splitDrawingNodeByEraser(node, world, radius);
+            if (pieces.length === 0) {
+              removedIds.add(node.id);
+            } else if (!pieces.some((piece) => piece.id === node.id)) {
+              removedIds.add(node.id);
+            }
+            return pieces;
+          })
+        );
+        if (removedIds.size > 0) {
+          setEdges((prev) =>
+            prev.filter((edge) => !removedIds.has(edge.from) && !removedIds.has(edge.to))
+          );
+          setSelectedId((cur) => (removedIds.has(cur) ? null : cur));
+        }
+      }
+
+      eraseAt(screenToWorld(e.clientX, e.clientY));
+      function onEraseMove(ev) {
+        eraseAt(screenToWorld(ev.clientX, ev.clientY));
+      }
+      function onEraseUp() {
+        window.removeEventListener('mousemove', onEraseMove);
+        window.removeEventListener('mouseup', onEraseUp);
+        setEraserPoint(null);
+      }
+      window.addEventListener('mousemove', onEraseMove);
+      window.addEventListener('mouseup', onEraseUp);
       return;
     }
 
@@ -3702,6 +3831,18 @@ export default function Board() {
     }
   }
 
+  function toggleDrawingPalette() {
+    const nextOpen = !isDrawingPaletteOpen;
+    setIsDrawingPaletteOpen(nextOpen);
+    if (nextOpen) {
+      if (!MARKUP_TOOLS.includes(tool)) {
+        selectTool('pen');
+      }
+    } else if (MARKUP_TOOLS.includes(tool)) {
+      selectTool('select');
+    }
+  }
+
   /* Anchor zoom-button changes at the viewport center for predictability. */
   function zoomBy(factor) {
     const wrap = wrapperRef.current;
@@ -3772,28 +3913,10 @@ export default function Board() {
           </button>
           <button
             type="button"
-            className={`boardToolBtn ${tool === 'pen' ? 'active' : ''}`}
-            onClick={() => selectTool('pen')}
-            title="Pen - clean line"
-            aria-label="Pen"
-          >
-            <PenIcon size={18} />
-          </button>
-          <button
-            type="button"
-            className={`boardToolBtn ${tool === 'pencil' ? 'active' : ''}`}
-            onClick={() => selectTool('pencil')}
-            title="Pencil - rough line"
-            aria-label="Pencil"
-          >
-            <PencilIcon size={18} />
-          </button>
-          <button
-            type="button"
-            className={`boardToolBtn ${tool === 'brush' ? 'active' : ''}`}
-            onClick={() => selectTool('brush')}
-            title="Brush - speed-varying width"
-            aria-label="Brush"
+            className={`boardToolBtn ${isDrawingPaletteOpen || MARKUP_TOOLS.includes(tool) ? 'active' : ''}`}
+            onClick={toggleDrawingPalette}
+            title="Drawing tools"
+            aria-label="Drawing tools"
           >
             <BrushIcon size={18} />
           </button>
@@ -3839,6 +3962,59 @@ export default function Board() {
             <Trash2 size={18} />
           </button>
         </aside>
+
+        {isDrawingPaletteOpen ? (
+          <div className="boardDrawingPalette" aria-label="Drawing actions">
+            <button
+              type="button"
+              className={`boardToolBtn ${tool === 'pen' ? 'active' : ''}`}
+              onClick={() => {
+                setIsDrawingPaletteOpen(true);
+                selectTool('pen');
+              }}
+              title="Pen - clean line"
+              aria-label="Pen"
+            >
+              <PenIcon size={18} />
+            </button>
+            <button
+              type="button"
+              className={`boardToolBtn ${tool === 'pencil' ? 'active' : ''}`}
+              onClick={() => {
+                setIsDrawingPaletteOpen(true);
+                selectTool('pencil');
+              }}
+              title="Pencil - rough line"
+              aria-label="Pencil"
+            >
+              <PencilIcon size={18} />
+            </button>
+            <button
+              type="button"
+              className={`boardToolBtn ${tool === 'brush' ? 'active' : ''}`}
+              onClick={() => {
+                setIsDrawingPaletteOpen(true);
+                selectTool('brush');
+              }}
+              title="Brush - speed-varying width"
+              aria-label="Brush"
+            >
+              <BrushIcon size={18} />
+            </button>
+            <button
+              type="button"
+              className={`boardToolBtn ${tool === ERASER_TOOL ? 'active' : ''}`}
+              onClick={() => {
+                setIsDrawingPaletteOpen(true);
+                selectTool(ERASER_TOOL);
+              }}
+              title="Eraser"
+              aria-label="Eraser"
+            >
+              <Eraser size={18} />
+            </button>
+          </div>
+        ) : null}
 
         {isTaskImportOpen ? (
           <TaskImportPanel
@@ -3906,6 +4082,29 @@ export default function Board() {
               }
               presets={DRAWING_COLOR_PRESETS}
               placeholder={DRAWING_DEFAULTS[tool].color}
+            />
+          </div>
+        ) : null}
+
+        {tool === ERASER_TOOL && !editingId && !editingFrameId ? (
+          <div className="boardToolbarPopout" aria-label="Eraser settings">
+            <Eraser size={16} />
+            <input
+              type="number"
+              className="boardPopoutSize"
+              min={2}
+              max={96}
+              step={1}
+              value={drawingConfig.eraser.thickness}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!Number.isFinite(v)) return;
+                setDrawingConfig((prev) => ({
+                  ...prev,
+                  eraser: { ...prev.eraser, thickness: Math.max(2, Math.min(96, v)) },
+                }));
+              }}
+              aria-label="Eraser thickness"
             />
           </div>
         ) : null}
@@ -4320,6 +4519,19 @@ export default function Board() {
                 />
               );
             })() : null}
+
+            {eraserPoint ? (
+              <div
+                className="boardEraserPreview"
+                style={{
+                  left: eraserPoint.x - drawingConfig.eraser.thickness / 2,
+                  top: eraserPoint.y - drawingConfig.eraser.thickness / 2,
+                  width: drawingConfig.eraser.thickness,
+                  height: drawingConfig.eraser.thickness,
+                  borderWidth: 1 / viewport.zoom,
+                }}
+              />
+            ) : null}
 
             {alignmentGuides.vertical.map((guide) => (
               <div
