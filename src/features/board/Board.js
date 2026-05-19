@@ -1232,10 +1232,10 @@ function TaskNode({
   onOpenTask,
 }) {
   const width = expanded
-    ? (node.detailW || node.w || DEFAULT_TASK_DETAIL_WIDTH)
+    ? (node.detailW || DEFAULT_TASK_DETAIL_WIDTH)
     : (node.cardW || node.w || DEFAULT_TASK_NODE_WIDTH);
   const height = expanded
-    ? (node.detailH || node.h || DEFAULT_TASK_DETAIL_HEIGHT)
+    ? (node.detailH || DEFAULT_TASK_DETAIL_HEIGHT)
     : (node.cardH || node.h || DEFAULT_TASK_NODE_HEIGHT);
   const baseWidth = expanded ? DEFAULT_TASK_DETAIL_WIDTH : DEFAULT_TASK_NODE_WIDTH;
   const baseHeight = expanded ? DEFAULT_TASK_DETAIL_HEIGHT : DEFAULT_TASK_NODE_HEIGHT;
@@ -2808,29 +2808,32 @@ export default function Board() {
 
   /* Image upload helper: uploads when authenticated, falls back to inline
      base64 (today's behaviour) when logged out. */
+  const readImageFileAsDataUrl = useCallback((file) => (
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    })
+  ), []);
+
   const uploadBoardImage = useCallback(async (file) => {
     if (!file) return '';
     if (!isBoardAuthenticated()) {
-      const reader = new FileReader();
-      return new Promise((resolve, reject) => {
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
+      return readImageFileAsDataUrl(file);
     }
     try {
       const result = await mediaApi.upload({ file, kind: 'board' });
       return result?.url || '';
     } catch (err) {
       console.warn('Board: image upload failed, falling back to inline base64', err);
-      const reader = new FileReader();
-      return new Promise((resolve) => {
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => resolve('');
-        reader.readAsDataURL(file);
-      });
+      try {
+        return await readImageFileAsDataUrl(file);
+      } catch {
+        return '';
+      }
     }
-  }, [isBoardAuthenticated]);
+  }, [isBoardAuthenticated, readImageFileAsDataUrl]);
 
   /* Mirror latest state into a ref so the unmount flush below sees the
      most recent values without resubscribing on every change. */
@@ -2974,8 +2977,8 @@ export default function Board() {
     setNodes((prev) =>
       prev.map((node) => {
         if (node.id !== id || node.type !== 'task') return node;
-        const detailW = node.w || node.detailW || DEFAULT_TASK_DETAIL_WIDTH / zoom;
-        const detailH = node.h || node.detailH || DEFAULT_TASK_DETAIL_HEIGHT / zoom;
+        const detailW = node.detailW || node.w || DEFAULT_TASK_DETAIL_WIDTH / zoom;
+        const detailH = node.detailH || node.h || DEFAULT_TASK_DETAIL_HEIGHT / zoom;
         const cardW = node.cardW || DEFAULT_TASK_NODE_WIDTH / zoom;
         const cardH = node.cardH || DEFAULT_TASK_NODE_HEIGHT / zoom;
         return {
@@ -2996,8 +2999,8 @@ export default function Board() {
     setNodes((prev) =>
       prev.map((node) => {
         if (node.id !== id || node.type !== 'task') return node;
-        const cardW = node.w || node.cardW || DEFAULT_TASK_NODE_WIDTH / zoom;
-        const cardH = node.h || node.cardH || DEFAULT_TASK_NODE_HEIGHT / zoom;
+        const cardW = node.cardW || node.w || DEFAULT_TASK_NODE_WIDTH / zoom;
+        const cardH = node.cardH || node.h || DEFAULT_TASK_NODE_HEIGHT / zoom;
         const detailW = node.detailW || DEFAULT_TASK_DETAIL_WIDTH / zoom;
         const detailH = node.detailH || DEFAULT_TASK_DETAIL_HEIGHT / zoom;
         return {
@@ -3652,7 +3655,7 @@ export default function Board() {
     if (command) document.execCommand(command);
   }
 
-  const addImageNode = useCallback((dataUrl, worldX, worldY) => {
+  const addImageNode = useCallback((dataUrl, worldX, worldY, options = {}) => {
     const img = new Image();
     img.onload = () => {
       const scale =
@@ -3661,7 +3664,7 @@ export default function Board() {
           : 1;
       const w = Math.round(img.naturalWidth * scale);
       const h = Math.round(img.naturalHeight * scale);
-      const id = generateId();
+      const id = options.id || generateId();
       setNodes((prev) => [
         ...prev,
         {
@@ -3677,6 +3680,44 @@ export default function Board() {
     };
     img.src = dataUrl;
   }, []);
+
+  const importBoardImage = useCallback(async (file, worldX, worldY) => {
+    if (!file) return;
+
+    if (!isBoardAuthenticated()) {
+      const dataUrl = await uploadBoardImage(file);
+      if (dataUrl) addImageNode(dataUrl, worldX, worldY);
+      return;
+    }
+
+    let previewUrl = '';
+    try {
+      previewUrl = await readImageFileAsDataUrl(file);
+    } catch (err) {
+      console.warn('Board: failed to prepare image preview', err);
+    }
+
+    const id = generateId();
+    if (previewUrl) {
+      addImageNode(previewUrl, worldX, worldY, { id });
+    }
+
+    const uploadedUrl = await uploadBoardImage(file);
+    if (!uploadedUrl) return;
+
+    if (!previewUrl) {
+      addImageNode(uploadedUrl, worldX, worldY, { id });
+      return;
+    }
+
+    setNodes((prev) =>
+      prev.map((node) => (
+        node.id === id && node.type === 'image'
+          ? { ...node, src: uploadedUrl }
+          : node
+      ))
+    );
+  }, [addImageNode, isBoardAuthenticated, readImageFileAsDataUrl, uploadBoardImage]);
 
   useEffect(() => {
     function handlePaste(e) {
@@ -3697,9 +3738,7 @@ export default function Board() {
         if (!file) return;
 
         e.preventDefault();
-        uploadBoardImage(file).then((url) => {
-          if (url) addImageNode(url, center.x, center.y);
-        });
+        importBoardImage(file, center.x, center.y);
         return;
       }
 
@@ -3718,7 +3757,7 @@ export default function Board() {
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [addImageNode, addPastedTextNode, screenToWorld, uploadBoardImage, viewport.zoom]);
+  }, [addPastedTextNode, importBoardImage, screenToWorld, viewport.zoom]);
 
   function commitText(id, text, html = '') {
     const trimmed = (text || '').trim();
@@ -4390,9 +4429,7 @@ export default function Board() {
     const file = e.dataTransfer.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
     const w = screenToWorld(e.clientX, e.clientY);
-    uploadBoardImage(file).then((url) => {
-      if (url) addImageNode(url, w.x, w.y);
-    });
+    importBoardImage(file, w.x, w.y);
   }
 
   /* ---------- node interactions ---------- */
@@ -4525,9 +4562,7 @@ export default function Board() {
       rect.left + rect.width / 2,
       rect.top + rect.height / 2
     );
-    uploadBoardImage(file).then((url) => {
-      if (url) addImageNode(url, center.x, center.y);
-    });
+    importBoardImage(file, center.x, center.y);
   }
 
   function removeSelected() {
