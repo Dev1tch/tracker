@@ -307,6 +307,18 @@
   border-bottom: 1px solid var(--border-color-dim);
 }
 
+.notesModifiedAt {
+  margin-left: auto;
+  align-self: flex-end;
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 0 2px 3px 10px;
+}
+
 .notesFormatBtn {
   height: 30px;
   min-width: 30px;
@@ -462,10 +474,129 @@
   height: 20px;
 }
 
+.notesRulerWrap {
+  --notes-writing-width: 820px;
+  --notes-ruler-span: 54%;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: min(100%, var(--notes-writing-width));
+  max-width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.notesRuler {
+  flex: 0 0 auto;
+  height: 26px;
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-color-dim);
+}
+
+.notesRulerLabel,
+.notesRulerValue {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.notesRulerTrack {
+  position: relative;
+  height: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.notesRulerTrack::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--surface-28) 0,
+      var(--surface-28) 1px,
+      transparent 1px,
+      transparent calc(4% - 1px)
+    ),
+    var(--border-color-dim);
+}
+
+.notesRulerTrack::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  background: var(--surface-35);
+  pointer-events: none;
+}
+
+.notesRulerPage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--notes-ruler-span);
+  height: 1px;
+  transform: translate(-50%, -50%);
+  background: var(--text-secondary);
+  pointer-events: none;
+}
+
+.notesRulerEdge {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 15px;
+  border-top: 0;
+  cursor: ew-resize;
+  pointer-events: auto;
+  outline: none;
+}
+
+.notesRulerEdge.left {
+  left: 0;
+  border-left: 1px solid var(--text-secondary);
+  transform: translate(-6px, -50%);
+}
+
+.notesRulerEdge.right {
+  right: 0;
+  border-right: 1px solid var(--text-secondary);
+  transform: translate(6px, -50%);
+}
+
+.notesRulerEdge:hover,
+.notesRulerEdge:focus-visible {
+  border-color: var(--text-primary);
+}
+
+.notesRulerInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .notesBodyInput {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   width: 100%;
+  max-width: 100%;
   border: 0;
   outline: 0;
   background: transparent;
@@ -475,7 +606,16 @@
   line-height: 1.8;
   padding: 24px 0;
   overflow-y: auto;
+  overflow-x: hidden;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.notesBodyInput * {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .notesBodyInput:empty::before {

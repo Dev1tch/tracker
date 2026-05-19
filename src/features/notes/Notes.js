@@ -252,6 +252,10 @@ const NOTE_FONT_SIZE_SELECT_OPTIONS = NOTE_FONT_SIZE_OPTIONS.map((size) => ({
   label: size,
   value: size,
 }));
+const NOTES_EDITOR_WIDTH_STORAGE_KEY = 'notes.editorWidth';
+const NOTES_EDITOR_WIDTH_MIN = 520;
+const NOTES_EDITOR_WIDTH_MAX = 1520;
+const NOTES_EDITOR_WIDTH_DEFAULT = 820;
 const NOTE_FONT_OPTIONS = [
   { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
   { label: 'Inter', value: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -287,6 +291,32 @@ function getEditorHtml(content) {
   if (!value) return '';
   if (/<\/?[a-z][\s\S]*>/i.test(value)) return value;
   return escapeHtml(value).replace(/\n/g, '<br>');
+}
+
+function loadEditorWidth() {
+  if (typeof window === 'undefined') return NOTES_EDITOR_WIDTH_DEFAULT;
+  const stored = Number.parseInt(window.localStorage.getItem(NOTES_EDITOR_WIDTH_STORAGE_KEY), 10);
+  if (!Number.isFinite(stored)) return NOTES_EDITOR_WIDTH_DEFAULT;
+  return Math.max(NOTES_EDITOR_WIDTH_MIN, Math.min(NOTES_EDITOR_WIDTH_MAX, stored));
+}
+
+function saveEditorWidth(value) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(NOTES_EDITOR_WIDTH_STORAGE_KEY, String(value));
+  } catch {}
+}
+
+function formatModifiedDate(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'Last modified unknown';
+  return `Last modified ${date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
 }
 
 function createId(prefix = 'note') {
@@ -895,6 +925,9 @@ function DeleteConfirmDialog({ node, onCancel, onConfirm }) {
 function RichTextEditor({ file, onChange, onUploadImage }) {
   const editorRef = useRef(null);
   const selectionRef = useRef(null);
+  const writingWidthRef = useRef(null);
+  const rulerDragRef = useRef(null);
+  const rulerAnimationRef = useRef(null);
   const [initialHtml] = useState(() => getEditorHtml(file.content));
   const historyRef = useRef({
     past: [],
@@ -907,6 +940,68 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
   const [frameStyle, setFrameStyle] = useState('outline');
   const [fontFamily, setFontFamily] = useState(NOTE_FONT_OPTIONS[0].value);
   const [fontSize, setFontSize] = useState('15');
+  const [writingWidth, setWritingWidth] = useState(loadEditorWidth);
+  const modifiedLabel = formatModifiedDate(file.updatedAt);
+  const rulerSpanPercent = Math.max(
+    0,
+    Math.min(100, (writingWidth / NOTES_EDITOR_WIDTH_MAX) * 100)
+  );
+
+  useEffect(() => {
+    writingWidthRef.current = writingWidth;
+  }, [writingWidth]);
+
+  const normalizeWritingWidth = useCallback((value) => (
+    Math.max(
+      NOTES_EDITOR_WIDTH_MIN,
+      Math.min(NOTES_EDITOR_WIDTH_MAX, Number.parseInt(value, 10) || NOTES_EDITOR_WIDTH_DEFAULT)
+    )
+  ), []);
+
+  const changeWritingWidth = useCallback((value, { persist = true } = {}) => {
+    const next = normalizeWritingWidth(value);
+    setWritingWidth(next);
+    writingWidthRef.current = next;
+    if (persist) saveEditorWidth(next);
+  }, [normalizeWritingWidth]);
+
+  const handleRulerPointerDown = useCallback((event, side) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = writingWidthRef.current || NOTES_EDITOR_WIDTH_DEFAULT;
+    rulerDragRef.current = { startX, startWidth, side };
+
+    function handlePointerMove(moveEvent) {
+      const drag = rulerDragRef.current;
+      if (!drag) return;
+      const delta = moveEvent.clientX - drag.startX;
+      const direction = drag.side === 'left' ? -1 : 1;
+      const nextWidth = Math.round((drag.startWidth + delta * direction * 2) / 10) * 10;
+
+      if (rulerAnimationRef.current) {
+        cancelAnimationFrame(rulerAnimationRef.current);
+      }
+
+      rulerAnimationRef.current = requestAnimationFrame(() => {
+        rulerAnimationRef.current = null;
+        changeWritingWidth(nextWidth, { persist: false });
+      });
+    }
+
+    function handlePointerUp() {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      rulerDragRef.current = null;
+      if (rulerAnimationRef.current) {
+        cancelAnimationFrame(rulerAnimationRef.current);
+        rulerAnimationRef.current = null;
+      }
+      saveEditorWidth(writingWidthRef.current || NOTES_EDITOR_WIDTH_DEFAULT);
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }, [changeWritingWidth]);
 
   const pushHistory = useCallback((before, after) => {
     if (after === before) return;
@@ -1636,23 +1731,71 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
         >
           • List
         </button>
+        <span className="notesModifiedAt">{modifiedLabel}</span>
       </div>
 
       <div
-        ref={setEditorNode}
-        className="notesBodyInput"
-        contentEditable
-        suppressContentEditableWarning
-        data-placeholder="Start typing..."
-        onInput={syncContent}
-        onBlur={saveSelection}
-        onKeyUp={handleSelectionUpdate}
-        onKeyDown={handleEditorKeyDown}
-        onMouseUp={handleSelectionUpdate}
-        onFocus={handleSelectionUpdate}
-        onPaste={handlePaste}
-        onDrop={handleDrop}
-      />
+        className="notesRulerWrap"
+        style={{
+          '--notes-writing-width': `${writingWidth}px`,
+          '--notes-ruler-span': `${rulerSpanPercent}%`,
+        }}
+      >
+        <div className="notesRuler" aria-label="Writing area width">
+          <span className="notesRulerLabel">Page</span>
+          <div className="notesRulerTrack">
+            <span className="notesRulerPage">
+              <span
+                className="notesRulerEdge left"
+                role="slider"
+                tabIndex={0}
+                aria-label="Adjust left page edge"
+                aria-valuemin={NOTES_EDITOR_WIDTH_MIN}
+                aria-valuemax={NOTES_EDITOR_WIDTH_MAX}
+                aria-valuenow={writingWidth}
+                onPointerDown={(event) => handleRulerPointerDown(event, 'left')}
+              />
+              <span
+                className="notesRulerEdge right"
+                role="slider"
+                tabIndex={0}
+                aria-label="Adjust right page edge"
+                aria-valuemin={NOTES_EDITOR_WIDTH_MIN}
+                aria-valuemax={NOTES_EDITOR_WIDTH_MAX}
+                aria-valuenow={writingWidth}
+                onPointerDown={(event) => handleRulerPointerDown(event, 'right')}
+              />
+            </span>
+            <input
+              className="notesRulerInput"
+              type="range"
+              min={NOTES_EDITOR_WIDTH_MIN}
+              max={NOTES_EDITOR_WIDTH_MAX}
+              step="20"
+              value={writingWidth}
+              onChange={(event) => changeWritingWidth(event.target.value)}
+              aria-label="Writing area width"
+            />
+          </div>
+          <span className="notesRulerValue">{writingWidth}px</span>
+        </div>
+
+        <div
+          ref={setEditorNode}
+          className="notesBodyInput"
+          contentEditable
+          suppressContentEditableWarning
+          data-placeholder="Start typing..."
+          onInput={syncContent}
+          onBlur={saveSelection}
+          onKeyUp={handleSelectionUpdate}
+          onKeyDown={handleEditorKeyDown}
+          onMouseUp={handleSelectionUpdate}
+          onFocus={handleSelectionUpdate}
+          onPaste={handlePaste}
+          onDrop={handleDrop}
+        />
+      </div>
     </div>
   );
 }
