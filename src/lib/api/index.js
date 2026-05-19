@@ -6,3 +6,6 @@ export * from './habits.js';
 export * from './logs.js';
 export * from './tasks.js';
 export * from './calendar.js';
+export * from './notes.js';
+export * from './board.js';
+export * from './media.js';

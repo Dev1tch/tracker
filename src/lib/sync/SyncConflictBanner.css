@@ -1,0 +1,73 @@
+.syncConflictBanner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  max-width: min(680px, calc(100% - 24px));
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(40, 32, 22, 0.95);
+  border: 1px solid rgba(212, 162, 70, 0.55);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  color: #f5e9d2;
+  font-size: 13px;
+  line-height: 1.45;
+  backdrop-filter: blur(8px);
+}
+
+.syncConflictText {
+  flex: 1 1 280px;
+}
+
+.syncConflictText strong {
+  font-weight: 600;
+  color: #f7d99a;
+}
+
+.syncConflictWhen {
+  opacity: 0.75;
+  font-weight: 400;
+}
+
+.syncConflictText p {
+  margin: 4px 0 0;
+  opacity: 0.88;
+}
+
+.syncConflictActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.syncConflictBtn {
+  appearance: none;
+  border: 1px solid rgba(245, 233, 210, 0.25);
+  background: transparent;
+  color: #f5e9d2;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.syncConflictBtn:hover {
+  background: rgba(245, 233, 210, 0.08);
+}
+
+.syncConflictBtn.primary {
+  background: rgba(212, 162, 70, 0.95);
+  border-color: rgba(212, 162, 70, 0.95);
+  color: #2a1f10;
+  font-weight: 600;
+}
+
+.syncConflictBtn.primary:hover {
+  background: rgba(222, 175, 89, 1);
+}

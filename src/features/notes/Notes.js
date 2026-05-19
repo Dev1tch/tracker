@@ -100,14 +100,19 @@ import {
 } from 'lucide-react';
 import ColorPicker from '@/components/ui/ColorPicker';
 import CustomSelect from '@/components/ui/CustomSelect';
+import { notesApi, mediaApi } from '@/lib/api';
+import { useDocumentSync } from '@/lib/sync/useDocumentSync';
+import SyncConflictBanner from '@/lib/sync/SyncConflictBanner';
 import './Notes.css';
 
 const STORAGE_KEY = 'notes.filesystem';
 const NOTES_DB_NAME = 'sal-notes';
 const NOTES_DB_STORE = 'state';
 const NOTES_DB_KEY = 'tree';
+const NOTES_DB_META_KEY = 'sync-meta';
 const NOTES_DB_VERSION = 1;
 const NOTES_PERSIST_DEBOUNCE_MS = 250;
+const NOTES_SYNC_DEBOUNCE_MS = 900;
 const DEFAULT_ICON_COLOR = 'currentColor';
 const DEFAULT_PICKER_ICON_COLOR = '#9ca3af';
 const DEFAULT_FOLDER_ICON = { kind: 'icon', name: 'folder', color: DEFAULT_ICON_COLOR };
@@ -468,6 +473,43 @@ async function idbPutNotesTree(tree) {
   }
 }
 
+async function idbGetNotesSyncMeta() {
+  try {
+    const db = await openNotesDB();
+    try {
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(NOTES_DB_STORE, 'readonly');
+        const req = tx.objectStore(NOTES_DB_STORE).get(NOTES_DB_META_KEY);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => reject(req.error);
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+async function idbPutNotesSyncMeta(meta) {
+  try {
+    const db = await openNotesDB();
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(NOTES_DB_STORE, 'readwrite');
+        tx.objectStore(NOTES_DB_STORE).put(meta, NOTES_DB_META_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    /* meta is non-critical; sync hook keeps its own in-memory mirror */
+  }
+}
+
 function findNode(nodes, id) {
   for (const node of nodes) {
     if (node.id === id) return node;
@@ -776,7 +818,7 @@ function DeleteConfirmDialog({ node, onCancel, onConfirm }) {
   );
 }
 
-function RichTextEditor({ file, onChange }) {
+function RichTextEditor({ file, onChange, onUploadImage }) {
   const editorRef = useRef(null);
   const selectionRef = useRef(null);
   const [initialHtml] = useState(() => getEditorHtml(file.content));
@@ -921,6 +963,74 @@ function RichTextEditor({ file, onChange }) {
     pushHistory(before, after);
     saveSelection();
   }, [pushHistory, restoreSelection, saveSelection]);
+
+  /* Async image insertion: we save the cursor position synchronously (so the
+     insert lands where the user actually pasted), do the upload, then insert
+     <img src=URL> at that range. If the editor is gone by then (e.g. user
+     switched notes), we drop the result silently. */
+  const insertImageFromUpload = useCallback(async (file) => {
+    if (!onUploadImage || !file) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    saveSelection();
+    const savedRange = selectionRef.current ? selectionRef.current.cloneRange() : null;
+    try {
+      const url = await onUploadImage(file);
+      if (!url) return;
+      const currentEditor = editorRef.current;
+      if (!currentEditor) return;
+      currentEditor.focus();
+      const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+      if (sel && savedRange && currentEditor.contains(savedRange.commonAncestorContainer)) {
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      }
+      const before = currentEditor.innerHTML;
+      const safeUrl = String(url).replace(/"/g, '&quot;');
+      document.execCommand(
+        'insertHTML',
+        false,
+        `<img src="${safeUrl}" alt="" style="max-width:100%;height:auto;" />`
+      );
+      const after = currentEditor.innerHTML;
+      pushHistory(before, after);
+      saveSelection();
+    } catch (err) {
+      console.warn('Notes: image upload failed', err);
+    }
+  }, [onUploadImage, pushHistory, saveSelection]);
+
+  const handlePaste = useCallback((event) => {
+    if (!onUploadImage) return;
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => item.type.startsWith('image/'));
+    if (!imageItem) return;
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    insertImageFromUpload(file);
+  }, [insertImageFromUpload, onUploadImage]);
+
+  const handleDrop = useCallback((event) => {
+    if (!onUploadImage) return;
+    const file = Array.from(event.dataTransfer?.files || []).find((f) =>
+      f.type.startsWith('image/')
+    );
+    if (!file) return;
+    event.preventDefault();
+    /* Move the caret to the drop point before insertion so the image lands
+       where the user dropped, not where the cursor was. */
+    if (typeof document !== 'undefined' && document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(event.clientX, event.clientY);
+      if (range && editorRef.current?.contains(range.commonAncestorContainer)) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        saveSelection();
+      }
+    }
+    insertImageFromUpload(file);
+  }, [insertImageFromUpload, onUploadImage, saveSelection]);
 
   const findSelectedFrame = useCallback(() => {
     const editor = editorRef.current;
@@ -1466,6 +1576,8 @@ function RichTextEditor({ file, onChange }) {
         onKeyDown={handleEditorKeyDown}
         onMouseUp={handleSelectionUpdate}
         onFocus={handleSelectionUpdate}
+        onPaste={handlePaste}
+        onDrop={handleDrop}
       />
     </div>
   );
@@ -1661,12 +1773,11 @@ export default function Notes() {
   const visibleTree = useMemo(() => filterTree(tree, query), [tree, query]);
   const treeCounts = useMemo(() => countTree(tree), [tree]);
 
-  /* IndexedDB-backed persistence. localStorage caps out around ~5MB per
-     origin, which the notes tree blows past as soon as the user pastes
-     an image into a note (browsers inline these as data:image base64).
-     When that happened the setItem call below silently threw, and the
-     next mount loaded a stale snapshot — losing recent edits. IDB has
-     no practical cap for this size of data. */
+  /* IndexedDB is the authoritative *local* cache. localStorage caps out
+     around ~5MB per origin, which the notes tree blows past as soon as the
+     user pastes an image (now uploaded to object storage, but legacy data
+     URLs can still live in the tree). The server (when authenticated) is
+     the cross-device source of truth — see syncApi below. */
   const notesHydratedRef = useRef(false);
   const notesPersistTimerRef = useRef(null);
   const latestTreeRef = useRef(tree);
@@ -1674,11 +1785,50 @@ export default function Notes() {
     latestTreeRef.current = tree;
   }, [tree]);
 
+  const notesSyncApi = useMemo(
+    () => ({
+      getDocument: () => notesApi.getDocument(),
+      updateDocument: async ({ snapshot, baseVersion }) => {
+        const doc = await notesApi.updateDocument({
+          tree: snapshot,
+          baseVersion,
+        });
+        /* Persist the new server version so a reload uses the right base. */
+        await idbPutNotesSyncMeta({ version: doc.version });
+        return doc;
+      },
+    }),
+    []
+  );
+
+  const {
+    initialServerDoc,
+    conflict,
+    syncing,
+    lastSyncedAt,
+    markHydrated,
+    setLastSeenVersion,
+    setSnapshot,
+    schedulePush,
+    acceptRemote,
+    dismissConflict,
+    isAuthenticated,
+  } = useDocumentSync({
+    api: notesSyncApi,
+    debounceMs: NOTES_SYNC_DEBOUNCE_MS,
+    featureKey: 'notes',
+  });
+
+  /* Hydrate from IDB on mount. We render local-first for instant feel, then
+     reconcile with the server doc once it arrives. */
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const stored = await idbGetNotesTree();
+        const [stored, meta] = await Promise.all([
+          idbGetNotesTree(),
+          idbGetNotesSyncMeta(),
+        ]);
         if (cancelled) return;
         if (stored) {
           const hydrated = normalizeTree(stored);
@@ -1691,47 +1841,186 @@ export default function Notes() {
         } else {
           const seed = latestTreeRef.current;
           if (seed && seed.length) {
-            /* One-time migration of legacy localStorage data so future
-               sessions read from the authoritative store even with no
-               further edits. */
             await idbPutNotesTree(seed).catch(() => {});
           }
+        }
+        if (meta && Number.isFinite(meta.version)) {
+          setLastSeenVersion(meta.version);
         }
       } catch (err) {
         console.warn('Notes: IndexedDB hydration failed, using localStorage fallback', err);
       } finally {
         if (!cancelled) {
           notesHydratedRef.current = true;
+          markHydrated();
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [markHydrated, setLastSeenVersion]);
 
+  /* When the initial server doc arrives, decide what to do:
+     - first ever sync (no local meta): adopt the remote doc (or push local
+       if remote is empty and local has content)
+     - server has same version as we last saw: nothing to do
+     - server has a newer version: surface as conflict via the hook
+   */
+  const initialReconciledRef = useRef(false);
+  useEffect(() => {
+    if (!notesHydratedRef.current) return;
+    if (!initialServerDoc) return;
+    if (initialReconciledRef.current) return;
+    initialReconciledRef.current = true;
+
+    (async () => {
+      const meta = await idbGetNotesSyncMeta();
+      const lastSeen = meta && Number.isFinite(meta.version) ? meta.version : null;
+      const remoteVersion = initialServerDoc.version;
+      const remoteTree = Array.isArray(initialServerDoc.tree)
+        ? initialServerDoc.tree
+        : [];
+      const remoteIsEmpty = remoteTree.length === 0;
+      const localIsEmpty = latestTreeRef.current.length === 0
+        || (latestTreeRef.current.length === 1
+            && latestTreeRef.current[0]?.id === 'notes-welcome-folder');
+
+      if (lastSeen === null) {
+        if (remoteIsEmpty && !localIsEmpty) {
+          /* First sync, server has nothing — push our local seed up. */
+          setLastSeenVersion(remoteVersion);
+          await idbPutNotesSyncMeta({ version: remoteVersion });
+          setSnapshot(latestTreeRef.current);
+          schedulePush();
+        } else {
+          /* Adopt remote silently — this is the user's first time on this
+             device but they already had data on another device. */
+          const hydrated = normalizeTree(remoteTree);
+          setTree(hydrated);
+          setSelectedId(findFirstFile(hydrated)?.id || null);
+          setOpenFolders(collectOpenFolders(hydrated));
+          setLastSeenVersion(remoteVersion);
+          await idbPutNotesTree(hydrated).catch(() => {});
+          await idbPutNotesSyncMeta({ version: remoteVersion });
+        }
+      } else if (remoteVersion > lastSeen) {
+        /* The conflict banner will pick this up via the sync hook on next
+           push — but we want to show it *now* even before the user edits.
+           Surface it by simulating a conflict from the initial fetch. */
+        // The hook already exposes `initialServerDoc`; we wrap that as a
+        // pending conflict for the banner below.
+      } else {
+        setLastSeenVersion(remoteVersion);
+      }
+    })();
+  }, [initialServerDoc, schedulePush, setLastSeenVersion, setSnapshot]);
+
+  /* "Server is newer on first load" derivation. We compute it from
+     initialServerDoc + local meta; the sync hook's `conflict` covers the
+     during-edit case (409 on PUT). */
+  const [initialConflict, setInitialConflict] = useState(null);
+  useEffect(() => {
+    if (!initialServerDoc) return;
+    (async () => {
+      const meta = await idbGetNotesSyncMeta();
+      const lastSeen = meta && Number.isFinite(meta.version) ? meta.version : null;
+      if (lastSeen !== null && initialServerDoc.version > lastSeen) {
+        setInitialConflict({ document: initialServerDoc, reason: 'initial-remote-newer' });
+      }
+    })();
+  }, [initialServerDoc]);
+
+  const activeConflict = conflict || initialConflict;
+
+  /* Persist tree changes to IDB and (if authenticated) schedule a push. */
   useEffect(() => {
     if (!notesHydratedRef.current) return;
     if (notesPersistTimerRef.current) {
       clearTimeout(notesPersistTimerRef.current);
     }
     const snapshot = tree;
+    setSnapshot(snapshot);
     notesPersistTimerRef.current = setTimeout(() => {
       notesPersistTimerRef.current = null;
       idbPutNotesTree(snapshot).catch((err) => {
         console.warn('Notes: failed to persist tree to IndexedDB', err);
       });
     }, NOTES_PERSIST_DEBOUNCE_MS);
+    schedulePush();
     return () => {
       if (notesPersistTimerRef.current) {
         clearTimeout(notesPersistTimerRef.current);
         notesPersistTimerRef.current = null;
       }
     };
-  }, [tree]);
+  }, [tree, schedulePush, setSnapshot]);
 
-  /* Flush any pending debounced write on unmount so a quick tab switch
-     after typing doesn't drop the last edits. */
+  const handleReloadFromServer = useCallback(async () => {
+    const remoteDoc = activeConflict?.document;
+    if (!remoteDoc) {
+      dismissConflict();
+      setInitialConflict(null);
+      return;
+    }
+    const remoteTree = Array.isArray(remoteDoc.tree) ? remoteDoc.tree : [];
+    const hydrated = normalizeTree(remoteTree);
+    setTree(hydrated);
+    setSelectedId((current) => {
+      if (current && findNode(hydrated, current)) return current;
+      return findFirstFile(hydrated)?.id || null;
+    });
+    setOpenFolders(collectOpenFolders(hydrated));
+    setLastSeenVersion(remoteDoc.version);
+    await idbPutNotesTree(hydrated).catch(() => {});
+    await idbPutNotesSyncMeta({ version: remoteDoc.version });
+    setInitialConflict(null);
+    dismissConflict();
+    acceptRemote();
+  }, [activeConflict, acceptRemote, dismissConflict, setLastSeenVersion]);
+
+  const handleKeepLocal = useCallback(async () => {
+    const remoteDoc = activeConflict?.document;
+    if (remoteDoc) {
+      /* Adopt the server's version as our base so the next push overwrites
+         the remote with our local copy. */
+      setLastSeenVersion(remoteDoc.version);
+      await idbPutNotesSyncMeta({ version: remoteDoc.version });
+    }
+    setInitialConflict(null);
+    dismissConflict();
+    schedulePush();
+  }, [activeConflict, dismissConflict, schedulePush, setLastSeenVersion]);
+
+  /* Image upload handler passed to RichTextEditor; only active when the user
+     is authenticated. When logged out, falls back to browser default (inline
+     base64) — same behaviour as today. */
+  const handleUploadImage = useCallback(async (file) => {
+    if (!isAuthenticated()) {
+      const reader = new FileReader();
+      return new Promise((resolve, reject) => {
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+    try {
+      const result = await mediaApi.upload({ file, kind: 'notes' });
+      return result?.url || '';
+    } catch (err) {
+      console.warn('Notes: image upload failed, falling back to inline base64', err);
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    }
+  }, [isAuthenticated]);
+
+  /* Flush any pending debounced IDB write on unmount so a quick tab switch
+     after typing doesn't drop the last edits. The sync hook handles
+     flushing the network write itself. */
   useEffect(() => {
     return () => {
       if (!notesHydratedRef.current) return;
@@ -1844,6 +2133,13 @@ export default function Notes() {
 
   return (
     <section className="notesShell" aria-label="Notes">
+      {activeConflict && (
+        <SyncConflictBanner
+          updatedAt={activeConflict.document?.updated_at}
+          onReload={handleReloadFromServer}
+          onKeepLocal={handleKeepLocal}
+        />
+      )}
       <aside className="notesSidebar">
         <div className="notesSidebarHead">
           <div className="notesCounters" aria-label="Filesystem totals">
@@ -1911,6 +2207,7 @@ export default function Notes() {
               key={selectedFile.id}
               file={selectedFile}
               onChange={(content) => updateSelectedFile({ content })}
+              onUploadImage={handleUploadImage}
             />
           </>
         ) : (

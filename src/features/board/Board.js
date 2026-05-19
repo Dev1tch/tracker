@@ -42,6 +42,9 @@ import ColorPicker from '@/components/ui/ColorPicker';
 import CustomSelect from '@/components/ui/CustomSelect';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { tasksApi, TASK_STATUS } from '@/features/tasks/api';
+import { boardApi, mediaApi } from '@/lib/api';
+import { useDocumentSync } from '@/lib/sync/useDocumentSync';
+import SyncConflictBanner from '@/lib/sync/SyncConflictBanner';
 import TaskDetailModal from '@/features/tasks/components/TasksBoard/components/TaskDetailModal';
 import {
   PRIORITY_META,
@@ -60,8 +63,10 @@ const STORAGE_KEY = 'board.state';
 const BOARD_DB_NAME = 'sal-board';
 const BOARD_DB_STORE = 'state';
 const BOARD_DB_KEY = 'current';
+const BOARD_DB_META_KEY = 'sync-meta';
 const BOARD_DB_VERSION = 1;
 const BOARD_PERSIST_DEBOUNCE_MS = 250;
+const BOARD_SYNC_DEBOUNCE_MS = 900;
 const MAX_IMAGE_WIDTH = 320;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
@@ -362,6 +367,43 @@ async function idbPutBoardState(state) {
     });
   } finally {
     db.close();
+  }
+}
+
+async function idbGetBoardSyncMeta() {
+  try {
+    const db = await openBoardDB();
+    try {
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(BOARD_DB_STORE, 'readonly');
+        const req = tx.objectStore(BOARD_DB_STORE).get(BOARD_DB_META_KEY);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => reject(req.error);
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+async function idbPutBoardSyncMeta(meta) {
+  try {
+    const db = await openBoardDB();
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(BOARD_DB_STORE, 'readwrite');
+        tx.objectStore(BOARD_DB_STORE).put(meta, BOARD_DB_META_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    /* meta is non-critical */
   }
 }
 
@@ -2196,15 +2238,48 @@ export default function Board() {
     loadTaskData();
   }, [loadTaskData]);
 
-  /* Hydrate from IndexedDB on mount. localStorage hits a ~5MB quota the
-     moment a few images land on the board, so the authoritative store is
-     IDB; legacy localStorage data still seeds the initial render and
-     migrates into IDB on first run. */
+  /* IndexedDB is the authoritative *local* cache; the server (when
+     authenticated) is the cross-device source of truth via boardSyncApi. */
+  const boardSyncApi = useMemo(
+    () => ({
+      getDocument: () => boardApi.getDocument(),
+      updateDocument: async ({ snapshot, baseVersion }) => {
+        const doc = await boardApi.updateDocument({
+          state: snapshot,
+          baseVersion,
+        });
+        await idbPutBoardSyncMeta({ version: doc.version });
+        return doc;
+      },
+    }),
+    []
+  );
+
+  const {
+    initialServerDoc: initialServerBoard,
+    conflict: boardConflict,
+    markHydrated: markBoardHydrated,
+    setLastSeenVersion: setBoardLastSeenVersion,
+    setSnapshot: setBoardSnapshot,
+    schedulePush: scheduleBoardPush,
+    acceptRemote: acceptBoardRemote,
+    dismissConflict: dismissBoardConflict,
+    isAuthenticated: isBoardAuthenticated,
+  } = useDocumentSync({
+    api: boardSyncApi,
+    debounceMs: BOARD_SYNC_DEBOUNCE_MS,
+    featureKey: 'board',
+  });
+
+  /* Hydrate from IndexedDB on mount. */
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const stored = await idbGetBoardState();
+        const [stored, meta] = await Promise.all([
+          idbGetBoardState(),
+          idbGetBoardSyncMeta(),
+        ]);
         if (cancelled) return;
         if (stored) {
           const normalized = normalizeBoardState(stored);
@@ -2221,9 +2296,6 @@ export default function Board() {
           initial.edges.length ||
           initial.frames.length
         ) {
-          /* One-time migration: copy legacy localStorage data into IDB so
-             subsequent sessions read from the authoritative store even if
-             the user makes no further edits. */
           await idbPutBoardState({
             nodes: initial.nodes,
             edges: initial.edges,
@@ -2231,11 +2303,15 @@ export default function Board() {
             viewport: initial.viewport,
           }).catch(() => {});
         }
+        if (meta && Number.isFinite(meta.version)) {
+          setBoardLastSeenVersion(meta.version);
+        }
       } catch (err) {
         console.warn('Board: IndexedDB hydration failed, using localStorage fallback', err);
       } finally {
         if (!cancelled) {
           persistHydratedRef.current = true;
+          markBoardHydrated();
         }
       }
     })();
@@ -2245,28 +2321,183 @@ export default function Board() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* Persist to IndexedDB. Debounced so dragging/typing doesn't queue a
-     write on every frame. localStorage is left alone — it can't hold
-     image-heavy boards anyway. */
+  /* Reconcile with initial server doc on first arrival. */
+  const initialBoardReconciledRef = useRef(false);
+  useEffect(() => {
+    if (!persistHydratedRef.current) return;
+    if (!initialServerBoard) return;
+    if (initialBoardReconciledRef.current) return;
+    initialBoardReconciledRef.current = true;
+
+    (async () => {
+      const meta = await idbGetBoardSyncMeta();
+      const lastSeen = meta && Number.isFinite(meta.version) ? meta.version : null;
+      const remoteVersion = initialServerBoard.version;
+      const remoteState = initialServerBoard.state || {};
+      const remoteIsEmpty =
+        (remoteState.nodes?.length || 0) === 0 &&
+        (remoteState.edges?.length || 0) === 0 &&
+        (remoteState.frames?.length || 0) === 0;
+      const localCurrent = latestPersistRef.current || {
+        nodes: [],
+        edges: [],
+        frames: [],
+        viewport: {},
+      };
+      const localIsEmpty =
+        (localCurrent.nodes?.length || 0) === 0 &&
+        (localCurrent.edges?.length || 0) === 0 &&
+        (localCurrent.frames?.length || 0) === 0;
+
+      if (lastSeen === null) {
+        if (remoteIsEmpty && !localIsEmpty) {
+          setBoardLastSeenVersion(remoteVersion);
+          await idbPutBoardSyncMeta({ version: remoteVersion });
+          setBoardSnapshot(localCurrent);
+          scheduleBoardPush();
+        } else {
+          const normalized = normalizeBoardState(remoteState);
+          setNodes(normalized.nodes);
+          setEdges(normalized.edges);
+          setFrames(normalized.frames);
+          setViewport(normalized.viewport);
+          lastBoardStateRef.current = serializeBoardState(
+            normalized.nodes,
+            normalized.edges
+          );
+          setBoardLastSeenVersion(remoteVersion);
+          await idbPutBoardState({
+            nodes: normalized.nodes,
+            edges: normalized.edges,
+            frames: normalized.frames,
+            viewport: normalized.viewport,
+          }).catch(() => {});
+          await idbPutBoardSyncMeta({ version: remoteVersion });
+        }
+      } else if (remoteVersion > lastSeen) {
+        /* Surfaced via initialBoardConflict below. */
+      } else {
+        setBoardLastSeenVersion(remoteVersion);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialServerBoard]);
+
+  const [initialBoardConflict, setInitialBoardConflict] = useState(null);
+  useEffect(() => {
+    if (!initialServerBoard) return;
+    (async () => {
+      const meta = await idbGetBoardSyncMeta();
+      const lastSeen = meta && Number.isFinite(meta.version) ? meta.version : null;
+      if (lastSeen !== null && initialServerBoard.version > lastSeen) {
+        setInitialBoardConflict({
+          document: initialServerBoard,
+          reason: 'initial-remote-newer',
+        });
+      }
+    })();
+  }, [initialServerBoard]);
+
+  const activeBoardConflict = boardConflict || initialBoardConflict;
+
+  /* Persist board state to IDB and (if authenticated) schedule a push. */
   useEffect(() => {
     if (!persistHydratedRef.current) return;
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current);
     }
     const snapshot = { nodes, edges, frames, viewport };
+    setBoardSnapshot(snapshot);
     persistTimerRef.current = setTimeout(() => {
       persistTimerRef.current = null;
       idbPutBoardState(snapshot).catch((err) => {
         console.warn('Board: failed to persist state to IndexedDB', err);
       });
     }, BOARD_PERSIST_DEBOUNCE_MS);
+    scheduleBoardPush();
     return () => {
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
         persistTimerRef.current = null;
       }
     };
-  }, [nodes, edges, frames, viewport]);
+  }, [nodes, edges, frames, viewport, scheduleBoardPush, setBoardSnapshot]);
+
+  const handleBoardReloadFromServer = useCallback(async () => {
+    const remoteDoc = activeBoardConflict?.document;
+    if (!remoteDoc) {
+      dismissBoardConflict();
+      setInitialBoardConflict(null);
+      return;
+    }
+    const normalized = normalizeBoardState(remoteDoc.state || {});
+    setNodes(normalized.nodes);
+    setEdges(normalized.edges);
+    setFrames(normalized.frames);
+    setViewport(normalized.viewport);
+    lastBoardStateRef.current = serializeBoardState(
+      normalized.nodes,
+      normalized.edges
+    );
+    setBoardLastSeenVersion(remoteDoc.version);
+    await idbPutBoardState({
+      nodes: normalized.nodes,
+      edges: normalized.edges,
+      frames: normalized.frames,
+      viewport: normalized.viewport,
+    }).catch(() => {});
+    await idbPutBoardSyncMeta({ version: remoteDoc.version });
+    setInitialBoardConflict(null);
+    dismissBoardConflict();
+    acceptBoardRemote();
+  }, [
+    activeBoardConflict,
+    acceptBoardRemote,
+    dismissBoardConflict,
+    setBoardLastSeenVersion,
+  ]);
+
+  const handleBoardKeepLocal = useCallback(async () => {
+    const remoteDoc = activeBoardConflict?.document;
+    if (remoteDoc) {
+      setBoardLastSeenVersion(remoteDoc.version);
+      await idbPutBoardSyncMeta({ version: remoteDoc.version });
+    }
+    setInitialBoardConflict(null);
+    dismissBoardConflict();
+    scheduleBoardPush();
+  }, [
+    activeBoardConflict,
+    dismissBoardConflict,
+    scheduleBoardPush,
+    setBoardLastSeenVersion,
+  ]);
+
+  /* Image upload helper: uploads when authenticated, falls back to inline
+     base64 (today's behaviour) when logged out. */
+  const uploadBoardImage = useCallback(async (file) => {
+    if (!file) return '';
+    if (!isBoardAuthenticated()) {
+      const reader = new FileReader();
+      return new Promise((resolve, reject) => {
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+    try {
+      const result = await mediaApi.upload({ file, kind: 'board' });
+      return result?.url || '';
+    } catch (err) {
+      console.warn('Board: image upload failed, falling back to inline base64', err);
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    }
+  }, [isBoardAuthenticated]);
 
   /* Mirror latest state into a ref so the unmount flush below sees the
      most recent values without resubscribing on every change. */
@@ -3133,9 +3364,9 @@ export default function Board() {
         if (!file) return;
 
         e.preventDefault();
-        const reader = new FileReader();
-        reader.onload = () => addImageNode(reader.result, center.x, center.y);
-        reader.readAsDataURL(file);
+        uploadBoardImage(file).then((url) => {
+          if (url) addImageNode(url, center.x, center.y);
+        });
         return;
       }
 
@@ -3154,7 +3385,7 @@ export default function Board() {
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [addImageNode, addPastedTextNode, screenToWorld, viewport.zoom]);
+  }, [addImageNode, addPastedTextNode, screenToWorld, uploadBoardImage, viewport.zoom]);
 
   function commitText(id, text, html = '') {
     const trimmed = (text || '').trim();
@@ -3803,9 +4034,9 @@ export default function Board() {
     const file = e.dataTransfer.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
     const w = screenToWorld(e.clientX, e.clientY);
-    const reader = new FileReader();
-    reader.onload = () => addImageNode(reader.result, w.x, w.y);
-    reader.readAsDataURL(file);
+    uploadBoardImage(file).then((url) => {
+      if (url) addImageNode(url, w.x, w.y);
+    });
   }
 
   /* ---------- node interactions ---------- */
@@ -3972,9 +4203,9 @@ export default function Board() {
       rect.left + rect.width / 2,
       rect.top + rect.height / 2
     );
-    const reader = new FileReader();
-    reader.onload = () => addImageNode(reader.result, center.x, center.y);
-    reader.readAsDataURL(file);
+    uploadBoardImage(file).then((url) => {
+      if (url) addImageNode(url, center.x, center.y);
+    });
   }
 
   function removeSelected() {
@@ -4028,6 +4259,13 @@ export default function Board() {
 
   return (
     <div className="boardShell">
+      {activeBoardConflict && (
+        <SyncConflictBanner
+          updatedAt={activeBoardConflict.document?.updated_at}
+          onReload={handleBoardReloadFromServer}
+          onKeepLocal={handleBoardKeepLocal}
+        />
+      )}
       <div className="boardLayout">
        <div className="boardToolbarCluster">
         <aside className="boardToolbar" aria-label="Board tools">
