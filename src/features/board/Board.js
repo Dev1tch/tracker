@@ -57,6 +57,11 @@ import '@/features/tasks/components/TasksBoard/components/TasksListMobile.css';
 import './Board.css';
 
 const STORAGE_KEY = 'board.state';
+const BOARD_DB_NAME = 'sal-board';
+const BOARD_DB_STORE = 'state';
+const BOARD_DB_KEY = 'current';
+const BOARD_DB_VERSION = 1;
+const BOARD_PERSIST_DEBOUNCE_MS = 250;
 const MAX_IMAGE_WIDTH = 320;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
@@ -262,41 +267,108 @@ function generateId() {
   return `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function loadState() {
-  if (typeof window === 'undefined') {
-    return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
-  }
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
-    const parsed = JSON.parse(raw);
-    const nodes = Array.isArray(parsed.nodes)
-      ? parsed.nodes.map((node) => {
-          if (node?.type === 'text' && node.href) {
-            return {
-              ...node,
-              type: 'link',
-              href: node.href,
-              w: node.w || DEFAULT_LINK_PREVIEW_WIDTH,
-              h: node.h || DEFAULT_LINK_PREVIEW_HEIGHT,
-              html: undefined,
-              content: undefined,
-            };
-          }
-          return node;
-        })
-      : [];
-    return {
-      nodes,
-      edges: Array.isArray(parsed.edges) ? parsed.edges : [],
-      frames: Array.isArray(parsed.frames) ? parsed.frames : [],
-      viewport: parsed.viewport && typeof parsed.viewport === 'object'
+function emptyBoardState() {
+  return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
+}
+
+function normalizeBoardState(parsed) {
+  if (!parsed || typeof parsed !== 'object') return emptyBoardState();
+  const nodes = Array.isArray(parsed.nodes)
+    ? parsed.nodes.map((node) => {
+        if (node?.type === 'text' && node.href) {
+          return {
+            ...node,
+            type: 'link',
+            href: node.href,
+            w: node.w || DEFAULT_LINK_PREVIEW_WIDTH,
+            h: node.h || DEFAULT_LINK_PREVIEW_HEIGHT,
+            html: undefined,
+            content: undefined,
+          };
+        }
+        return node;
+      })
+    : [];
+  return {
+    nodes,
+    edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+    frames: Array.isArray(parsed.frames) ? parsed.frames : [],
+    viewport:
+      parsed.viewport && typeof parsed.viewport === 'object'
         ? { ...DEFAULT_VIEWPORT, ...parsed.viewport }
         : DEFAULT_VIEWPORT,
-    };
+  };
+}
+
+function loadLegacyLocalState() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return normalizeBoardState(JSON.parse(raw));
   } catch {
-    return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
+    return null;
   }
+}
+
+function openBoardDB() {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || typeof window.indexedDB === 'undefined') {
+      reject(new Error('IndexedDB unavailable'));
+      return;
+    }
+    let req;
+    try {
+      req = window.indexedDB.open(BOARD_DB_NAME, BOARD_DB_VERSION);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(BOARD_DB_STORE)) {
+        db.createObjectStore(BOARD_DB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('IndexedDB blocked'));
+  });
+}
+
+async function idbGetBoardState() {
+  const db = await openBoardDB();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(BOARD_DB_STORE, 'readonly');
+      const req = tx.objectStore(BOARD_DB_STORE).get(BOARD_DB_KEY);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function idbPutBoardState(state) {
+  const db = await openBoardDB();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(BOARD_DB_STORE, 'readwrite');
+      tx.objectStore(BOARD_DB_STORE).put(state, BOARD_DB_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error);
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/* Synchronous initial state used for first paint. IndexedDB hydration
+   replaces this asynchronously on mount — see hydration effect. */
+function loadState() {
+  return loadLegacyLocalState() || emptyBoardState();
 }
 
 /* A node's center point — used to decide whether it sits inside a frame. */
@@ -2040,6 +2112,10 @@ export default function Board() {
   const lastBoardStateRef = useRef(serializeBoardState(initial.nodes, initial.edges));
   const nodeDragMovedRef = useRef(false);
   const lastNodeClickRef = useRef({ id: null, time: 0 });
+  /* IndexedDB hydration must finish before we start writing, otherwise an
+     empty initial state could overwrite the user's saved board. */
+  const persistHydratedRef = useRef(false);
+  const persistTimerRef = useRef(null);
 
   const taskTypeById = useMemo(
     () => new Map(taskTypes.map((type) => [String(type.id), type])),
@@ -2120,17 +2196,97 @@ export default function Board() {
     loadTaskData();
   }, [loadTaskData]);
 
-  /* Persist */
+  /* Hydrate from IndexedDB on mount. localStorage hits a ~5MB quota the
+     moment a few images land on the board, so the authoritative store is
+     IDB; legacy localStorage data still seeds the initial render and
+     migrates into IDB on first run. */
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ nodes, edges, frames, viewport })
-      );
-    } catch {
-      /* private mode / quota — ignore */
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = await idbGetBoardState();
+        if (cancelled) return;
+        if (stored) {
+          const normalized = normalizeBoardState(stored);
+          setNodes(normalized.nodes);
+          setEdges(normalized.edges);
+          setFrames(normalized.frames);
+          setViewport(normalized.viewport);
+          lastBoardStateRef.current = serializeBoardState(
+            normalized.nodes,
+            normalized.edges
+          );
+        } else if (
+          initial.nodes.length ||
+          initial.edges.length ||
+          initial.frames.length
+        ) {
+          /* One-time migration: copy legacy localStorage data into IDB so
+             subsequent sessions read from the authoritative store even if
+             the user makes no further edits. */
+          await idbPutBoardState({
+            nodes: initial.nodes,
+            edges: initial.edges,
+            frames: initial.frames,
+            viewport: initial.viewport,
+          }).catch(() => {});
+        }
+      } catch (err) {
+        console.warn('Board: IndexedDB hydration failed, using localStorage fallback', err);
+      } finally {
+        if (!cancelled) {
+          persistHydratedRef.current = true;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* Persist to IndexedDB. Debounced so dragging/typing doesn't queue a
+     write on every frame. localStorage is left alone — it can't hold
+     image-heavy boards anyway. */
+  useEffect(() => {
+    if (!persistHydratedRef.current) return;
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
     }
+    const snapshot = { nodes, edges, frames, viewport };
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null;
+      idbPutBoardState(snapshot).catch((err) => {
+        console.warn('Board: failed to persist state to IndexedDB', err);
+      });
+    }, BOARD_PERSIST_DEBOUNCE_MS);
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+    };
   }, [nodes, edges, frames, viewport]);
+
+  /* Mirror latest state into a ref so the unmount flush below sees the
+     most recent values without resubscribing on every change. */
+  const latestPersistRef = useRef({ nodes, edges, frames, viewport });
+  useEffect(() => {
+    latestPersistRef.current = { nodes, edges, frames, viewport };
+  }, [nodes, edges, frames, viewport]);
+
+  /* Flush any pending write on unmount so a fast tab switch doesn't lose
+     the most recent edits. */
+  useEffect(() => {
+    return () => {
+      if (!persistHydratedRef.current) return;
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      idbPutBoardState(latestPersistRef.current).catch(() => {});
+    };
+  }, []);
 
   /* Board history: content only. Viewport changes are intentionally excluded. */
   useEffect(() => {
