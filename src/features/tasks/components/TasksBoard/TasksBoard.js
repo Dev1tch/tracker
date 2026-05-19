@@ -30,6 +30,7 @@ import { useToast } from '@/components/ui/ToastProvider';
 import useIsMobile from '@/hooks/useIsMobile';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import CustomSelect from '@/components/ui/CustomSelect';
+import ColorPicker from '@/components/ui/ColorPicker';
 import {
   DEFAULT_CREATE_FORM,
   DEFAULT_TYPE_FORM,
@@ -153,82 +154,6 @@ function normalizeHexColor(value) {
   const candidate = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
   if (!isValidHexColor(candidate)) return null;
   return candidate.toLowerCase();
-}
-
-function hexToRgb(hex) {
-  const normalized = normalizeHexColor(hex);
-  if (!normalized) {
-    return { r: 255, g: 255, b: 255 };
-  }
-
-  const value = normalized.slice(1);
-  return {
-    r: Number.parseInt(value.slice(0, 2), 16),
-    g: Number.parseInt(value.slice(2, 4), 16),
-    b: Number.parseInt(value.slice(4, 6), 16),
-  };
-}
-
-function rgbToHex({ r, g, b }) {
-  const clamp = (channel) => Math.max(0, Math.min(255, channel));
-  const toHex = (channel) => clamp(channel).toString(16).padStart(2, '0');
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-function hsvToRgb({ h, s, v }) {
-  const saturation = Math.max(0, Math.min(100, s)) / 100;
-  const value = Math.max(0, Math.min(100, v)) / 100;
-  const chroma = value * saturation;
-  const segment = (h % 360) / 60;
-  const x = chroma * (1 - Math.abs((segment % 2) - 1));
-  const m = value - chroma;
-
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-
-  if (segment >= 0 && segment < 1) {
-    red = chroma; green = x; blue = 0;
-  } else if (segment >= 1 && segment < 2) {
-    red = x; green = chroma; blue = 0;
-  } else if (segment >= 2 && segment < 3) {
-    red = 0; green = chroma; blue = x;
-  } else if (segment >= 3 && segment < 4) {
-    red = 0; green = x; blue = chroma;
-  } else if (segment >= 4 && segment < 5) {
-    red = x; green = 0; blue = chroma;
-  } else {
-    red = chroma; green = 0; blue = x;
-  }
-
-  return {
-    r: Math.round((red + m) * 255),
-    g: Math.round((green + m) * 255),
-    b: Math.round((blue + m) * 255),
-  };
-}
-
-function rgbToHsv({ r, g, b }) {
-  const red = r / 255;
-  const green = g / 255;
-  const blue = b / 255;
-  const max = Math.max(red, green, blue);
-  const min = Math.min(red, green, blue);
-  const delta = max - min;
-
-  let hue = 0;
-  if (delta !== 0) {
-    if (max === red) hue = 60 * (((green - blue) / delta) % 6);
-    else if (max === green) hue = 60 * (((blue - red) / delta) + 2);
-    else hue = 60 * (((red - green) / delta) + 4);
-  }
-
-  if (hue < 0) hue += 360;
-
-  const saturation = max === 0 ? 0 : (delta / max) * 100;
-  const value = max * 100;
-
-  return { h: hue, s: saturation, v: value };
 }
 
 function normalizeStatusConfig(config, legacyColors = {}) {
@@ -405,12 +330,7 @@ export default function TasksBoard() {
   const [statusConfig, setStatusConfig] = useState(loadStatusConfig);
   const [statusColumnOrder, setStatusColumnOrder] = useState(loadStatusColumnOrder);
   const [statusConfigTarget, setStatusConfigTarget] = useState(TASK_STATUS.TO_DO);
-  const [isStatusColorPickerOpen, setIsStatusColorPickerOpen] = useState(false);
-  const [isStatusColorWheelDragging, setIsStatusColorWheelDragging] = useState(false);
-  const [statusColorInput, setStatusColorInput] = useState(DEFAULT_STATUS_COLORS[TASK_STATUS.TO_DO]);
   const cardViewSettingsRef = useRef(null);
-  const statusColorPickerRef = useRef(null);
-  const statusColorWheelRef = useRef(null);
   const dragPreviewRef = useRef(null);
 
   const [detailTaskId, setDetailTaskId] = useState(null);
@@ -504,20 +424,6 @@ export default function TasksBoard() {
     [statusConfig, statusConfigTarget]
   );
   const currentStatusColor = currentStatusConfig?.color || DEFAULT_STATUS_COLORS[statusConfigTarget];
-  const currentStatusHsv = useMemo(
-    () => rgbToHsv(hexToRgb(currentStatusColor)),
-    [currentStatusColor]
-  );
-  const statusColorPointerStyle = useMemo(() => {
-    const angle = (currentStatusHsv.h * Math.PI) / 180;
-    const radius = (currentStatusHsv.s / 100) * 50;
-    const x = 50 + radius * Math.cos(angle);
-    const y = 50 + radius * Math.sin(angle);
-    return {
-      left: `${Math.max(0, Math.min(100, x))}%`,
-      top: `${Math.max(0, Math.min(100, y))}%`,
-    };
-  }, [currentStatusHsv]);
 
   const filteredParentTasks = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
@@ -626,26 +532,6 @@ export default function TasksBoard() {
       },
     }));
   }, [statusConfigTarget]);
-  const handleStatusWheelPointerDown = useCallback((event) => {
-    const wheel = statusColorWheelRef.current;
-    if (!wheel) return;
-
-    const rect = wheel.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const dx = event.clientX - centerX;
-    const dy = event.clientY - centerY;
-    const radius = rect.width / 2;
-    const distance = Math.min(Math.sqrt((dx ** 2) + (dy ** 2)), radius);
-    const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
-    const saturation = (distance / radius) * 100;
-    const nextColor = rgbToHex(hsvToRgb({ h: hue, s: saturation, v: 100 }));
-
-    applyStatusColor(nextColor);
-    setStatusColorInput(nextColor);
-    setIsStatusColorWheelDragging(true);
-  }, [applyStatusColor]);
-
   const loadData = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setIsLoading(true);
@@ -687,17 +573,6 @@ export default function TasksBoard() {
   }, [statusColumnOrder]);
 
   useEffect(() => {
-    setStatusColorInput(currentStatusColor);
-  }, [currentStatusColor, statusConfigTarget]);
-
-  useEffect(() => {
-    if (!isCardViewSettingsOpen) {
-      setIsStatusColorPickerOpen(false);
-      setIsStatusColorWheelDragging(false);
-    }
-  }, [isCardViewSettingsOpen]);
-
-  useEffect(() => {
     if (!isCardViewSettingsOpen) return undefined;
 
     function handleOutsideClick(event) {
@@ -712,56 +587,6 @@ export default function TasksBoard() {
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [isCardViewSettingsOpen]);
-
-  useEffect(() => {
-    if (!isStatusColorPickerOpen) return undefined;
-
-    function handleColorPickerOutside(event) {
-      if (
-        statusColorPickerRef.current &&
-        !statusColorPickerRef.current.contains(event.target)
-      ) {
-        setIsStatusColorPickerOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleColorPickerOutside);
-    return () => document.removeEventListener('mousedown', handleColorPickerOutside);
-  }, [isStatusColorPickerOpen]);
-
-  useEffect(() => {
-    if (!isStatusColorWheelDragging) return undefined;
-
-    function handleWheelPointerMove(event) {
-      const wheel = statusColorWheelRef.current;
-      if (!wheel) return;
-
-      const rect = wheel.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const dx = event.clientX - centerX;
-      const dy = event.clientY - centerY;
-      const radius = rect.width / 2;
-      const distance = Math.min(Math.sqrt((dx ** 2) + (dy ** 2)), radius);
-      const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
-      const saturation = (distance / radius) * 100;
-      const nextColor = rgbToHex(hsvToRgb({ h: hue, s: saturation, v: 100 }));
-
-      applyStatusColor(nextColor);
-      setStatusColorInput(nextColor);
-    }
-
-    function handleWheelPointerUp() {
-      setIsStatusColorWheelDragging(false);
-    }
-
-    window.addEventListener('pointermove', handleWheelPointerMove);
-    window.addEventListener('pointerup', handleWheelPointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handleWheelPointerMove);
-      window.removeEventListener('pointerup', handleWheelPointerUp);
-    };
-  }, [applyStatusColor, isStatusColorWheelDragging]);
 
   useEffect(() => {
     const isAnyModalOpen =
@@ -1322,74 +1147,16 @@ export default function TasksBoard() {
                           value={statusConfigTarget}
                           onChange={(value) => {
                             setStatusConfigTarget(value);
-                            setIsStatusColorPickerOpen(false);
                           }}
                           placeholder="Select status"
                         />
                       </div>
-                      <div className="tasksStatusConfigColorWrap" ref={statusColorPickerRef}>
-                        <button
-                          type="button"
-                          className="tasksStatusConfigColorBtn"
-                          style={{ backgroundColor: currentStatusColor }}
-                          onClick={() => setIsStatusColorPickerOpen((prev) => !prev)}
-                          title="Choose status color"
-                          aria-label={`${formatStatus(statusConfigTarget)} color`}
+                      <div className="tasksStatusConfigColorWrap">
+                        <ColorPicker
+                          value={currentStatusColor}
+                          onChange={applyStatusColor}
+                          presets={STATUS_COLOR_PRESETS}
                         />
-
-                        {isStatusColorPickerOpen ? (
-                          <div className="tasksStatusConfigColorPopover">
-                            <div
-                              ref={statusColorWheelRef}
-                              className="tasksStatusColorWheel"
-                              onPointerDown={handleStatusWheelPointerDown}
-                              role="presentation"
-                            >
-                              <span
-                                className="tasksStatusColorWheelPointer"
-                                style={statusColorPointerStyle}
-                              />
-                            </div>
-
-                            <div className="tasksStatusConfigSwatches">
-                              {STATUS_COLOR_PRESETS.map((color) => (
-                                <button
-                                  key={color}
-                                  type="button"
-                                  className={`tasksStatusConfigSwatch ${
-                                    currentStatusColor === color ? 'isActive' : ''
-                                  }`}
-                                  style={{ backgroundColor: color }}
-                                  onClick={() => {
-                                    applyStatusColor(color);
-                                    setStatusColorInput(color);
-                                  }}
-                                  aria-label={`Set color ${color}`}
-                                />
-                              ))}
-                            </div>
-
-                            <div className="tasksStatusConfigHexRow">
-                              <label>Hex</label>
-                              <input
-                                type="text"
-                                value={statusColorInput}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setStatusColorInput(value);
-
-                                  const normalizedColor = normalizeHexColor(value);
-                                  if (normalizedColor) {
-                                    applyStatusColor(normalizedColor);
-                                  }
-                                }}
-                                onBlur={() => setStatusColorInput(currentStatusColor)}
-                                placeholder="#ffffff"
-                                maxLength={7}
-                              />
-                            </div>
-                          </div>
-                        ) : null}
                       </div>
                       <button
                         type="button"

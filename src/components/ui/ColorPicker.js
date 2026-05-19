@@ -12,18 +12,8 @@ import { createPortal } from 'react-dom';
 import './ColorPicker.css';
 
 const DEFAULT_PRESETS = [
-  '#94a3b8',
-  '#60a5fa',
-  '#9ca3af',
-  '#fbbf24',
-  '#34d399',
-  '#f87171',
-  '#6b7280',
-  '#e879f9',
-  '#a78bfa',
-  '#2dd4bf',
-  '#4ade80',
-  '#f97316',
+  '#0f3a4a', '#14b8a6', '#f4c95d', '#f59e6b', '#ef7a6d', '#dc2626',
+  '#1e3a8a', '#1d4ed8', '#0ea5e9', '#22d3ee', '#67e8f9', '#a78bfa',
 ];
 const RECENT_COLORS_STORAGE_KEY = 'sal.recentColors';
 const RECENT_COLOR_LIMIT = 12;
@@ -74,7 +64,7 @@ function hexToRgb(hex) {
 }
 
 function rgbToHex({ r, g, b }) {
-  const clamp = (channel) => Math.max(0, Math.min(255, channel));
+  const clamp = (channel) => Math.max(0, Math.min(255, Math.round(channel)));
   const toHex = (channel) => clamp(channel).toString(16).padStart(2, '0');
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
@@ -83,7 +73,7 @@ function hsvToRgb({ h, s, v }) {
   const saturation = Math.max(0, Math.min(100, s)) / 100;
   const value = Math.max(0, Math.min(100, v)) / 100;
   const chroma = value * saturation;
-  const segment = (h % 360) / 60;
+  const segment = (((h % 360) + 360) % 360) / 60;
   const x = chroma * (1 - Math.abs((segment % 2) - 1));
   const m = value - chroma;
 
@@ -127,6 +117,9 @@ function rgbToHsv({ r, g, b }) {
   return { h: hue, s: saturation, v: value };
 }
 
+const POPOVER_WIDTH = 220;
+const POPOVER_HEIGHT = 320;
+
 export default function ColorPicker({
   value,
   onChange,
@@ -134,45 +127,48 @@ export default function ColorPicker({
   placeholder = '#ffffff',
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isWheelDragging, setIsWheelDragging] = useState(false);
+  const [dragTarget, setDragTarget] = useState(null); // 'sv' | 'hue' | null
   const [hexInput, setHexInput] = useState(value || '');
   const [popoverStyle, setPopoverStyle] = useState(null);
   const [recentColors, setRecentColors] = useState([]);
+  // Track HSV locally so the SV/Hue thumbs don't jump when the user moves
+  // into the achromatic edges (S=0 or V=0) where the hex round-trips lose hue.
+  const [hsvState, setHsvState] = useState(null);
   const wrapperRef = useRef(null);
-  const wheelRef = useRef(null);
+  const svRef = useRef(null);
+  const hueRef = useRef(null);
   const popoverRef = useRef(null);
   const [mounted, setMounted] = useState(false);
 
-  // Avoid SSR mismatches when portaling.
   useEffect(() => {
     setMounted(true);
     setRecentColors(readRecentColors());
   }, []);
 
   const currentColor = normalizeHexColor(value) || '#ffffff';
+
+  const currentHsv = useMemo(() => {
+    if (hsvState) return hsvState;
+    return rgbToHsv(hexToRgb(currentColor));
+  }, [currentColor, hsvState]);
+
   const swatchColors = useMemo(() => {
     const fallback = presets.map(normalizeHexColor).filter(Boolean);
     return [...new Set([...recentColors, ...fallback])].slice(0, RECENT_COLOR_LIMIT);
   }, [presets, recentColors]);
 
-  const currentHsv = useMemo(
-    () => rgbToHsv(hexToRgb(currentColor)),
-    [currentColor]
+  const hueColor = useMemo(
+    () => rgbToHex(hsvToRgb({ h: currentHsv.h, s: 100, v: 100 })),
+    [currentHsv.h]
   );
-
-  const pointerStyle = useMemo(() => {
-    const angle = (currentHsv.h * Math.PI) / 180;
-    const radius = (currentHsv.s / 100) * 50;
-    const x = 50 + radius * Math.cos(angle);
-    const y = 50 + radius * Math.sin(angle);
-    return {
-      left: `${Math.max(0, Math.min(100, x))}%`,
-      top: `${Math.max(0, Math.min(100, y))}%`,
-    };
-  }, [currentHsv]);
 
   useEffect(() => {
     setHexInput(currentColor);
+  }, [currentColor]);
+
+  // Reset cached HSV when the value is changed externally (e.g. swatch click).
+  useEffect(() => {
+    setHsvState(null);
   }, [currentColor]);
 
   const applyColor = useCallback(
@@ -194,28 +190,69 @@ export default function ColorPicker({
     });
   }, []);
 
-  const handleWheelPointerDown = useCallback(
-    (event) => {
-      const wheel = wheelRef.current;
-      if (!wheel) return;
+  const updateFromSv = useCallback((event) => {
+    const el = svRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = (event.clientX - rect.left) / rect.width;
+    const py = (event.clientY - rect.top) / rect.height;
+    const s = Math.max(0, Math.min(1, px)) * 100;
+    const v = (1 - Math.max(0, Math.min(1, py))) * 100;
+    const hue = currentHsv.h;
+    const nextHsv = { h: hue, s, v };
+    setHsvState(nextHsv);
+    const nextColor = rgbToHex(hsvToRgb(nextHsv));
+    applyColor(nextColor);
+    setHexInput(nextColor);
+  }, [applyColor, currentHsv.h]);
 
-      const rect = wheel.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const dx = event.clientX - centerX;
-      const dy = event.clientY - centerY;
-      const radius = rect.width / 2;
-      const distance = Math.min(Math.sqrt(dx ** 2 + dy ** 2), radius);
-      const hue = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
-      const saturation = (distance / radius) * 100;
-      const nextColor = rgbToHex(hsvToRgb({ h: hue, s: saturation, v: 100 }));
+  const updateFromHue = useCallback((event) => {
+    const el = hueRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = (event.clientX - rect.left) / rect.width;
+    const h = Math.max(0, Math.min(1, px)) * 360;
+    const s = currentHsv.s || 100;
+    const v = currentHsv.v || 100;
+    const nextHsv = { h, s, v };
+    setHsvState(nextHsv);
+    const nextColor = rgbToHex(hsvToRgb(nextHsv));
+    applyColor(nextColor);
+    setHexInput(nextColor);
+  }, [applyColor, currentHsv.s, currentHsv.v]);
 
-      applyColor(nextColor);
-      setHexInput(nextColor);
-      setIsWheelDragging(true);
-    },
-    [applyColor]
-  );
+  const handleSvPointerDown = useCallback((event) => {
+    event.preventDefault();
+    updateFromSv(event);
+    setDragTarget('sv');
+  }, [updateFromSv]);
+
+  const handleHuePointerDown = useCallback((event) => {
+    event.preventDefault();
+    updateFromHue(event);
+    setDragTarget('hue');
+  }, [updateFromHue]);
+
+  useEffect(() => {
+    if (!dragTarget) return undefined;
+
+    function handleMove(event) {
+      if (dragTarget === 'sv') updateFromSv(event);
+      else if (dragTarget === 'hue') updateFromHue(event);
+    }
+
+    function handleUp() {
+      rememberColor(hexInput);
+      setDragTarget(null);
+    }
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+  }, [dragTarget, hexInput, rememberColor, updateFromSv, updateFromHue]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -232,16 +269,11 @@ export default function ColorPicker({
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [isOpen]);
 
-  /* Anchor the popover to viewport coords so an ancestor with
-     `overflow: hidden` (like .tasksModal) can't clip it. Flip above the
-     trigger when there's no room below. */
   useLayoutEffect(() => {
     if (!isOpen) return;
     const trigger = wrapperRef.current;
     if (!trigger) return;
 
-    const POPOVER_WIDTH = 144;
-    const POPOVER_HEIGHT = 200;
     const GAP = 8;
     const PAD = 12;
 
@@ -272,8 +304,6 @@ export default function ColorPicker({
     setPopoverStyle(style);
   }, [isOpen]);
 
-  /* The popover is anchored to a fixed viewport point; if any ancestor
-     scrolls, close it rather than let it float in the wrong place. */
   useEffect(() => {
     if (!isOpen) return undefined;
     function handleScroll(event) {
@@ -291,40 +321,16 @@ export default function ColorPicker({
     };
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isWheelDragging) return undefined;
-
-    function handleMove(event) {
-      const wheel = wheelRef.current;
-      if (!wheel) return;
-
-      const rect = wheel.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const dx = event.clientX - centerX;
-      const dy = event.clientY - centerY;
-      const radius = rect.width / 2;
-      const distance = Math.min(Math.sqrt(dx ** 2 + dy ** 2), radius);
-      const hue = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
-      const saturation = (distance / radius) * 100;
-      const nextColor = rgbToHex(hsvToRgb({ h: hue, s: saturation, v: 100 }));
-
-      applyColor(nextColor);
-      setHexInput(nextColor);
-    }
-
-    function handleUp() {
-      rememberColor(hexInput);
-      setIsWheelDragging(false);
-    }
-
-    window.addEventListener('pointermove', handleMove);
-    window.addEventListener('pointerup', handleUp);
-    return () => {
-      window.removeEventListener('pointermove', handleMove);
-      window.removeEventListener('pointerup', handleUp);
-    };
-  }, [applyColor, hexInput, isWheelDragging, rememberColor]);
+  const svThumbStyle = {
+    left: `${currentHsv.s}%`,
+    top: `${100 - currentHsv.v}%`,
+  };
+  const hueThumbStyle = {
+    left: `${(currentHsv.h / 360) * 100}%`,
+  };
+  const svBackground = {
+    backgroundColor: hueColor,
+  };
 
   return (
     <div className="salColorPickerWrap" ref={wrapperRef}>
@@ -344,55 +350,69 @@ export default function ColorPicker({
               className="salColorPickerPopover"
               style={popoverStyle || undefined}
             >
-          <div
-            ref={wheelRef}
-            className="salColorPickerWheel"
-            onPointerDown={handleWheelPointerDown}
-            role="presentation"
-          >
-            <span
-              className="salColorPickerWheelPointer"
-              style={pointerStyle}
-            />
-          </div>
+              <div
+                ref={svRef}
+                className="salColorPickerSv"
+                style={svBackground}
+                onPointerDown={handleSvPointerDown}
+                role="presentation"
+              >
+                <span className="salColorPickerSvOverlayWhite" />
+                <span className="salColorPickerSvOverlayBlack" />
+                <span className="salColorPickerSvThumb" style={svThumbStyle} />
+              </div>
 
-          <div className="salColorPickerSwatches">
-            {swatchColors.map((color) => (
-              <button
-                key={color}
-                type="button"
-                className={`salColorPickerSwatch ${currentColor === color ? 'isActive' : ''}`}
-                style={{ backgroundColor: color }}
-                onClick={() => {
-                  applyColor(color);
-                  setHexInput(color);
-                  rememberColor(color);
-                }}
-                aria-label={`Set color ${color}`}
-              />
-            ))}
-          </div>
+              <div
+                ref={hueRef}
+                className="salColorPickerHue"
+                onPointerDown={handleHuePointerDown}
+                role="presentation"
+              >
+                <span className="salColorPickerHueThumb" style={hueThumbStyle} />
+              </div>
 
-          <div className="salColorPickerHexRow">
-            <label>Hex</label>
-            <input
-              type="text"
-              value={hexInput}
-              onChange={(event) => {
-                const v = event.target.value;
-                setHexInput(v);
-                const normalized = normalizeHexColor(v);
-                if (normalized) {
-                  applyColor(normalized);
-                  rememberColor(normalized);
-                }
-              }}
-              onBlur={() => setHexInput(currentColor)}
-              placeholder={placeholder}
-              maxLength={7}
-              spellCheck={false}
-            />
-          </div>
+              <div className="salColorPickerHexRow">
+                <span
+                  className="salColorPickerPreview"
+                  style={{ backgroundColor: currentColor }}
+                />
+                <input
+                  type="text"
+                  value={hexInput}
+                  onChange={(event) => {
+                    const v = event.target.value;
+                    setHexInput(v);
+                    const normalized = normalizeHexColor(v);
+                    if (normalized) {
+                      setHsvState(null);
+                      applyColor(normalized);
+                      rememberColor(normalized);
+                    }
+                  }}
+                  onBlur={() => setHexInput(currentColor)}
+                  placeholder={placeholder}
+                  maxLength={7}
+                  spellCheck={false}
+                />
+              </div>
+
+              <div className="salColorPickerSwatches">
+                {swatchColors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`salColorPickerSwatch ${currentColor === color ? 'isActive' : ''}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => {
+                      setHsvState(null);
+                      applyColor(color);
+                      setHexInput(color);
+                      rememberColor(color);
+                    }}
+                    aria-label={`Set color ${color}`}
+                  />
+                ))}
+              </div>
             </div>,
             document.body
           )

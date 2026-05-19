@@ -1,3 +1,9 @@
+.themeToggleWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
 .themeToggle {
   position: relative;
   display: inline-flex;
@@ -47,14 +53,6 @@
   filter: drop-shadow(0 0 5px var(--glow-color));
 }
 
-.themeToggleIcon.isLight {
-  color: rgba(15, 23, 42, 0.72);
-}
-
-.themeToggleIcon.isDark {
-  color: rgba(255, 255, 255, 0.72);
-}
-
 .themeToggleLabel {
   font-size: 9px;
   letter-spacing: 0.16em;
@@ -65,4 +63,64 @@
 
 .themeToggleLabelStacked {
   line-height: 1.35;
+}
+
+/* Popover ------------------------------------------------------------ */
+.themeTogglePopover {
+  width: 168px;
+  border: 1px solid var(--border-color);
+  background: var(--panel-solid);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.themeToggleRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.themeToggleSwatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.themeToggleSwatch + .themeToggleSwatch {
+  border-left: 1px solid var(--border-color-dim);
+}
+
+.themeToggleSwatch:hover {
+  background: var(--surface-05);
+  color: var(--text-primary);
+}
+
+.themeToggleSwatch.isActive {
+  background: var(--surface-08);
+  color: var(--text-primary);
+}
+
+.themeToggleCustomBody {
+  border-top: 1px solid var(--border-color-dim);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.themeToggleCustomRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
 }

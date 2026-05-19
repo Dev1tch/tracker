@@ -23,64 +23,141 @@
 }
 
 .salColorPickerPopover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  width: 130px;
-  padding: 7px;
+  width: 220px;
+  padding: 12px;
   border: 1px solid var(--border-color);
   background: var(--panel-solid);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.44);
-  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
   z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.salColorPickerWheel {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 50%;
+/* Saturation/Value square ----------------------------------------------- */
+.salColorPickerSv {
   position: relative;
-  cursor: crosshair;
-  border: 1px solid var(--border-color-dim);
-  box-sizing: border-box;
+  width: 100%;
+  height: 130px;
+  border-radius: 8px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at center, #ffffff 0%, rgba(255, 255, 255, 0) 100%),
-    conic-gradient(from 90deg,
-      #ff0000 0deg,
-      #ffff00 60deg,
-      #00ff00 120deg,
-      #00ffff 180deg,
-      #0000ff 240deg,
-      #ff00ff 300deg,
-      #ff0000 360deg
-    );
-  margin-bottom: 7px;
+  cursor: crosshair;
   touch-action: none;
+  border: 1px solid var(--border-color-dim);
 }
 
-.salColorPickerWheelPointer {
+.salColorPickerSvOverlayWhite,
+.salColorPickerSvOverlayBlack {
   position: absolute;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 1.5px solid #ffffff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
-  transform: translate(-50%, -50%);
+  inset: 0;
   pointer-events: none;
 }
 
+.salColorPickerSvOverlayWhite {
+  background: linear-gradient(to right, #ffffff, rgba(255, 255, 255, 0));
+}
+
+.salColorPickerSvOverlayBlack {
+  background: linear-gradient(to top, #000000, rgba(0, 0, 0, 0));
+}
+
+.salColorPickerSvThumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: transparent;
+}
+
+/* Hue slider ------------------------------------------------------------ */
+.salColorPickerHue {
+  position: relative;
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  touch-action: none;
+  background: linear-gradient(
+    to right,
+    #ff0000 0%,
+    #ffff00 17%,
+    #00ff00 33%,
+    #00ffff 50%,
+    #0000ff 67%,
+    #ff00ff 83%,
+    #ff0000 100%
+  );
+  border: 1px solid var(--border-color-dim);
+  box-sizing: border-box;
+}
+
+.salColorPickerHueThumb {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: transparent;
+}
+
+/* Preview + hex row ----------------------------------------------------- */
+.salColorPickerHexRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.salColorPickerPreview {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color-dim);
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px var(--surface-05);
+}
+
+.salColorPickerHexRow input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  border: 1px solid var(--border-color-dim);
+  background: var(--surface-05);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-main);
+  padding: 0 8px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+
+.salColorPickerHexRow input:focus {
+  outline: none;
+  border-color: var(--text-secondary);
+  background: var(--surface-08);
+}
+
+/* Preset swatches ------------------------------------------------------- */
 .salColorPickerSwatches {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 4px;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 .salColorPickerSwatch {
   width: 100%;
   aspect-ratio: 1;
   border-radius: 50%;
-  border: 1px solid var(--surface-18);
+  border: 1px solid var(--surface-15);
   cursor: pointer;
   padding: 0;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
@@ -94,37 +171,4 @@
 .salColorPickerSwatch.isActive {
   border-color: var(--text-primary);
   box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 3px var(--text-primary);
-}
-
-.salColorPickerHexRow {
-  margin-top: 7px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.salColorPickerHexRow label {
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.salColorPickerHexRow input {
-  flex: 1;
-  min-width: 0;
-  height: 20px;
-  border: 1px solid var(--border-color-dim);
-  background: var(--surface-03);
-  color: var(--text-primary);
-  font-size: 9px;
-  font-family: var(--font-main);
-  padding: 0 5px;
-  border-radius: 3px;
-  letter-spacing: 0.04em;
-}
-
-.salColorPickerHexRow input:focus {
-  outline: none;
-  border-color: var(--text-secondary);
 }
