@@ -103,6 +103,11 @@ import CustomSelect from '@/components/ui/CustomSelect';
 import './Notes.css';
 
 const STORAGE_KEY = 'notes.filesystem';
+const NOTES_DB_NAME = 'sal-notes';
+const NOTES_DB_STORE = 'state';
+const NOTES_DB_KEY = 'tree';
+const NOTES_DB_VERSION = 1;
+const NOTES_PERSIST_DEBOUNCE_MS = 250;
 const DEFAULT_ICON_COLOR = 'currentColor';
 const DEFAULT_PICKER_ICON_COLOR = '#9ca3af';
 const DEFAULT_FOLDER_ICON = { kind: 'icon', name: 'folder', color: DEFAULT_ICON_COLOR };
@@ -406,6 +411,60 @@ function loadTree() {
     return normalizeTree(JSON.parse(raw));
   } catch {
     return DEFAULT_TREE;
+  }
+}
+
+function openNotesDB() {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || typeof window.indexedDB === 'undefined') {
+      reject(new Error('IndexedDB unavailable'));
+      return;
+    }
+    let req;
+    try {
+      req = window.indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(NOTES_DB_STORE)) {
+        db.createObjectStore(NOTES_DB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('IndexedDB blocked'));
+  });
+}
+
+async function idbGetNotesTree() {
+  const db = await openNotesDB();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(NOTES_DB_STORE, 'readonly');
+      const req = tx.objectStore(NOTES_DB_STORE).get(NOTES_DB_KEY);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function idbPutNotesTree(tree) {
+  const db = await openNotesDB();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(NOTES_DB_STORE, 'readwrite');
+      tx.objectStore(NOTES_DB_STORE).put(tree, NOTES_DB_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error);
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
   }
 }
 
@@ -1602,11 +1661,87 @@ export default function Notes() {
   const visibleTree = useMemo(() => filterTree(tree, query), [tree, query]);
   const treeCounts = useMemo(() => countTree(tree), [tree]);
 
+  /* IndexedDB-backed persistence. localStorage caps out around ~5MB per
+     origin, which the notes tree blows past as soon as the user pastes
+     an image into a note (browsers inline these as data:image base64).
+     When that happened the setItem call below silently threw, and the
+     next mount loaded a stale snapshot — losing recent edits. IDB has
+     no practical cap for this size of data. */
+  const notesHydratedRef = useRef(false);
+  const notesPersistTimerRef = useRef(null);
+  const latestTreeRef = useRef(tree);
   useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tree));
-    } catch {}
+    latestTreeRef.current = tree;
   }, [tree]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = await idbGetNotesTree();
+        if (cancelled) return;
+        if (stored) {
+          const hydrated = normalizeTree(stored);
+          setTree(hydrated);
+          setSelectedId((current) => {
+            if (current && findNode(hydrated, current)) return current;
+            return findFirstFile(hydrated)?.id || null;
+          });
+          setOpenFolders(collectOpenFolders(hydrated));
+        } else {
+          const seed = latestTreeRef.current;
+          if (seed && seed.length) {
+            /* One-time migration of legacy localStorage data so future
+               sessions read from the authoritative store even with no
+               further edits. */
+            await idbPutNotesTree(seed).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.warn('Notes: IndexedDB hydration failed, using localStorage fallback', err);
+      } finally {
+        if (!cancelled) {
+          notesHydratedRef.current = true;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!notesHydratedRef.current) return;
+    if (notesPersistTimerRef.current) {
+      clearTimeout(notesPersistTimerRef.current);
+    }
+    const snapshot = tree;
+    notesPersistTimerRef.current = setTimeout(() => {
+      notesPersistTimerRef.current = null;
+      idbPutNotesTree(snapshot).catch((err) => {
+        console.warn('Notes: failed to persist tree to IndexedDB', err);
+      });
+    }, NOTES_PERSIST_DEBOUNCE_MS);
+    return () => {
+      if (notesPersistTimerRef.current) {
+        clearTimeout(notesPersistTimerRef.current);
+        notesPersistTimerRef.current = null;
+      }
+    };
+  }, [tree]);
+
+  /* Flush any pending debounced write on unmount so a quick tab switch
+     after typing doesn't drop the last edits. */
+  useEffect(() => {
+    return () => {
+      if (!notesHydratedRef.current) return;
+      if (notesPersistTimerRef.current) {
+        clearTimeout(notesPersistTimerRef.current);
+        notesPersistTimerRef.current = null;
+      }
+      idbPutNotesTree(latestTreeRef.current).catch(() => {});
+    };
+  }, []);
 
   const toggleFolder = useCallback((id) => {
     setOpenFolders((current) => {
