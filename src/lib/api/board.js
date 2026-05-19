@@ -9,33 +9,15 @@ import { apiClient } from './client.js';
  * @property {string} updated_at
  */
 
-export class BoardConflictError extends Error {
-  constructor(document) {
-    super('Board document version is out of date.');
-    this.name = 'BoardConflictError';
-    this.document = document;
-  }
-}
-
 export class BoardApi {
   async getDocument() {
     const data = await apiClient.get('/board/');
     return normalizeDocument(data);
   }
 
-  async updateDocument({ state, baseVersion }) {
-    try {
-      const data = await apiClient.put('/board/', {
-        state,
-        base_version: baseVersion,
-      });
-      return normalizeDocument(data);
-    } catch (err) {
-      if (err?.status === 409 && err?.data?.document) {
-        throw new BoardConflictError(normalizeDocument(err.data.document));
-      }
-      throw err;
-    }
+  async updateDocument({ state }) {
+    const data = await apiClient.put('/board/', { state });
+    return normalizeDocument(data);
   }
 }
 

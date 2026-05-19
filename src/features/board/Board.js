@@ -44,7 +44,6 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import { tasksApi, TASK_STATUS } from '@/features/tasks/api';
 import { boardApi, mediaApi } from '@/lib/api';
 import { useDocumentSync } from '@/lib/sync/useDocumentSync';
-import SyncConflictBanner from '@/lib/sync/SyncConflictBanner';
 import TaskDetailModal from '@/features/tasks/components/TasksBoard/components/TaskDetailModal';
 import {
   PRIORITY_META,
@@ -2243,12 +2242,12 @@ export default function Board() {
   const boardSyncApi = useMemo(
     () => ({
       getDocument: () => boardApi.getDocument(),
-      updateDocument: async ({ snapshot, baseVersion }) => {
-        const doc = await boardApi.updateDocument({
-          state: snapshot,
-          baseVersion,
+      updateDocument: async ({ snapshot }) => {
+        const doc = await boardApi.updateDocument({ state: snapshot });
+        await idbPutBoardSyncMeta({
+          serverUpdatedAt: doc.updated_at,
+          dirty: false,
         });
-        await idbPutBoardSyncMeta({ version: doc.version });
         return doc;
       },
     }),
@@ -2257,13 +2256,9 @@ export default function Board() {
 
   const {
     initialServerDoc: initialServerBoard,
-    conflict: boardConflict,
     markHydrated: markBoardHydrated,
-    setLastSeenVersion: setBoardLastSeenVersion,
     setSnapshot: setBoardSnapshot,
     schedulePush: scheduleBoardPush,
-    acceptRemote: acceptBoardRemote,
-    dismissConflict: dismissBoardConflict,
     isAuthenticated: isBoardAuthenticated,
   } = useDocumentSync({
     api: boardSyncApi,
@@ -2276,10 +2271,7 @@ export default function Board() {
     let cancelled = false;
     (async () => {
       try {
-        const [stored, meta] = await Promise.all([
-          idbGetBoardState(),
-          idbGetBoardSyncMeta(),
-        ]);
+        const stored = await idbGetBoardState();
         if (cancelled) return;
         if (stored) {
           const normalized = normalizeBoardState(stored);
@@ -2303,9 +2295,6 @@ export default function Board() {
             viewport: initial.viewport,
           }).catch(() => {});
         }
-        if (meta && Number.isFinite(meta.version)) {
-          setBoardLastSeenVersion(meta.version);
-        }
       } catch (err) {
         console.warn('Board: IndexedDB hydration failed, using localStorage fallback', err);
       } finally {
@@ -2321,7 +2310,8 @@ export default function Board() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* Reconcile with initial server doc on first arrival. */
+  /* Reconcile with initial server doc by timestamp. No conflict UI: local
+     dirty wins, then newer side wins, otherwise no-op. */
   const initialBoardReconciledRef = useRef(false);
   useEffect(() => {
     if (!persistHydratedRef.current) return;
@@ -2331,88 +2321,70 @@ export default function Board() {
 
     (async () => {
       const meta = await idbGetBoardSyncMeta();
-      const lastSeen = meta && Number.isFinite(meta.version) ? meta.version : null;
-      const remoteVersion = initialServerBoard.version;
+      const localDirty = Boolean(meta?.dirty);
+      const localServerUpdatedAt = meta?.serverUpdatedAt || null;
+      const remoteUpdatedAt = initialServerBoard.updated_at || null;
       const remoteState = initialServerBoard.state || {};
-      const remoteIsEmpty =
-        (remoteState.nodes?.length || 0) === 0 &&
-        (remoteState.edges?.length || 0) === 0 &&
-        (remoteState.frames?.length || 0) === 0;
-      const localCurrent = latestPersistRef.current || {
-        nodes: [],
-        edges: [],
-        frames: [],
-        viewport: {},
-      };
-      const localIsEmpty =
-        (localCurrent.nodes?.length || 0) === 0 &&
-        (localCurrent.edges?.length || 0) === 0 &&
-        (localCurrent.frames?.length || 0) === 0;
 
-      if (lastSeen === null) {
-        if (remoteIsEmpty && !localIsEmpty) {
-          setBoardLastSeenVersion(remoteVersion);
-          await idbPutBoardSyncMeta({ version: remoteVersion });
-          setBoardSnapshot(localCurrent);
-          scheduleBoardPush();
-        } else {
-          const normalized = normalizeBoardState(remoteState);
-          setNodes(normalized.nodes);
-          setEdges(normalized.edges);
-          setFrames(normalized.frames);
-          setViewport(normalized.viewport);
-          lastBoardStateRef.current = serializeBoardState(
-            normalized.nodes,
-            normalized.edges
-          );
-          setBoardLastSeenVersion(remoteVersion);
-          await idbPutBoardState({
-            nodes: normalized.nodes,
-            edges: normalized.edges,
-            frames: normalized.frames,
-            viewport: normalized.viewport,
-          }).catch(() => {});
-          await idbPutBoardSyncMeta({ version: remoteVersion });
-        }
-      } else if (remoteVersion > lastSeen) {
-        /* Surfaced via initialBoardConflict below. */
+      const remoteIsNewer =
+        !localServerUpdatedAt ||
+        (remoteUpdatedAt && remoteUpdatedAt > localServerUpdatedAt);
+
+      if (localDirty) {
+        setBoardSnapshot(latestPersistRef.current);
+        scheduleBoardPush();
+      } else if (remoteIsNewer) {
+        const normalized = normalizeBoardState(remoteState);
+        setNodes(normalized.nodes);
+        setEdges(normalized.edges);
+        setFrames(normalized.frames);
+        setViewport(normalized.viewport);
+        lastBoardStateRef.current = serializeBoardState(
+          normalized.nodes,
+          normalized.edges
+        );
+        await idbPutBoardState({
+          nodes: normalized.nodes,
+          edges: normalized.edges,
+          frames: normalized.frames,
+          viewport: normalized.viewport,
+        }).catch(() => {});
+        await idbPutBoardSyncMeta({
+          serverUpdatedAt: remoteUpdatedAt,
+          dirty: false,
+        });
       } else {
-        setBoardLastSeenVersion(remoteVersion);
+        await idbPutBoardSyncMeta({
+          serverUpdatedAt: remoteUpdatedAt,
+          dirty: false,
+        });
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialServerBoard]);
 
-  const [initialBoardConflict, setInitialBoardConflict] = useState(null);
-  useEffect(() => {
-    if (!initialServerBoard) return;
-    (async () => {
-      const meta = await idbGetBoardSyncMeta();
-      const lastSeen = meta && Number.isFinite(meta.version) ? meta.version : null;
-      if (lastSeen !== null && initialServerBoard.version > lastSeen) {
-        setInitialBoardConflict({
-          document: initialServerBoard,
-          reason: 'initial-remote-newer',
-        });
-      }
-    })();
-  }, [initialServerBoard]);
-
-  const activeBoardConflict = boardConflict || initialBoardConflict;
-
-  /* Persist board state to IDB and (if authenticated) schedule a push. */
+  /* Persist board state to IDB and schedule a push. Mark dirty so a reload
+     before the PUT completes pushes the unsynced edits up. */
   useEffect(() => {
     if (!persistHydratedRef.current) return;
+    if (!initialBoardReconciledRef.current) return;
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current);
     }
     const snapshot = { nodes, edges, frames, viewport };
     setBoardSnapshot(snapshot);
-    persistTimerRef.current = setTimeout(() => {
+    persistTimerRef.current = setTimeout(async () => {
       persistTimerRef.current = null;
-      idbPutBoardState(snapshot).catch((err) => {
+      try {
+        await idbPutBoardState(snapshot);
+        const meta = await idbGetBoardSyncMeta();
+        await idbPutBoardSyncMeta({
+          serverUpdatedAt: meta?.serverUpdatedAt || null,
+          dirty: true,
+        });
+      } catch (err) {
         console.warn('Board: failed to persist state to IndexedDB', err);
-      });
+      }
     }, BOARD_PERSIST_DEBOUNCE_MS);
     scheduleBoardPush();
     return () => {
@@ -2422,56 +2394,6 @@ export default function Board() {
       }
     };
   }, [nodes, edges, frames, viewport, scheduleBoardPush, setBoardSnapshot]);
-
-  const handleBoardReloadFromServer = useCallback(async () => {
-    const remoteDoc = activeBoardConflict?.document;
-    if (!remoteDoc) {
-      dismissBoardConflict();
-      setInitialBoardConflict(null);
-      return;
-    }
-    const normalized = normalizeBoardState(remoteDoc.state || {});
-    setNodes(normalized.nodes);
-    setEdges(normalized.edges);
-    setFrames(normalized.frames);
-    setViewport(normalized.viewport);
-    lastBoardStateRef.current = serializeBoardState(
-      normalized.nodes,
-      normalized.edges
-    );
-    setBoardLastSeenVersion(remoteDoc.version);
-    await idbPutBoardState({
-      nodes: normalized.nodes,
-      edges: normalized.edges,
-      frames: normalized.frames,
-      viewport: normalized.viewport,
-    }).catch(() => {});
-    await idbPutBoardSyncMeta({ version: remoteDoc.version });
-    setInitialBoardConflict(null);
-    dismissBoardConflict();
-    acceptBoardRemote();
-  }, [
-    activeBoardConflict,
-    acceptBoardRemote,
-    dismissBoardConflict,
-    setBoardLastSeenVersion,
-  ]);
-
-  const handleBoardKeepLocal = useCallback(async () => {
-    const remoteDoc = activeBoardConflict?.document;
-    if (remoteDoc) {
-      setBoardLastSeenVersion(remoteDoc.version);
-      await idbPutBoardSyncMeta({ version: remoteDoc.version });
-    }
-    setInitialBoardConflict(null);
-    dismissBoardConflict();
-    scheduleBoardPush();
-  }, [
-    activeBoardConflict,
-    dismissBoardConflict,
-    scheduleBoardPush,
-    setBoardLastSeenVersion,
-  ]);
 
   /* Image upload helper: uploads when authenticated, falls back to inline
      base64 (today's behaviour) when logged out. */
@@ -4259,13 +4181,6 @@ export default function Board() {
 
   return (
     <div className="boardShell">
-      {activeBoardConflict && (
-        <SyncConflictBanner
-          updatedAt={activeBoardConflict.document?.updated_at}
-          onReload={handleBoardReloadFromServer}
-          onKeepLocal={handleBoardKeepLocal}
-        />
-      )}
       <div className="boardLayout">
        <div className="boardToolbarCluster">
         <aside className="boardToolbar" aria-label="Board tools">

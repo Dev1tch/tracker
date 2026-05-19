@@ -4,36 +4,29 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient, AUTH_CHANGE_EVENT } from '@/lib/api';
 
 /**
- * Drive single-blob LWW sync for a feature whose authoritative state lives in
- * a parent component (notes tree, board state). The hook is intentionally
- * unopinionated about *what* the snapshot is — the parent passes `serialize`,
- * `applyRemote`, and an `api` adapter exposing `getDocument()` /
- * `updateDocument({snapshot, baseVersion})`.
+ * Timestamp-based LWW sync for a single-blob document (notes tree / board
+ * state). No conflict UI: whichever side has the newer `updated_at` wins.
+ * Offline use is not supported — failed requests are logged and the next
+ * successful round-trip resolves divergence automatically.
  *
- * Lifecycle:
- *   1. Hook mounts. Parent calls `markHydrated()` after restoring from IDB.
- *   2. Hook fetches the server doc. If `serverVersion > lastSeenVersion` (or
- *      we have no lastSeenVersion yet and the server isn't empty) → expose
- *      `conflict` so the parent can render a banner. If the server is at the
- *      same version, treat it as "synced" and no UI fires.
- *   3. Parent calls `schedulePush()` whenever its state changes. The hook
- *      debounces and PUTs with `base_version=lastSeenVersion`.
- *   4. On 409 (parent's version is stale) → expose `conflict`, do NOT
- *      overwrite parent state until they choose.
+ * The hook fetches once on mount and exposes the server doc back to the
+ * parent, which compares timestamps and adopts-or-pushes. After that, every
+ * call to `schedulePush()` debounces a PUT.
  *
  * @param {{
- *   api: { getDocument(): Promise<any>, updateDocument(opts:{snapshot:any, baseVersion:number}): Promise<any> },
+ *   api: {
+ *     getDocument(): Promise<{ updated_at: string, [k: string]: any }>,
+ *     updateDocument(opts: { snapshot: any }): Promise<{ updated_at: string, [k: string]: any }>,
+ *   },
  *   debounceMs?: number,
  *   featureKey: string,
  * }} opts
  */
 export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
-  const [conflict, setConflict] = useState(null); // { document, reason } | null
+  const [initialServerDoc, setInitialServerDoc] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncing, setSyncing] = useState(false);
-  const [initialServerDoc, setInitialServerDoc] = useState(null);
 
-  const lastSeenVersionRef = useRef(0);
   const hydratedRef = useRef(false);
   const initialFetchDoneRef = useRef(false);
   const pendingTimerRef = useRef(null);
@@ -47,80 +40,57 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
     hydratedRef.current = true;
   }, []);
 
-  const setLastSeenVersion = useCallback((version) => {
-    lastSeenVersionRef.current = Number.isFinite(version) ? version : 0;
+  const setSnapshot = useCallback((snapshot) => {
+    latestSnapshotRef.current = snapshot;
   }, []);
 
-  const dismissConflict = useCallback(() => {
-    setConflict(null);
-  }, []);
-
-  const acceptRemote = useCallback(() => {
-    const doc = conflict?.document;
-    setConflict(null);
-    return doc;
-  }, [conflict]);
-
-  /** Fire one PUT. Caller is responsible for debouncing. */
   const flush = useCallback(async () => {
-    if (!hydratedRef.current) return;
-    if (!isAuthenticated()) return;
-    if (!latestSnapshotRef.current) return;
+    if (!hydratedRef.current) return null;
+    if (!isAuthenticated()) return null;
+    if (!latestSnapshotRef.current) return null;
 
     if (inFlightRef.current) {
       queuedAfterFlightRef.current = true;
-      return;
+      return null;
     }
     inFlightRef.current = true;
     setSyncing(true);
 
     const snapshot = latestSnapshotRef.current;
-    const base = lastSeenVersionRef.current;
-
     try {
-      const doc = await api.updateDocument({
-        snapshot,
-        baseVersion: base,
-      });
-      lastSeenVersionRef.current = doc.version;
+      const doc = await api.updateDocument({ snapshot });
       setLastSyncedAt(Date.now());
+      return doc;
     } catch (err) {
-      if (err?.name === 'NotesConflictError' || err?.name === 'BoardConflictError') {
-        setConflict({ document: err.document, reason: 'remote-newer' });
-      } else if (err?.status === 401) {
-        // Token expired — api client clears the token; parent will unmount.
+      if (err?.status === 401) {
+        /* Token expired — api client clears the token; parent unmounts. */
       } else {
         console.warn(`[${featureKey}] sync push failed`, err);
       }
+      return null;
     } finally {
       inFlightRef.current = false;
       setSyncing(false);
-      if (queuedAfterFlightRef.current && !conflict) {
+      if (queuedAfterFlightRef.current) {
         queuedAfterFlightRef.current = false;
-        // Re-debounce so caller's latest state has a chance to settle.
         schedulePush();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, conflict, featureKey, isAuthenticated]);
+  }, [api, featureKey, isAuthenticated]);
 
   const schedulePush = useCallback(() => {
     if (!hydratedRef.current) return;
     if (!isAuthenticated()) return;
-    if (conflict) return; // Don't push until the user resolves the conflict.
 
     if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
     pendingTimerRef.current = setTimeout(() => {
       pendingTimerRef.current = null;
       flush();
     }, debounceMs);
-  }, [conflict, debounceMs, flush, isAuthenticated]);
+  }, [debounceMs, flush, isAuthenticated]);
 
-  const setSnapshot = useCallback((snapshot) => {
-    latestSnapshotRef.current = snapshot;
-  }, []);
-
-  /** Initial GET on mount once authenticated. */
+  /* Initial fetch on mount (and on re-auth). */
   useEffect(() => {
     let cancelled = false;
     async function run() {
@@ -132,9 +102,6 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
         initialFetchDoneRef.current = true;
         setInitialServerDoc(doc);
         setLastSyncedAt(Date.now());
-        /* lastSeenVersion will be set by the parent via setLastSeenVersion
-           once it decides whether to adopt the remote doc, keep local, or
-           merge — this hook deliberately does NOT mutate parent state. */
       } catch (err) {
         if (err?.status !== 401) {
           console.warn(`[${featureKey}] sync initial fetch failed`, err);
@@ -143,7 +110,6 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
     }
     run();
     function handleAuthChange() {
-      // On login, retry the initial fetch.
       if (!initialFetchDoneRef.current) run();
     }
     if (typeof window !== 'undefined') {
@@ -157,13 +123,12 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
     };
   }, [api, featureKey, isAuthenticated]);
 
-  /* Flush any debounced write on unmount. */
+  /* Flush any pending debounced write on unmount. */
   useEffect(() => {
     return () => {
       if (pendingTimerRef.current) {
         clearTimeout(pendingTimerRef.current);
         pendingTimerRef.current = null;
-        // Fire-and-forget; component is leaving the tree.
         flush().catch(() => {});
       }
     };
@@ -172,16 +137,12 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
 
   return {
     initialServerDoc,
-    conflict,
     syncing,
     lastSyncedAt,
     markHydrated,
-    setLastSeenVersion,
     setSnapshot,
     schedulePush,
     flushNow: flush,
-    dismissConflict,
-    acceptRemote,
     isAuthenticated,
   };
 }

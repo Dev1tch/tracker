@@ -9,37 +9,16 @@ import { apiClient } from './client.js';
  * @property {string} updated_at
  */
 
-export class NotesConflictError extends Error {
-  constructor(document) {
-    super('Notes document version is out of date.');
-    this.name = 'NotesConflictError';
-    this.document = document;
-  }
-}
-
 export class NotesApi {
   async getDocument() {
     const data = await apiClient.get('/notes/');
     return normalizeDocument(data);
   }
 
-  /**
-   * Persist the tree if the server's version matches base_version.
-   * Throws NotesConflictError (with the server's current document) on 409.
-   */
-  async updateDocument({ tree, baseVersion }) {
-    try {
-      const data = await apiClient.put('/notes/', {
-        tree,
-        base_version: baseVersion,
-      });
-      return normalizeDocument(data);
-    } catch (err) {
-      if (err?.status === 409 && err?.data?.document) {
-        throw new NotesConflictError(normalizeDocument(err.data.document));
-      }
-      throw err;
-    }
+  /** Unconditionally overwrite the user's notes document. */
+  async updateDocument({ tree }) {
+    const data = await apiClient.put('/notes/', { tree });
+    return normalizeDocument(data);
   }
 }
 

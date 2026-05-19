@@ -102,7 +102,6 @@ import ColorPicker from '@/components/ui/ColorPicker';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { notesApi, mediaApi } from '@/lib/api';
 import { useDocumentSync } from '@/lib/sync/useDocumentSync';
-import SyncConflictBanner from '@/lib/sync/SyncConflictBanner';
 import './Notes.css';
 
 const STORAGE_KEY = 'notes.filesystem';
@@ -1788,13 +1787,14 @@ export default function Notes() {
   const notesSyncApi = useMemo(
     () => ({
       getDocument: () => notesApi.getDocument(),
-      updateDocument: async ({ snapshot, baseVersion }) => {
-        const doc = await notesApi.updateDocument({
-          tree: snapshot,
-          baseVersion,
+      updateDocument: async ({ snapshot }) => {
+        const doc = await notesApi.updateDocument({ tree: snapshot });
+        /* Mirror server's updated_at into IDB so a reload's reconcile
+           compares against the same baseline, and clear the dirty flag. */
+        await idbPutNotesSyncMeta({
+          serverUpdatedAt: doc.updated_at,
+          dirty: false,
         });
-        /* Persist the new server version so a reload uses the right base. */
-        await idbPutNotesSyncMeta({ version: doc.version });
         return doc;
       },
     }),
@@ -1803,15 +1803,9 @@ export default function Notes() {
 
   const {
     initialServerDoc,
-    conflict,
-    syncing,
-    lastSyncedAt,
     markHydrated,
-    setLastSeenVersion,
     setSnapshot,
     schedulePush,
-    acceptRemote,
-    dismissConflict,
     isAuthenticated,
   } = useDocumentSync({
     api: notesSyncApi,
@@ -1825,10 +1819,7 @@ export default function Notes() {
     let cancelled = false;
     (async () => {
       try {
-        const [stored, meta] = await Promise.all([
-          idbGetNotesTree(),
-          idbGetNotesSyncMeta(),
-        ]);
+        const stored = await idbGetNotesTree();
         if (cancelled) return;
         if (stored) {
           const hydrated = normalizeTree(stored);
@@ -1844,9 +1835,6 @@ export default function Notes() {
             await idbPutNotesTree(seed).catch(() => {});
           }
         }
-        if (meta && Number.isFinite(meta.version)) {
-          setLastSeenVersion(meta.version);
-        }
       } catch (err) {
         console.warn('Notes: IndexedDB hydration failed, using localStorage fallback', err);
       } finally {
@@ -1859,14 +1847,13 @@ export default function Notes() {
     return () => {
       cancelled = true;
     };
-  }, [markHydrated, setLastSeenVersion]);
+  }, [markHydrated]);
 
-  /* When the initial server doc arrives, decide what to do:
-     - first ever sync (no local meta): adopt the remote doc (or push local
-       if remote is empty and local has content)
-     - server has same version as we last saw: nothing to do
-     - server has a newer version: surface as conflict via the hook
-   */
+  /* When the initial server doc arrives, reconcile by timestamp. There is
+     no user-facing conflict UI: whichever side has the newer state wins.
+     The `dirty` flag in IDB meta covers the case where the user edited
+     locally but the PUT hadn't completed before reload — we push those
+     edits up regardless of server timestamp. */
   const initialReconciledRef = useRef(false);
   useEffect(() => {
     if (!notesHydratedRef.current) return;
@@ -1876,76 +1863,69 @@ export default function Notes() {
 
     (async () => {
       const meta = await idbGetNotesSyncMeta();
-      const lastSeen = meta && Number.isFinite(meta.version) ? meta.version : null;
-      const remoteVersion = initialServerDoc.version;
+      const localDirty = Boolean(meta?.dirty);
+      const localServerUpdatedAt = meta?.serverUpdatedAt || null;
+      const remoteUpdatedAt = initialServerDoc.updated_at || null;
       const remoteTree = Array.isArray(initialServerDoc.tree)
         ? initialServerDoc.tree
         : [];
-      const remoteIsEmpty = remoteTree.length === 0;
-      const localIsEmpty = latestTreeRef.current.length === 0
-        || (latestTreeRef.current.length === 1
-            && latestTreeRef.current[0]?.id === 'notes-welcome-folder');
 
-      if (lastSeen === null) {
-        if (remoteIsEmpty && !localIsEmpty) {
-          /* First sync, server has nothing — push our local seed up. */
-          setLastSeenVersion(remoteVersion);
-          await idbPutNotesSyncMeta({ version: remoteVersion });
-          setSnapshot(latestTreeRef.current);
-          schedulePush();
-        } else {
-          /* Adopt remote silently — this is the user's first time on this
-             device but they already had data on another device. */
-          const hydrated = normalizeTree(remoteTree);
-          setTree(hydrated);
-          setSelectedId(findFirstFile(hydrated)?.id || null);
-          setOpenFolders(collectOpenFolders(hydrated));
-          setLastSeenVersion(remoteVersion);
-          await idbPutNotesTree(hydrated).catch(() => {});
-          await idbPutNotesSyncMeta({ version: remoteVersion });
-        }
-      } else if (remoteVersion > lastSeen) {
-        /* The conflict banner will pick this up via the sync hook on next
-           push — but we want to show it *now* even before the user edits.
-           Surface it by simulating a conflict from the initial fetch. */
-        // The hook already exposes `initialServerDoc`; we wrap that as a
-        // pending conflict for the banner below.
+      const remoteIsNewer =
+        !localServerUpdatedAt ||
+        (remoteUpdatedAt && remoteUpdatedAt > localServerUpdatedAt);
+
+      if (localDirty) {
+        /* Unsynced local edits trump server. Push them up. */
+        setSnapshot(latestTreeRef.current);
+        schedulePush();
+      } else if (remoteIsNewer) {
+        /* Server has fresher data — adopt silently. */
+        const hydrated = normalizeTree(remoteTree);
+        setTree(hydrated);
+        setSelectedId((current) => {
+          if (current && findNode(hydrated, current)) return current;
+          return findFirstFile(hydrated)?.id || null;
+        });
+        setOpenFolders(collectOpenFolders(hydrated));
+        await idbPutNotesTree(hydrated).catch(() => {});
+        await idbPutNotesSyncMeta({
+          serverUpdatedAt: remoteUpdatedAt,
+          dirty: false,
+        });
       } else {
-        setLastSeenVersion(remoteVersion);
+        /* Local matches server (no pending edits). Just record the baseline
+           so future reconciles compare correctly. */
+        await idbPutNotesSyncMeta({
+          serverUpdatedAt: remoteUpdatedAt,
+          dirty: false,
+        });
       }
     })();
-  }, [initialServerDoc, schedulePush, setLastSeenVersion, setSnapshot]);
+  }, [initialServerDoc, schedulePush, setSnapshot]);
 
-  /* "Server is newer on first load" derivation. We compute it from
-     initialServerDoc + local meta; the sync hook's `conflict` covers the
-     during-edit case (409 on PUT). */
-  const [initialConflict, setInitialConflict] = useState(null);
-  useEffect(() => {
-    if (!initialServerDoc) return;
-    (async () => {
-      const meta = await idbGetNotesSyncMeta();
-      const lastSeen = meta && Number.isFinite(meta.version) ? meta.version : null;
-      if (lastSeen !== null && initialServerDoc.version > lastSeen) {
-        setInitialConflict({ document: initialServerDoc, reason: 'initial-remote-newer' });
-      }
-    })();
-  }, [initialServerDoc]);
-
-  const activeConflict = conflict || initialConflict;
-
-  /* Persist tree changes to IDB and (if authenticated) schedule a push. */
+  /* Persist tree changes to IDB and (if authenticated) schedule a push.
+     Mark the local document dirty so a reload before the PUT lands knows
+     to push the unsynced edits up rather than adopt server. */
   useEffect(() => {
     if (!notesHydratedRef.current) return;
+    if (!initialReconciledRef.current) return; /* Don't mark dirty mid-reconcile. */
     if (notesPersistTimerRef.current) {
       clearTimeout(notesPersistTimerRef.current);
     }
     const snapshot = tree;
     setSnapshot(snapshot);
-    notesPersistTimerRef.current = setTimeout(() => {
+    notesPersistTimerRef.current = setTimeout(async () => {
       notesPersistTimerRef.current = null;
-      idbPutNotesTree(snapshot).catch((err) => {
+      try {
+        await idbPutNotesTree(snapshot);
+        const meta = await idbGetNotesSyncMeta();
+        await idbPutNotesSyncMeta({
+          serverUpdatedAt: meta?.serverUpdatedAt || null,
+          dirty: true,
+        });
+      } catch (err) {
         console.warn('Notes: failed to persist tree to IndexedDB', err);
-      });
+      }
     }, NOTES_PERSIST_DEBOUNCE_MS);
     schedulePush();
     return () => {
@@ -1955,42 +1935,6 @@ export default function Notes() {
       }
     };
   }, [tree, schedulePush, setSnapshot]);
-
-  const handleReloadFromServer = useCallback(async () => {
-    const remoteDoc = activeConflict?.document;
-    if (!remoteDoc) {
-      dismissConflict();
-      setInitialConflict(null);
-      return;
-    }
-    const remoteTree = Array.isArray(remoteDoc.tree) ? remoteDoc.tree : [];
-    const hydrated = normalizeTree(remoteTree);
-    setTree(hydrated);
-    setSelectedId((current) => {
-      if (current && findNode(hydrated, current)) return current;
-      return findFirstFile(hydrated)?.id || null;
-    });
-    setOpenFolders(collectOpenFolders(hydrated));
-    setLastSeenVersion(remoteDoc.version);
-    await idbPutNotesTree(hydrated).catch(() => {});
-    await idbPutNotesSyncMeta({ version: remoteDoc.version });
-    setInitialConflict(null);
-    dismissConflict();
-    acceptRemote();
-  }, [activeConflict, acceptRemote, dismissConflict, setLastSeenVersion]);
-
-  const handleKeepLocal = useCallback(async () => {
-    const remoteDoc = activeConflict?.document;
-    if (remoteDoc) {
-      /* Adopt the server's version as our base so the next push overwrites
-         the remote with our local copy. */
-      setLastSeenVersion(remoteDoc.version);
-      await idbPutNotesSyncMeta({ version: remoteDoc.version });
-    }
-    setInitialConflict(null);
-    dismissConflict();
-    schedulePush();
-  }, [activeConflict, dismissConflict, schedulePush, setLastSeenVersion]);
 
   /* Image upload handler passed to RichTextEditor; only active when the user
      is authenticated. When logged out, falls back to browser default (inline
@@ -2133,13 +2077,6 @@ export default function Notes() {
 
   return (
     <section className="notesShell" aria-label="Notes">
-      {activeConflict && (
-        <SyncConflictBanner
-          updatedAt={activeConflict.document?.updated_at}
-          onReload={handleReloadFromServer}
-          onKeepLocal={handleKeepLocal}
-        />
-      )}
       <aside className="notesSidebar">
         <div className="notesSidebarHead">
           <div className="notesCounters" aria-label="Filesystem totals">
