@@ -635,12 +635,86 @@
   box-shadow: 0 0 0 1px var(--surface-40), 0 0 0 4px rgba(255, 255, 255, 0.06);
 }
 
-.boardNode.arrowTarget {
+.boardNode.arrowTarget,
+.boardFrame.arrowTarget {
   cursor: crosshair;
 }
 
 .boardNode.arrowTarget:hover {
   box-shadow: 0 0 0 1px var(--text-primary), 0 0 14px var(--glow-color);
+}
+
+/* ---------- Anchor handles ----------
+   Sit fully outside the node so that boxes with overflow:hidden (image, link)
+   don't clip them. */
+.boardAnchorHandles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: visible;
+}
+
+.boardAnchorHandle {
+  --anchor-scale: 1;
+  --anchor-offset: 8px;
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 1.5px solid var(--bg-color);
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  box-shadow: 0 0 0 1px var(--surface-30);
+}
+
+.boardNode:hover .boardAnchorHandle,
+.boardFrame:hover .boardAnchorHandle,
+.boardAnchorHandle.active {
+  opacity: 1;
+}
+
+.boardAnchorHandle:hover,
+.boardAnchorHandle.active {
+  background: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--text-primary), 0 0 10px var(--glow-color);
+}
+
+.boardAnchorHandle-top {
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, calc(-100% - var(--anchor-offset))) scale(var(--anchor-scale));
+}
+
+.boardAnchorHandle-right {
+  left: 100%;
+  top: 50%;
+  transform: translate(var(--anchor-offset), -50%) scale(var(--anchor-scale));
+}
+
+.boardAnchorHandle-bottom {
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, var(--anchor-offset)) scale(var(--anchor-scale));
+}
+
+.boardAnchorHandle-left {
+  left: 0;
+  top: 50%;
+  transform: translate(calc(-100% - var(--anchor-offset)), -50%) scale(var(--anchor-scale));
+}
+
+/* Anchor dots sit just outside the node — let image/link wrappers expose
+   them while the arrow tool is active. (Their content can't overflow:
+   img uses object-fit:fill, link preview uses flex with internal padding.) */
+.boardImageNode.arrowTarget,
+.boardLinkNode.arrowTarget {
+  overflow: visible;
 }
 
 /* ---------- Text node ---------- */

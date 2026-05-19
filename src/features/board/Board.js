@@ -591,6 +591,40 @@ function applyFontSizeToEditingText(size) {
    node (node.fontFamily) and applied as an inline style to the whole text,
    so we no longer need a per-selection execCommand path. */
 
+/* ---------- Anchor handles ----------
+   Four small dots on the edges of any connectable item. Visible when the
+   user is in arrow tool and hovers the item (CSS-driven) or when the item
+   is the active arrow source. Clicking a dot starts/completes the arrow on
+   that specific side; clicking the item body keeps the existing auto-pick
+   behaviour. */
+const ANCHOR_SIDES = ['top', 'right', 'bottom', 'left'];
+
+function AnchorHandles({ active, activeSide, zoom = 1, onPickSide }) {
+  if (!active) return null;
+  const scale = 1 / Math.max(zoom, 0.0001);
+  return (
+    <div className="boardAnchorHandles" aria-hidden={!onPickSide}>
+      {ANCHOR_SIDES.map((side) => (
+        <button
+          key={side}
+          type="button"
+          className={`boardAnchorHandle boardAnchorHandle-${side} ${activeSide === side ? 'active' : ''}`}
+          style={{ '--anchor-scale': scale }}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPickSide?.(side);
+          }}
+          aria-label={`Connect from ${side}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 /* ---------- Text node ---------- */
 function TextNode({
   node,
@@ -598,6 +632,10 @@ function TextNode({
   selected,
   connected,
   tool,
+  zoom,
+  arrowActive,
+  arrowActiveSide,
+  onPickAnchor,
   registerRef,
   onDoubleClick,
   onMouseDown,
@@ -688,6 +726,14 @@ function TextNode({
           onMouseDown={editing ? (e) => e.stopPropagation() : undefined}
         />
       )}
+      {tool === 'arrow' && !editing ? (
+        <AnchorHandles
+          active
+          activeSide={arrowActive ? arrowActiveSide : null}
+          zoom={zoom}
+          onPickSide={onPickAnchor}
+        />
+      ) : null}
     </div>
   );
 }
@@ -814,6 +860,10 @@ function DrawingNode({
   node,
   selected,
   tool,
+  zoom,
+  arrowActive,
+  arrowActiveSide,
+  onPickAnchor,
   registerRef,
   onMouseDown,
   onClick,
@@ -906,6 +956,14 @@ function DrawingNode({
         ) : null}
         <g style={{ pointerEvents: 'visiblePainted' }}>{pathContent}</g>
       </svg>
+      {tool === 'arrow' ? (
+        <AnchorHandles
+          active
+          activeSide={arrowActive ? arrowActiveSide : null}
+          zoom={zoom}
+          onPickSide={onPickAnchor}
+        />
+      ) : null}
     </div>
   );
 }
@@ -914,6 +972,10 @@ function ImageNode({
   node,
   selected,
   tool,
+  zoom,
+  arrowActive,
+  arrowActiveSide,
+  onPickAnchor,
   registerRef,
   onMouseDown,
   onClick,
@@ -934,6 +996,14 @@ function ImageNode({
       onClick={onClick}
     >
       <img src={node.src} alt="" draggable={false} />
+      {tool === 'arrow' ? (
+        <AnchorHandles
+          active
+          activeSide={arrowActive ? arrowActiveSide : null}
+          zoom={zoom}
+          onPickSide={onPickAnchor}
+        />
+      ) : null}
     </div>
   );
 }
@@ -942,6 +1012,10 @@ function LinkNode({
   node,
   selected,
   tool,
+  zoom,
+  arrowActive,
+  arrowActiveSide,
+  onPickAnchor,
   registerRef,
   onMouseDown,
   onClick,
@@ -999,6 +1073,14 @@ function LinkNode({
         <div className="boardLinkPreviewSubtitle">{preview.subtitle}</div>
       </div>
       <div className="boardLinkPreviewUrl">{node.href}</div>
+      {tool === 'arrow' ? (
+        <AnchorHandles
+          active
+          activeSide={arrowActive ? arrowActiveSide : null}
+          zoom={zoom}
+          onPickSide={onPickAnchor}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1081,6 +1163,10 @@ function TaskNode({
   statusColors,
   isSaving,
   tool,
+  zoom,
+  arrowActive,
+  arrowActiveSide,
+  onPickAnchor,
   registerRef,
   onMouseDown,
   onClick,
@@ -1165,6 +1251,14 @@ function TaskNode({
       ) : (
         <BoardTaskCard task={task} taskTypeById={taskTypeById} selected={selected} />
       )}
+      {tool === 'arrow' && !expanded ? (
+        <AnchorHandles
+          active
+          activeSide={arrowActive ? arrowActiveSide : null}
+          zoom={zoom}
+          onPickSide={onPickAnchor}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1679,7 +1773,28 @@ function getResizeAlignment(node, next, handleId, nodes, bounds, tolerance, minS
   };
 }
 
-function getAnchor(node, bounds, side, offset) {
+const SIDE_VECTOR = {
+  right:  { x:  1, y:  0 },
+  left:   { x: -1, y:  0 },
+  bottom: { x:  0, y:  1 },
+  top:    { x:  0, y: -1 },
+};
+
+function isHorizontalSide(side) {
+  return side === 'left' || side === 'right';
+}
+
+function oppositeSide(side) {
+  switch (side) {
+    case 'right':  return 'left';
+    case 'left':   return 'right';
+    case 'bottom': return 'top';
+    case 'top':    return 'bottom';
+    default:       return 'right';
+  }
+}
+
+function getAnchor(node, bounds, side, offset = 0) {
   const { w, h } = nodeSize(node, bounds);
   const cx = node.x + w / 2;
   const cy = node.y + h / 2;
@@ -1700,113 +1815,338 @@ function getAnchor(node, bounds, side, offset) {
   };
 }
 
-function pickSides(source, target, bounds) {
-  const sc = nodeCenterOf(source, bounds);
-  const tc = nodeCenterOf(target, bounds);
-  const dx = tc.x - sc.x;
-  const dy = tc.y - sc.y;
+function pickAutoSide(item, target, bounds) {
+  const sc = nodeCenterOf(item, bounds);
+  const dx = target.x - sc.x;
+  const dy = target.y - sc.y;
   if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? ['right', 'left'] : ['left', 'right'];
+    return dx >= 0 ? 'right' : 'left';
   }
-  return dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom'];
+  return dy >= 0 ? 'bottom' : 'top';
 }
 
-function orthogonalPath(s, t, axis, r = 14) {
-  const dx = t.x - s.x;
-  const dy = t.y - s.y;
-  if (axis === 'horizontal') {
-    if (Math.abs(dy) < 2 || Math.abs(dx) < 2) {
-      return `M ${s.x},${s.y} L ${t.x},${t.y}`;
+function isExplicitSide(side) {
+  return side === 'top' || side === 'right' || side === 'bottom' || side === 'left';
+}
+
+/* Axis-aligned segment vs rect overlap test. A segment lying exactly on an
+   edge of the rect does not count as a hit (so a route grazing the outside of
+   an avoid-rect is acceptable). */
+function segmentHitsRect(p1, p2, r) {
+  const EPS = 0.01;
+  if (Math.abs(p1.x - p2.x) < EPS) {
+    const x = p1.x;
+    if (x <= r.left + EPS || x >= r.right - EPS) return false;
+    const minY = Math.min(p1.y, p2.y);
+    const maxY = Math.max(p1.y, p2.y);
+    return maxY > r.top + EPS && minY < r.bottom - EPS;
+  }
+  if (Math.abs(p1.y - p2.y) < EPS) {
+    const y = p1.y;
+    if (y <= r.top + EPS || y >= r.bottom - EPS) return false;
+    const minX = Math.min(p1.x, p2.x);
+    const maxX = Math.max(p1.x, p2.x);
+    return maxX > r.left + EPS && minX < r.right - EPS;
+  }
+  return false;
+}
+
+function pathClearOfRects(points, avoidRects) {
+  for (let i = 0; i < points.length - 1; i += 1) {
+    for (const r of avoidRects) {
+      if (segmentHitsRect(points[i], points[i + 1], r)) return false;
     }
-    const midX = (s.x + t.x) / 2;
-    const sx = Math.sign(midX - s.x) || 1;
-    const sy = Math.sign(dy) || 1;
-    const cR = Math.min(r, Math.abs(dx) / 2, Math.abs(dy) / 2);
-    return [
-      `M ${s.x},${s.y}`,
-      `L ${midX - sx * cR},${s.y}`,
-      `Q ${midX},${s.y} ${midX},${s.y + sy * cR}`,
-      `L ${midX},${t.y - sy * cR}`,
-      `Q ${midX},${t.y} ${midX + sx * cR},${t.y}`,
-      `L ${t.x},${t.y}`,
-    ].join(' ');
   }
-  // vertical
-  if (Math.abs(dx) < 2 || Math.abs(dy) < 2) {
-    return `M ${s.x},${s.y} L ${t.x},${t.y}`;
-  }
-  const midY = (s.y + t.y) / 2;
-  const sy = Math.sign(midY - s.y) || 1;
-  const sx = Math.sign(dx) || 1;
-  const cR = Math.min(r, Math.abs(dy) / 2, Math.abs(dx) / 2);
-  return [
-    `M ${s.x},${s.y}`,
-    `L ${s.x},${midY - sy * cR}`,
-    `Q ${s.x},${midY} ${s.x + sx * cR},${midY}`,
-    `L ${t.x - sx * cR},${midY}`,
-    `Q ${t.x},${midY} ${t.x},${midY + sy * cR}`,
-    `L ${t.x},${t.y}`,
-  ].join(' ');
+  return true;
 }
 
-function edgeMidpoint(s, t, axis) {
-  // The "elbow" of the Z route — clicking here opens the delete affordance.
-  if (axis === 'horizontal') {
-    const midX = (s.x + t.x) / 2;
-    return { x: midX, y: (s.y + t.y) / 2 };
+function dropZeroLengthSegments(points) {
+  const out = [points[0]];
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = out[out.length - 1];
+    if (Math.abs(points[i].x - prev.x) > 0.5 || Math.abs(points[i].y - prev.y) > 0.5) {
+      out.push(points[i]);
+    }
   }
-  const midY = (s.y + t.y) / 2;
-  return { x: (s.x + t.x) / 2, y: midY };
+  return out;
 }
 
-function resolveEdgePoints(edge, nodeById, bounds) {
-  const source = edge.from ? nodeById.get(edge.from) : null;
-  const target = edge.to ? nodeById.get(edge.to) : null;
-  let s;
-  let t;
-  let axis;
+/* Insert intermediate orthogonal points so that consecutive points always
+   share x or y. Used when a candidate "L" route would otherwise have an L
+   bend implicit between two corners. */
+function ensureOrthogonal(points) {
+  const out = [points[0]];
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = out[out.length - 1];
+    const next = points[i];
+    if (Math.abs(prev.x - next.x) > 0.5 && Math.abs(prev.y - next.y) > 0.5) {
+      out.push({ x: next.x, y: prev.y });
+    }
+    out.push(next);
+  }
+  return out;
+}
+
+/* Generate a set of canonical orthogonal candidate routes, drop the ones that
+   cut through either rectangle, then return the shortest survivor. Picking by
+   length means we choose the most direct route automatically — no hand-tuned
+   ordering needed per side combination. */
+function routeBetweenRects(sRect, tRect, sp, tp, sSide, tSide, pad) {
+  const sv = SIDE_VECTOR[sSide];
+  const s1 = { x: sp.x + sv.x * pad, y: sp.y + sv.y * pad };
+  const sHoriz = isHorizontalSide(sSide);
+  const tHoriz = isHorizontalSide(tSide);
+
+  const unionTop    = Math.min(sRect.top,    tRect.top)    - pad;
+  const unionBottom = Math.max(sRect.bottom, tRect.bottom) + pad;
+  const unionLeft   = Math.min(sRect.left,   tRect.left)   - pad;
+  const unionRight  = Math.max(sRect.right,  tRect.right)  + pad;
+
+  const candidates = [];
+  const push = (pts) => candidates.push(dropZeroLengthSegments(pts));
+
+  // Each candidate's final segment goes straight from the last corner to tp,
+  // approaching the target perpendicular to its side — the rounded-corner
+  // generator then gives the elbow before that segment the same treatment
+  // as every other bend in the path.
+  if (sHoriz && tHoriz) {
+    const midX = (s1.x + tp.x) / 2;
+    push([sp, s1, { x: midX, y: s1.y }, { x: midX, y: tp.y }, tp]);
+    push([sp, s1, { x: s1.x, y: unionTop },    { x: tp.x, y: unionTop },    tp]);
+    push([sp, s1, { x: s1.x, y: unionBottom }, { x: tp.x, y: unionBottom }, tp]);
+    push([sp, s1, { x: unionLeft,  y: s1.y }, { x: unionLeft,  y: tp.y }, tp]);
+    push([sp, s1, { x: unionRight, y: s1.y }, { x: unionRight, y: tp.y }, tp]);
+  } else if (!sHoriz && !tHoriz) {
+    const midY = (s1.y + tp.y) / 2;
+    push([sp, s1, { x: s1.x, y: midY }, { x: tp.x, y: midY }, tp]);
+    push([sp, s1, { x: s1.x, y: unionBottom }, { x: tp.x, y: unionBottom }, tp]);
+    push([sp, s1, { x: s1.x, y: unionTop },    { x: tp.x, y: unionTop },    tp]);
+    push([sp, s1, { x: unionLeft,  y: s1.y }, { x: unionLeft,  y: tp.y }, tp]);
+    push([sp, s1, { x: unionRight, y: s1.y }, { x: unionRight, y: tp.y }, tp]);
+  } else if (sHoriz && !tHoriz) {
+    push([sp, s1, { x: tp.x, y: s1.y }, tp]);
+    push([sp, s1, { x: s1.x, y: unionTop },    { x: tp.x, y: unionTop },    tp]);
+    push([sp, s1, { x: s1.x, y: unionBottom }, { x: tp.x, y: unionBottom }, tp]);
+    push([sp, s1, { x: unionLeft,  y: s1.y }, { x: unionLeft,  y: tp.y }, tp]);
+    push([sp, s1, { x: unionRight, y: s1.y }, { x: unionRight, y: tp.y }, tp]);
+  } else {
+    push([sp, s1, { x: s1.x, y: tp.y }, tp]);
+    push([sp, s1, { x: s1.x, y: unionTop },    { x: tp.x, y: unionTop },    tp]);
+    push([sp, s1, { x: s1.x, y: unionBottom }, { x: tp.x, y: unionBottom }, tp]);
+    push([sp, s1, { x: unionLeft,  y: s1.y }, { x: unionLeft,  y: tp.y }, tp]);
+    push([sp, s1, { x: unionRight, y: s1.y }, { x: unionRight, y: tp.y }, tp]);
+  }
+
+  // Avoid the rectangles themselves — segmentHitsRect's EPS lets the first
+  // and last segments touch the source/target edges without counting as hits.
+  const avoid = [sRect, tRect];
+  const valid = candidates.filter((c) => pathClearOfRects(c, avoid));
+  if (valid.length === 0) return candidates[0];
+
+  // Among clear candidates, pick the shortest. Add a small bend penalty so a
+  // slightly longer route with fewer corners beats a barely-shorter zig-zag.
+  const BEND_PENALTY = 12;
+  let best = valid[0];
+  let bestCost = pathLength(best) + (best.length - 2) * BEND_PENALTY;
+  for (let i = 1; i < valid.length; i += 1) {
+    const c = valid[i];
+    const cost = pathLength(c) + (c.length - 2) * BEND_PENALTY;
+    if (cost < bestCost) {
+      best = c;
+      bestCost = cost;
+    }
+  }
+  return best;
+}
+
+/* Route between an anchored side of a rect and a free point (or vice versa).
+   Avoids only the rect's interior. */
+function routeRectToPoint(rect, sp, sSide, tp, pad) {
+  const sv = SIDE_VECTOR[sSide];
+  const s1 = { x: sp.x + sv.x * pad, y: sp.y + sv.y * pad };
+  const sHoriz = isHorizontalSide(sSide);
+  const candidates = [];
+  const push = (pts) => candidates.push(dropZeroLengthSegments(ensureOrthogonal(pts)));
+
+  if (sHoriz) {
+    // First segment is horizontal. From s1 go to tp via an L.
+    push([sp, s1, { x: tp.x, y: s1.y }, tp]);
+    push([sp, s1, { x: s1.x, y: tp.y }, tp]);
+    // Detour over the rect
+    push([sp, s1, { x: s1.x, y: rect.top - pad },    { x: tp.x, y: rect.top - pad },    tp]);
+    push([sp, s1, { x: s1.x, y: rect.bottom + pad }, { x: tp.x, y: rect.bottom + pad }, tp]);
+  } else {
+    push([sp, s1, { x: s1.x, y: tp.y }, tp]);
+    push([sp, s1, { x: tp.x, y: s1.y }, tp]);
+    push([sp, s1, { x: rect.left - pad,  y: s1.y }, { x: rect.left - pad,  y: tp.y }, tp]);
+    push([sp, s1, { x: rect.right + pad, y: s1.y }, { x: rect.right + pad, y: tp.y }, tp]);
+  }
+
+  const avoid = [rect];
+  const valid = candidates.filter((c) => pathClearOfRects(c, avoid));
+  if (valid.length === 0) return candidates[0];
+  const BEND_PENALTY = 12;
+  let best = valid[0];
+  let bestCost = pathLength(best) + (best.length - 2) * BEND_PENALTY;
+  for (let i = 1; i < valid.length; i += 1) {
+    const c = valid[i];
+    const cost = pathLength(c) + (c.length - 2) * BEND_PENALTY;
+    if (cost < bestCost) {
+      best = c;
+      bestCost = cost;
+    }
+  }
+  return best;
+}
+
+function routePointToPoint(s, t) {
+  // Free endpoints — keep the original Z behaviour with no avoid rects.
+  const points = [s];
+  if (Math.abs(s.x - t.x) > 1 && Math.abs(s.y - t.y) > 1) {
+    if (Math.abs(t.x - s.x) >= Math.abs(t.y - s.y)) {
+      const midX = (s.x + t.x) / 2;
+      points.push({ x: midX, y: s.y });
+      points.push({ x: midX, y: t.y });
+    } else {
+      const midY = (s.y + t.y) / 2;
+      points.push({ x: s.x, y: midY });
+      points.push({ x: t.x, y: midY });
+    }
+  }
+  points.push(t);
+  return dropZeroLengthSegments(points);
+}
+
+function pathLength(points) {
+  let total = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  }
+  return total;
+}
+
+function pointAlongPath(points, t) {
+  // t in [0, 1]
+  const total = pathLength(points);
+  if (total === 0) return points[0];
+  const target = total * t;
+  let acc = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    const a = points[i - 1];
+    const b = points[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (acc + len >= target) {
+      const frac = len === 0 ? 0 : (target - acc) / len;
+      return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac };
+    }
+    acc += len;
+  }
+  return points[points.length - 1];
+}
+
+/* Build an SVG path string from an array of orthogonal waypoints with a small
+   quadratic arc at each interior corner. Corners are clamped to the shorter
+   of the two adjacent legs so we never overshoot. */
+function roundedPathFromPoints(points, r = 14) {
+  if (!points || points.length === 0) return '';
+  if (points.length === 1) {
+    const p = points[0];
+    return `M ${p.x},${p.y}`;
+  }
+  if (points.length === 2) {
+    const [a, b] = points;
+    return `M ${a.x},${a.y} L ${b.x},${b.y}`;
+  }
+
+  const segs = [`M ${points[0].x},${points[0].y}`];
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+    const dxIn  = curr.x - prev.x;
+    const dyIn  = curr.y - prev.y;
+    const dxOut = next.x - curr.x;
+    const dyOut = next.y - curr.y;
+    const lenIn  = Math.hypot(dxIn, dyIn);
+    const lenOut = Math.hypot(dxOut, dyOut);
+    const cR = Math.min(r, lenIn / 2, lenOut / 2);
+    if (cR < 0.5) {
+      segs.push(`L ${curr.x},${curr.y}`);
+      continue;
+    }
+    const startX = curr.x - (dxIn / (lenIn || 1)) * cR;
+    const startY = curr.y - (dyIn / (lenIn || 1)) * cR;
+    const endX   = curr.x + (dxOut / (lenOut || 1)) * cR;
+    const endY   = curr.y + (dyOut / (lenOut || 1)) * cR;
+    segs.push(`L ${startX},${startY}`);
+    segs.push(`Q ${curr.x},${curr.y} ${endX},${endY}`);
+  }
+  const last = points[points.length - 1];
+  segs.push(`L ${last.x},${last.y}`);
+  return segs.join(' ');
+}
+
+function rectOfItem(item, bounds) {
+  const { w, h } = nodeSize(item, bounds);
+  return {
+    left:   item.x,
+    top:    item.y,
+    right:  item.x + w,
+    bottom: item.y + h,
+  };
+}
+
+// Distance the route is pushed outside source/target rectangles before turning.
+// Big enough that the final segment (pad − target offset) easily fits the
+// arrowhead marker length (~10 marker units × strokeWidth) so the last
+// corner stays clear of the arrowhead body.
+const ROUTE_PADDING = 26;
+
+/* Compute the geometry for an edge: route waypoints + midpoint + endpoint
+   anchor positions. Honors edge.fromSide / edge.toSide when present, else
+   falls back to geometric pickAutoSide. */
+function computeEdgeGeometry(edge, itemById, bounds) {
+  const source = edge.from ? itemById.get(edge.from) : null;
+  const target = edge.to ? itemById.get(edge.to) : null;
 
   if (source && target) {
-    const [sSide, tSide] = pickSides(source, target, bounds);
-    s = getAnchor(source, bounds, sSide, 0);
-    t = getAnchor(target, bounds, tSide, 6);
-    axis = sSide === 'right' || sSide === 'left' ? 'horizontal' : 'vertical';
-    return { s, t, axis };
+    const sRect = rectOfItem(source, bounds);
+    const tRect = rectOfItem(target, bounds);
+    const sSide = isExplicitSide(edge.fromSide)
+      ? edge.fromSide
+      : pickAutoSide(source, nodeCenterOf(target, bounds), bounds);
+    const tSide = isExplicitSide(edge.toSide)
+      ? edge.toSide
+      : pickAutoSide(target, nodeCenterOf(source, bounds), bounds);
+    const sp = getAnchor(source, bounds, sSide, 0);
+    const tp = getAnchor(target, bounds, tSide, 4);
+    const points = routeBetweenRects(sRect, tRect, sp, tp, sSide, tSide, ROUTE_PADDING);
+    return { points, sSide, tSide };
   }
 
   if (source && edge.end) {
-    const sc = nodeCenterOf(source, bounds);
-    const dx = edge.end.x - sc.x;
-    const dy = edge.end.y - sc.y;
-    const side =
-      Math.abs(dx) >= Math.abs(dy)
-        ? dx >= 0 ? 'right' : 'left'
-        : dy >= 0 ? 'bottom' : 'top';
-    s = getAnchor(source, bounds, side, 0);
-    t = edge.end;
-    axis = side === 'right' || side === 'left' ? 'horizontal' : 'vertical';
-    return { s, t, axis };
+    const sRect = rectOfItem(source, bounds);
+    const sSide = isExplicitSide(edge.fromSide)
+      ? edge.fromSide
+      : pickAutoSide(source, edge.end, bounds);
+    const sp = getAnchor(source, bounds, sSide, 0);
+    const points = routeRectToPoint(sRect, sp, sSide, edge.end, ROUTE_PADDING);
+    return { points, sSide, tSide: null };
   }
 
   if (edge.start && target) {
-    const tc = nodeCenterOf(target, bounds);
-    const dx = tc.x - edge.start.x;
-    const dy = tc.y - edge.start.y;
-    const side =
-      Math.abs(dx) >= Math.abs(dy)
-        ? dx >= 0 ? 'left' : 'right'
-        : dy >= 0 ? 'top' : 'bottom';
-    s = edge.start;
-    t = getAnchor(target, bounds, side, 6);
-    axis = side === 'left' || side === 'right' ? 'horizontal' : 'vertical';
-    return { s, t, axis };
+    const tRect = rectOfItem(target, bounds);
+    const tSide = isExplicitSide(edge.toSide)
+      ? edge.toSide
+      : pickAutoSide(target, edge.start, bounds);
+    const tp = getAnchor(target, bounds, tSide, 4);
+    const forwardPath = routeRectToPoint(tRect, tp, tSide, edge.start, ROUTE_PADDING);
+    const points = forwardPath.slice().reverse();
+    return { points, sSide: null, tSide };
   }
 
   if (edge.start && edge.end) {
-    s = edge.start;
-    t = edge.end;
-    axis = Math.abs(t.x - s.x) >= Math.abs(t.y - s.y) ? 'horizontal' : 'vertical';
-    return { s, t, axis };
+    return { points: routePointToPoint(edge.start, edge.end), sSide: null, tSide: null };
   }
 
   return null;
@@ -1834,35 +2174,37 @@ function ArrowsLayer({
       <defs>
         <marker
           id="boardArrowHead"
-          markerWidth="6"
-          markerHeight="6"
-          refX="5"
-          refY="3"
+          markerWidth="14"
+          markerHeight="14"
+          refX="12"
+          refY="7"
           orient="auto"
-          markerUnits="strokeWidth"
+          markerUnits="userSpaceOnUse"
         >
-          <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
+          <path d="M0,1 L13,7 L0,13 L3.6,7 Z" fill="currentColor" />
         </marker>
         <marker
           id="boardArrowHeadGhost"
-          markerWidth="6"
-          markerHeight="6"
-          refX="5"
-          refY="3"
+          markerWidth="14"
+          markerHeight="14"
+          refX="12"
+          refY="7"
           orient="auto"
-          markerUnits="strokeWidth"
+          markerUnits="userSpaceOnUse"
         >
-          <path d="M0,0 L6,3 L0,6 Z" fill="var(--text-tertiary)" />
+          <path d="M0,1 L13,7 L0,13 L3.6,7 Z" fill="var(--text-tertiary)" />
         </marker>
       </defs>
 
       {edges.map((edge) => {
-        const points = resolveEdgePoints(edge, itemById, bounds);
-        if (!points) return null;
-        const { s, t, axis } = points;
-        const d = orthogonalPath(s, t, axis);
+        const geom = computeEdgeGeometry(edge, itemById, bounds);
+        if (!geom) return null;
+        const { points } = geom;
+        const d = roundedPathFromPoints(points);
         const isSelected = selectedEdgeId === edge.id;
-        const mid = edgeMidpoint(s, t, axis);
+        const mid = pointAlongPath(points, 0.5);
+        const s = points[0];
+        const t = points[points.length - 1];
         const baseStrokeWidth = edge.strokeWidth || DEFAULT_ARROW_STROKE_WIDTH;
         const strokeWidth = (isSelected ? baseStrokeWidth + 0.6 : baseStrokeWidth) / zoom;
         const hitStrokeWidth = Math.max(14, baseStrokeWidth + 10) / zoom;
@@ -1945,11 +2287,11 @@ function ArrowsLayer({
 
       {(arrowSource || arrowPointSource) && mousePos && (() => {
         const ghostEdge = arrowSource
-          ? { from: arrowSource, end: mousePos }
+          ? { from: arrowSource.id, fromSide: arrowSource.side, end: mousePos }
           : { start: arrowPointSource, end: mousePos };
-        const points = resolveEdgePoints(ghostEdge, itemById, bounds);
-        if (!points) return null;
-        const d = orthogonalPath(points.s, points.t, points.axis);
+        const geom = computeEdgeGeometry(ghostEdge, itemById, bounds);
+        if (!geom) return null;
+        const d = roundedPathFromPoints(geom.points);
         return (
           <path
             d={d}
@@ -1976,6 +2318,10 @@ function FrameNode({
   selected,
   editing,
   zoom,
+  tool,
+  arrowActive,
+  arrowActiveSide,
+  onPickAnchor,
   onMouseDown,
   onClick,
   onLabelDoubleClick,
@@ -2090,6 +2436,14 @@ function FrameNode({
       >
         {frame.name || 'Frame'}
       </div>
+      {tool === 'arrow' ? (
+        <AnchorHandles
+          active
+          activeSide={arrowActive ? arrowActiveSide : null}
+          zoom={zoom}
+          onPickSide={onPickAnchor}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2108,7 +2462,11 @@ export default function Board() {
   const [editingId, setEditingId] = useState(null);
   const [editingFrameId, setEditingFrameId] = useState(null);
   const [frameDraft, setFrameDraft] = useState(null);
+  // arrowSource is either null or { id, side } where side is 'auto' | 'top' |
+  // 'right' | 'bottom' | 'left'. 'auto' means the user clicked the body of the
+  // item (so the routing should pick a side geometrically).
   const [arrowSource, setArrowSource] = useState(null);
+  const arrowSourceId = arrowSource?.id ?? null;
   const [arrowPointSource, setArrowPointSource] = useState(null);
   const [mousePos, setMousePos] = useState(null);
   const [nodeBounds, setNodeBounds] = useState({});
@@ -2554,7 +2912,7 @@ export default function Board() {
     setSelectedId((cur) => (cur === id ? null : cur));
     setEditingId((cur) => (cur === id ? null : cur));
     setExpandedTaskNodeId((cur) => (cur === id ? null : cur));
-    setArrowSource((cur) => (cur === id ? null : cur));
+    setArrowSource((cur) => (cur && cur.id === id ? null : cur));
   }, []);
 
   function collapseTaskNode(id) {
@@ -2661,7 +3019,7 @@ export default function Board() {
     setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
     setSelectedFrameId((cur) => (cur === id ? null : cur));
     setEditingFrameId((cur) => (cur === id ? null : cur));
-    setArrowSource((cur) => (cur === id ? null : cur));
+    setArrowSource((cur) => (cur && cur.id === id ? null : cur));
   }, []);
 
   /* Read current DOM text of the frame whose name is being edited. */
@@ -3737,9 +4095,10 @@ export default function Board() {
       } else if (tool === 'arrow') {
         const w = screenToWorld(ev.clientX, ev.clientY);
         if (arrowSource) {
+          const fromSide = arrowSource.side === 'auto' ? undefined : arrowSource.side;
           setEdges((prev) => [
             ...prev,
-            { id: generateId(), from: arrowSource, end: w },
+            { id: generateId(), from: arrowSource.id, fromSide, end: w },
           ]);
           setArrowSource(null);
           setArrowPointSource(null);
@@ -3769,47 +4128,72 @@ export default function Board() {
     window.addEventListener('mouseup', onUp);
   }
 
+  /* Shared arrow-tool click handler. `side` is 'auto' for body clicks, or a
+     specific side ('top'/'right'/'bottom'/'left') when the user clicked one
+     of the anchor dots. Returns true if the click was fully handled by the
+     arrow flow. */
+  const connectArrowTo = useCallback((itemId, side, onComplete) => {
+    if (arrowPointSource) {
+      const id = generateId();
+      const toSide = side === 'auto' ? undefined : side;
+      setEdges((prev) => [
+        ...prev,
+        { id, start: arrowPointSource, to: itemId, toSide },
+      ]);
+      setArrowSource(null);
+      setArrowPointSource(null);
+      setMousePos(null);
+      selectEdge(id);
+      return;
+    }
+    if (!arrowSource) {
+      setArrowSource({ id: itemId, side });
+      setArrowPointSource(null);
+      onComplete?.();
+      return;
+    }
+    if (arrowSource.id === itemId) {
+      // Clicking the same item toggles its arrow side or cancels.
+      if (arrowSource.side !== side) {
+        setArrowSource({ id: itemId, side });
+      } else {
+        setArrowSource(null);
+      }
+      return;
+    }
+    // Connect arrowSource -> this item
+    const fromSide = arrowSource.side === 'auto' ? undefined : arrowSource.side;
+    const toSide = side === 'auto' ? undefined : side;
+    const exists = edges.some(
+      (ed) => ed.from === arrowSource.id && ed.to === itemId
+        && (ed.fromSide || 'auto') === (fromSide || 'auto')
+        && (ed.toSide || 'auto') === (toSide || 'auto')
+    );
+    let id = null;
+    if (!exists) {
+      id = generateId();
+      setEdges((prev) => [
+        ...prev,
+        { id, from: arrowSource.id, to: itemId, fromSide, toSide },
+      ]);
+    }
+    setArrowSource(null);
+    setArrowPointSource(null);
+    setMousePos(null);
+    if (id) {
+      selectEdge(id);
+    } else {
+      onComplete?.();
+    }
+  }, [arrowPointSource, arrowSource, edges, selectEdge]);
+
   /* ---------- frame interactions ---------- */
 
   function handleFrameClick(e, frame) {
     e.stopPropagation();
     if (editingFrameId === frame.id) return;
     if (tool === 'arrow') {
-      if (arrowPointSource) {
-        const id = generateId();
-        setEdges((prev) => [
-          ...prev,
-          { id, start: arrowPointSource, to: frame.id },
-        ]);
-        setArrowSource(null);
-        setArrowPointSource(null);
-        setMousePos(null);
-        selectEdge(id);
-      } else if (!arrowSource) {
-        setArrowSource(frame.id);
-        setArrowPointSource(null);
-        selectFrame(frame.id);
-      } else if (arrowSource !== frame.id) {
-        const exists = edges.some(
-          (ed) => ed.from === arrowSource && ed.to === frame.id
-        );
-        let id = null;
-        if (!exists) {
-          id = generateId();
-          setEdges((prev) => [
-            ...prev,
-            { id, from: arrowSource, to: frame.id },
-          ]);
-        }
-        setArrowSource(null);
-        setArrowPointSource(null);
-        setMousePos(null);
-        if (id) {
-          selectEdge(id);
-        } else {
-          selectFrame(frame.id);
-        }
-      }
+      connectArrowTo(frame.id, 'auto', () => selectFrame(frame.id));
       return;
     }
     selectFrame(frame.id);
@@ -3985,41 +4369,7 @@ export default function Board() {
 
     setSelectedEdgeId(null);
     if (tool === 'arrow') {
-      if (arrowPointSource) {
-        const id = generateId();
-        setEdges((prev) => [
-          ...prev,
-          { id, start: arrowPointSource, to: node.id },
-        ]);
-        setArrowSource(null);
-        setArrowPointSource(null);
-        setMousePos(null);
-        selectEdge(id);
-      } else if (!arrowSource) {
-        setArrowSource(node.id);
-        setArrowPointSource(null);
-        selectNode(node.id);
-      } else if (arrowSource !== node.id) {
-        const exists = edges.some(
-          (ed) => ed.from === arrowSource && ed.to === node.id
-        );
-        let id = null;
-        if (!exists) {
-          id = generateId();
-          setEdges((prev) => [
-            ...prev,
-            { id, from: arrowSource, to: node.id },
-          ]);
-        }
-        setArrowSource(null);
-        setArrowPointSource(null);
-        setMousePos(null);
-        if (id) {
-          selectEdge(id);
-        } else {
-          selectNode(node.id);
-        }
-      }
+      connectArrowTo(node.id, 'auto', () => selectNode(node.id));
       return;
     }
     if (tool === 'select') {
@@ -4487,19 +4837,26 @@ export default function Board() {
           >
             {/* Frames render behind everything else so they read as a
                 grouping container, not a foreground panel. */}
-            {frames.map((frame) => (
-              <FrameNode
-                key={frame.id}
-                frame={frame}
-                selected={selectedFrameId === frame.id}
-                editing={editingFrameId === frame.id}
-                zoom={viewport.zoom}
-                onClick={(e) => handleFrameClick(e, frame)}
-                onMouseDown={(e) => handleFrameMouseDown(e, frame)}
-                onLabelDoubleClick={() => handleFrameLabelDoubleClick(frame.id)}
-                onLabelCommit={(name) => handleFrameLabelCommit(frame.id, name)}
-              />
-            ))}
+            {frames.map((frame) => {
+              const arrowActive = arrowSource?.id === frame.id;
+              return (
+                <FrameNode
+                  key={frame.id}
+                  frame={frame}
+                  selected={selectedFrameId === frame.id}
+                  editing={editingFrameId === frame.id}
+                  zoom={viewport.zoom}
+                  tool={tool}
+                  arrowActive={arrowActive}
+                  arrowActiveSide={arrowActive ? arrowSource.side : null}
+                  onPickAnchor={(side) => connectArrowTo(frame.id, side, () => selectFrame(frame.id))}
+                  onClick={(e) => handleFrameClick(e, frame)}
+                  onMouseDown={(e) => handleFrameMouseDown(e, frame)}
+                  onLabelDoubleClick={() => handleFrameLabelDoubleClick(frame.id)}
+                  onLabelCommit={(name) => handleFrameLabelCommit(frame.id, name)}
+                />
+              );
+            })}
 
             {/* Draft rectangle while the user drags out a new frame. */}
             {frameDraft && (
@@ -4733,11 +5090,16 @@ export default function Board() {
             })()}
 
             {nodes.map((node) => {
-              const selected = selectedId === node.id || arrowSource === node.id;
+              const selected = selectedId === node.id || arrowSourceId === node.id;
+              const arrowActive = arrowSource?.id === node.id;
               const commonProps = {
                 node,
                 selected,
                 tool,
+                zoom: viewport.zoom,
+                arrowActive,
+                arrowActiveSide: arrowActive ? arrowSource.side : null,
+                onPickAnchor: (side) => connectArrowTo(node.id, side, () => selectNode(node.id)),
                 registerRef: registerNodeRef,
                 onClick: (e) => handleNodeClick(e, node),
                 onMouseDown: (e) => handleNodeMouseDown(e, node),
