@@ -860,7 +860,8 @@ body.tasksDragging * {
 .tasksCard {
   border: 1px solid var(--border-color-dim);
   border-radius: 10px;
-  background: var(--surface-03);
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--surface-03), var(--surface-03));
   padding: 11px 10px;
   display: flex;
   flex-direction: column;
@@ -1241,7 +1242,8 @@ body.tasksDragging * {
 
 .tasksModal {
   width: min(980px, 100%);
-  background: var(--panel-solid);
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--panel-solid), var(--panel-solid));
   border: 1px solid var(--border-color);
   border-radius: 0;
   box-shadow: 0 12px 42px rgba(0, 0, 0, 0.5);
@@ -1553,8 +1555,9 @@ body.tasksDragging * {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: var(--panel-translucent-strong);
-  backdrop-filter: blur(18px);
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--panel-translucent-strong), var(--panel-translucent-strong));
+  backdrop-filter: none;
 }
 
 .tasksModalHeader h3 {
@@ -1568,7 +1571,8 @@ body.tasksDragging * {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
 }
 
 .tasksModalHeroHeading {
@@ -2072,7 +2076,8 @@ body.tasksDragging * {
 
 .tasksSubtasksPanel {
   border-left: 1px solid var(--border-color-dim);
-  background: var(--surface-03);
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--surface-03), var(--surface-03));
   padding: 20px 18px 24px;
   display: flex;
   flex-direction: column;
@@ -2122,6 +2127,8 @@ body.tasksDragging * {
 .tasksSubtaskItem {
   border: 1px solid var(--border-color-dim);
   border-radius: 8px;
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--surface-03), var(--surface-03));
   padding: 9px;
   display: flex;
   flex-direction: column;
