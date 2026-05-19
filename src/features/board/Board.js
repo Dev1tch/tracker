@@ -778,15 +778,53 @@ function pointsToBrushSegments(points, baseThickness) {
   return segments;
 }
 
-function pointToSegmentDistance(point, a, b) {
-  const vx = b.x - a.x;
-  const vy = b.y - a.y;
-  const lengthSq = vx * vx + vy * vy;
-  if (lengthSq === 0) return Math.hypot(point.x - a.x, point.y - a.y);
-  const t = Math.max(0, Math.min(1, ((point.x - a.x) * vx + (point.y - a.y) * vy) / lengthSq));
-  const x = a.x + t * vx;
-  const y = a.y + t * vy;
-  return Math.hypot(point.x - x, point.y - y);
+function interpolatePoint(a, b, t) {
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+    t: (a.t || 0) + ((b.t || 0) - (a.t || 0)) * t,
+  };
+}
+
+function pointsAlmostEqual(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y) < 0.001;
+}
+
+function clippedSegmentOutsideCircle(a, b, center, radius) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const fx = a.x - center.x;
+  const fy = a.y - center.y;
+  const aCoeff = dx * dx + dy * dy;
+
+  if (aCoeff === 0) {
+    return Math.hypot(a.x - center.x, a.y - center.y) <= radius ? [] : [[a, b]];
+  }
+
+  const bCoeff = 2 * (fx * dx + fy * dy);
+  const cCoeff = fx * fx + fy * fy - radius * radius;
+  const discriminant = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
+  const startInside = cCoeff <= 0;
+  const endInside = Math.hypot(b.x - center.x, b.y - center.y) <= radius;
+
+  if (discriminant <= 0) {
+    return startInside && endInside ? [] : [[a, b]];
+  }
+
+  const sqrtDiscriminant = Math.sqrt(discriminant);
+  const t1 = (-bCoeff - sqrtDiscriminant) / (2 * aCoeff);
+  const t2 = (-bCoeff + sqrtDiscriminant) / (2 * aCoeff);
+  const enter = Math.max(0, Math.min(t1, t2));
+  const exit = Math.min(1, Math.max(t1, t2));
+
+  if (exit <= 0 || enter >= 1) {
+    return startInside && endInside ? [] : [[a, b]];
+  }
+
+  const pieces = [];
+  if (enter > 0) pieces.push([a, interpolatePoint(a, b, enter)]);
+  if (exit < 1) pieces.push([interpolatePoint(a, b, exit), b]);
+  return pieces.filter(([start, end]) => Math.hypot(end.x - start.x, end.y - start.y) >= 0.1);
 }
 
 function buildDrawingNodeFromWorldPoints(sourceNode, worldPoints, id) {
@@ -820,36 +858,51 @@ function splitDrawingNodeByEraser(node, eraserPoint, eraserRadius) {
     y: node.y + p.y,
     t: p.t,
   }));
-  const pointHitRadius = eraserRadius + Math.min(2, Math.max(0.5, (node.thickness || 2) * 0.18));
-  const segmentBreakRadius = eraserRadius;
   const keptRuns = [];
   let currentRun = [];
 
-  points.forEach((point, index) => {
+  function finishRun() {
+    if (currentRun.length >= 2) {
+      keptRuns.push(currentRun);
+    }
+    currentRun = [];
+  }
+
+  function appendPiece(start, end) {
+    if (currentRun.length === 0) {
+      currentRun = [start, end];
+      return;
+    }
+
+    const last = currentRun[currentRun.length - 1];
+    if (!pointsAlmostEqual(last, start)) {
+      finishRun();
+      currentRun = [start, end];
+      return;
+    }
+
+    if (!pointsAlmostEqual(last, end)) {
+      currentRun.push(end);
+    }
+  }
+
+  for (let index = 1; index < points.length; index += 1) {
     const prev = points[index - 1];
-    const shouldErase = Math.hypot(point.x - eraserPoint.x, point.y - eraserPoint.y) <= pointHitRadius;
-    if (shouldErase) {
+    const point = points[index];
+    const pieces = clippedSegmentOutsideCircle(prev, point, eraserPoint, eraserRadius);
+
+    if (pieces.length === 0) {
       if (currentRun.length >= 2) keptRuns.push(currentRun);
       currentRun = [];
-      return;
+      continue;
     }
 
-    const shouldBreakSegment = prev
-      ? pointToSegmentDistance(eraserPoint, prev, point) <= segmentBreakRadius
-      : false;
-    if (shouldBreakSegment && currentRun.length >= 2) {
-      keptRuns.push(currentRun);
-      currentRun = [point];
-      return;
-    }
-    if (shouldBreakSegment) {
-      currentRun = [point];
-      return;
-    }
-
-    currentRun.push(point);
-  });
-  if (currentRun.length >= 2) keptRuns.push(currentRun);
+    pieces.forEach(([start, end], pieceIndex) => {
+      if (pieceIndex > 0) finishRun();
+      appendPiece(start, end);
+    });
+  }
+  finishRun();
 
   return keptRuns.map((run, index) =>
     buildDrawingNodeFromWorldPoints(node, run, index === 0 ? node.id : generateId())
@@ -3975,9 +4028,6 @@ export default function Board() {
           })
         );
         if (removedIds.size > 0) {
-          setEdges((prev) =>
-            prev.filter((edge) => !removedIds.has(edge.from) && !removedIds.has(edge.to))
-          );
           setSelectedId((cur) => (removedIds.has(cur) ? null : cur));
         }
       }
