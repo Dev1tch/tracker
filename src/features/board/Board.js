@@ -2510,8 +2510,10 @@ export default function Board() {
   const [viewport, setViewport] = useState(initial.viewport);
   const [tool, setTool] = useState('select');
   const [selectedId, setSelectedId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
+  const [selectedFrameIds, setSelectedFrameIds] = useState(() => new Set());
   const [editingId, setEditingId] = useState(null);
   const [editingFrameId, setEditingFrameId] = useState(null);
   const [frameDraft, setFrameDraft] = useState(null);
@@ -2958,18 +2960,88 @@ export default function Board() {
 
   const selectNode = useCallback((id) => {
     setSelectedId(id);
+    setSelectedIds(new Set([id]));
     setSelectedEdgeId(null);
     setSelectedFrameId(null);
+    setSelectedFrameIds(new Set());
+  }, []);
+
+  const toggleNodeSelection = useCallback((id) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+    setSelectedId(next.has(id) ? id : next.values().next().value || null);
+    setSelectedEdgeId(null);
+    setSelectedFrameId(null);
+  }, [selectedIds]);
+
+  const toggleFrameSelection = useCallback((id) => {
+    const next = new Set(selectedFrameIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedFrameIds(next);
+    setSelectedFrameId(next.has(id) ? id : next.values().next().value || null);
+    setSelectedEdgeId(null);
+  }, [selectedFrameIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedId(null);
+    setSelectedIds(new Set());
+    setSelectedEdgeId(null);
+    setSelectedFrameId(null);
+    setSelectedFrameIds(new Set());
   }, []);
 
   const removeNode = useCallback((id) => {
     setNodes((prev) => prev.filter((n) => n.id !== id));
     setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
     setSelectedId((cur) => (cur === id ? null : cur));
+    setSelectedIds((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
     setEditingId((cur) => (cur === id ? null : cur));
     setExpandedTaskNodeId((cur) => (cur === id ? null : cur));
     setArrowSource((cur) => (cur && cur.id === id ? null : cur));
   }, []);
+
+  const removeSelectedObjects = useCallback(() => {
+    const nodeIds = new Set(selectedIds);
+    const frameIds = new Set(selectedFrameIds);
+    if (nodeIds.size === 0 && selectedId) nodeIds.add(selectedId);
+    if (frameIds.size === 0 && selectedFrameId) frameIds.add(selectedFrameId);
+    if (nodeIds.size === 0 && frameIds.size === 0) return;
+
+    setNodes((prev) => prev.filter((n) => !nodeIds.has(n.id)));
+    setFrames((prev) => prev.filter((f) => !frameIds.has(f.id)));
+    setEdges((prev) =>
+      prev.filter((e) =>
+        !nodeIds.has(e.from) &&
+        !nodeIds.has(e.to) &&
+        !frameIds.has(e.from) &&
+        !frameIds.has(e.to)
+      )
+    );
+    setSelectedId(null);
+    setSelectedIds(new Set());
+    setSelectedFrameId(null);
+    setSelectedFrameIds(new Set());
+    setEditingId((cur) => (nodeIds.has(cur) ? null : cur));
+    setEditingFrameId((cur) => (frameIds.has(cur) ? null : cur));
+    setExpandedTaskNodeId((cur) => (nodeIds.has(cur) ? null : cur));
+    setArrowSource((cur) =>
+      cur && (nodeIds.has(cur.id) || frameIds.has(cur.id)) ? null : cur
+    );
+  }, [selectedFrameId, selectedFrameIds, selectedId, selectedIds]);
 
   function collapseTaskNode(id) {
     if (!id) return;
@@ -3036,7 +3108,9 @@ export default function Board() {
   const selectEdge = useCallback((id) => {
     setSelectedEdgeId(id);
     setSelectedId(null);
+    setSelectedIds(new Set());
     setSelectedFrameId(null);
+    setSelectedFrameIds(new Set());
     setArrowSource(null);
     setArrowPointSource(null);
   }, []);
@@ -3067,6 +3141,8 @@ export default function Board() {
   const selectFrame = useCallback((id) => {
     setSelectedFrameId(id);
     setSelectedId(null);
+    setSelectedIds(new Set());
+    setSelectedFrameIds(new Set([id]));
     setSelectedEdgeId(null);
   }, []);
 
@@ -3074,6 +3150,12 @@ export default function Board() {
     setFrames((prev) => prev.filter((f) => f.id !== id));
     setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
     setSelectedFrameId((cur) => (cur === id ? null : cur));
+    setSelectedFrameIds((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
     setEditingFrameId((cur) => (cur === id ? null : cur));
     setArrowSource((cur) => (cur && cur.id === id ? null : cur));
   }, []);
@@ -3102,7 +3184,10 @@ export default function Board() {
     setNodes(Array.isArray(state.nodes) ? state.nodes : []);
     setEdges(Array.isArray(state.edges) ? state.edges : []);
     setSelectedId(null);
+    setSelectedIds(new Set());
     setSelectedEdgeId(null);
+    setSelectedFrameId(null);
+    setSelectedFrameIds(new Set());
     setEditingId(null);
     setArrowSource(null);
     setArrowPointSource(null);
@@ -3154,9 +3239,7 @@ export default function Board() {
         }
         setArrowSource(null);
         setArrowPointSource(null);
-        setSelectedId(null);
-        setSelectedEdgeId(null);
-        setSelectedFrameId(null);
+        clearSelection();
         setFrameDraft(null);
       } else if (
         (e.key === 'Delete' || e.key === 'Backspace') &&
@@ -3168,6 +3251,8 @@ export default function Board() {
         }
         if (selectedEdgeId) {
           removeEdge(selectedEdgeId);
+        } else if (selectedIds.size > 0 || selectedFrameIds.size > 0) {
+          removeSelectedObjects();
         } else if (selectedFrameId) {
           removeFrame(selectedFrameId);
         } else if (selectedId) {
@@ -3180,13 +3265,17 @@ export default function Board() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     selectedId,
+    selectedIds,
+    selectedFrameIds,
     selectedEdgeId,
     selectedFrameId,
     editingId,
     editingFrameId,
     removeNode,
+    removeSelectedObjects,
     removeEdge,
     removeFrame,
+    clearSelection,
     readEditingText,
     readEditingFrameName,
     undoBoard,
@@ -4068,6 +4157,12 @@ export default function Board() {
         );
         if (removedIds.size > 0) {
           setSelectedId((cur) => (removedIds.has(cur) ? null : cur));
+          setSelectedIds((current) => {
+            if (![...removedIds].some((id) => current.has(id))) return current;
+            const next = new Set(current);
+            removedIds.forEach((id) => next.delete(id));
+            return next;
+          });
         }
       }
 
@@ -4204,12 +4299,12 @@ export default function Board() {
           setArrowPointSource(null);
           setMousePos(null);
         } else {
-          setSelectedId(null);
+          clearSelection();
           setArrowPointSource(w);
           setMousePos(w);
         }
       } else {
-        setSelectedId(null);
+        clearSelection();
         collapseExpandedTaskNode();
       }
     }
@@ -4281,6 +4376,11 @@ export default function Board() {
   function handleFrameClick(e, frame) {
     e.stopPropagation();
     if (editingFrameId === frame.id) return;
+    const isMultiSelect = e.ctrlKey || e.metaKey || e.shiftKey;
+    if (tool === 'select' && isMultiSelect) {
+      toggleFrameSelection(frame.id);
+      return;
+    }
     if (tool === 'arrow') {
       connectArrowTo(frame.id, 'auto', () => selectFrame(frame.id));
       return;
@@ -4305,14 +4405,36 @@ export default function Board() {
     if (tool !== 'select') return;
     if (editingFrameId === frame.id) return;
     e.stopPropagation();
-    selectFrame(frame.id);
+    const isMultiSelectGesture = e.ctrlKey || e.metaKey || e.shiftKey;
+    const frameGroupIds = selectedFrameIds.has(frame.id)
+      ? new Set(selectedFrameIds)
+      : new Set([frame.id]);
+    const nodeGroupIds = selectedFrameIds.has(frame.id)
+      ? new Set(selectedIds)
+      : new Set();
+
+    if (!isMultiSelectGesture && !selectedFrameIds.has(frame.id)) {
+      selectFrame(frame.id);
+    }
+
     const startX = e.clientX;
     const startY = e.clientY;
     const origFrameX = frame.x;
     const origFrameY = frame.y;
     const zoomAtStart = viewport.zoom;
-    const members = nodesInsideFrame(frame, nodes, nodeBounds);
-    const memberStarts = members.map((m) => ({ id: m.id, x: m.x, y: m.y }));
+    frames
+      .filter((item) => frameGroupIds.has(item.id))
+      .forEach((item) => {
+        nodesInsideFrame(item, nodes, nodeBounds).forEach((member) => {
+          nodeGroupIds.add(member.id);
+        });
+      });
+    const frameStarts = frames
+      .filter((item) => frameGroupIds.has(item.id))
+      .map((item) => ({ id: item.id, x: item.x, y: item.y }));
+    const nodeStarts = nodes
+      .filter((item) => nodeGroupIds.has(item.id))
+      .map((item) => ({ id: item.id, x: item.x, y: item.y }));
     const alignmentTargets = frames;
     let moved = false;
 
@@ -4340,14 +4462,15 @@ export default function Board() {
         horizontal: alignment.horizontal,
       });
       setFrames((prev) =>
-        prev.map((f) =>
-          f.id === frame.id ? { ...f, x: alignment.x, y: alignment.y } : f
-        )
+        prev.map((f) => {
+          const start = frameStarts.find((item) => item.id === f.id);
+          return start ? { ...f, x: start.x + alignedDx, y: start.y + alignedDy } : f;
+        })
       );
-      if (memberStarts.length) {
+      if (nodeStarts.length) {
         setNodes((prev) =>
           prev.map((n) => {
-            const ms = memberStarts.find((m) => m.id === n.id);
+            const ms = nodeStarts.find((m) => m.id === n.id);
             return ms ? { ...n, x: ms.x + alignedDx, y: ms.y + alignedDy } : n;
           })
         );
@@ -4441,6 +4564,12 @@ export default function Board() {
       return;
     }
     if (editingId === node.id) return;
+    const isMultiSelect = e.ctrlKey || e.metaKey || e.shiftKey;
+
+    if (tool === 'select' && isMultiSelect) {
+      toggleNodeSelection(node.id);
+      return;
+    }
 
     // Backup React-side double-click detection. The document-level mousedown
     // listener (set up further up) is the primary path, but we also catch it
@@ -4478,12 +4607,36 @@ export default function Board() {
     if (tool !== 'select' || editingId === node.id) return;
     e.stopPropagation();
     nodeDragMovedRef.current = false;
-    selectNode(node.id);
+    const isMultiSelectGesture = e.ctrlKey || e.metaKey || e.shiftKey;
+    const selectedGroupIds = selectedIds.has(node.id)
+      ? new Set(selectedIds)
+      : new Set([node.id]);
+    const selectedGroupFrameIds = selectedIds.has(node.id)
+      ? new Set(selectedFrameIds)
+      : new Set();
+
+    if (!isMultiSelectGesture && !selectedIds.has(node.id)) {
+      selectNode(node.id);
+    }
+    frames
+      .filter((item) => selectedGroupFrameIds.has(item.id))
+      .forEach((item) => {
+        nodesInsideFrame(item, nodes, nodeBounds).forEach((member) => {
+          selectedGroupIds.add(member.id);
+        });
+      });
+
     const startX = e.clientX;
     const startY = e.clientY;
     const origX = node.x;
     const origY = node.y;
     const zoomAtStart = viewport.zoom;
+    const groupStarts = nodes
+      .filter((item) => selectedGroupIds.has(item.id))
+      .map((item) => ({ id: item.id, x: item.x, y: item.y }));
+    const frameStarts = frames
+      .filter((item) => selectedGroupFrameIds.has(item.id))
+      .map((item) => ({ id: item.id, x: item.x, y: item.y }));
     let moved = false;
     function onMove(ev) {
       const dx = (ev.clientX - startX) / zoomAtStart;
@@ -4507,7 +4660,26 @@ export default function Board() {
         vertical: alignment.vertical,
         horizontal: alignment.horizontal,
       });
-      moveNode(node.id, alignment.x, alignment.y);
+      if (groupStarts.length > 1 || frameStarts.length > 0) {
+        const alignedDx = alignment.x - origX;
+        const alignedDy = alignment.y - origY;
+        setNodes((prev) =>
+          prev.map((item) => {
+            const start = groupStarts.find((groupItem) => groupItem.id === item.id);
+            return start ? { ...item, x: start.x + alignedDx, y: start.y + alignedDy } : item;
+          })
+        );
+        if (frameStarts.length > 0) {
+          setFrames((prev) =>
+            prev.map((item) => {
+              const start = frameStarts.find((frameItem) => frameItem.id === item.id);
+              return start ? { ...item, x: start.x + alignedDx, y: start.y + alignedDy } : item;
+            })
+          );
+        }
+      } else {
+        moveNode(node.id, alignment.x, alignment.y);
+      }
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove);
@@ -4568,6 +4740,8 @@ export default function Board() {
   function removeSelected() {
     if (selectedEdgeId) {
       removeEdge(selectedEdgeId);
+    } else if (selectedIds.size > 0 || selectedFrameIds.size > 0) {
+      removeSelectedObjects();
     } else if (selectedFrameId) {
       removeFrame(selectedFrameId);
     } else if (selectedId) {
@@ -4699,7 +4873,13 @@ export default function Board() {
             type="button"
             className="boardToolBtn danger"
             onClick={removeSelected}
-            disabled={!selectedId && !selectedEdgeId && !selectedFrameId}
+            disabled={
+              !selectedId &&
+              selectedIds.size === 0 &&
+              selectedFrameIds.size === 0 &&
+              !selectedEdgeId &&
+              !selectedFrameId
+            }
             title="Delete selected (Del)"
             aria-label="Delete selected"
           >
@@ -4857,7 +5037,9 @@ export default function Board() {
           /* Frame popout: shows whenever a frame is selected OR being named.
              Houses the frame's color picker so the user can pick a custom
              color, plus a hint to rename via the label. */
-          const activeFrameId = editingFrameId || selectedFrameId;
+          const activeFrameId =
+            editingFrameId ||
+            (selectedIds.size === 0 && selectedFrameIds.size <= 1 ? selectedFrameId : null);
           if (!activeFrameId) return null;
           const frame = frames.find((f) => f.id === activeFrameId);
           if (!frame) return null;
@@ -4928,7 +5110,11 @@ export default function Board() {
                 <FrameNode
                   key={frame.id}
                   frame={frame}
-                  selected={selectedFrameId === frame.id}
+                  selected={
+                    selectedFrameIds.has(frame.id) ||
+                    selectedFrameId === frame.id ||
+                    arrowActive
+                  }
                   editing={editingFrameId === frame.id}
                   zoom={viewport.zoom}
                   tool={tool}
@@ -4972,6 +5158,7 @@ export default function Board() {
               onEdgeEndpointMouseDown={handleEdgeEndpointMouseDown}
             />
             {(() => {
+              if (selectedIds.size + selectedFrameIds.size > 1) return null;
               const selected = selectedId
                 ? nodes.find((n) => n.id === selectedId)
                 : null;
@@ -5134,6 +5321,7 @@ export default function Board() {
             {(() => {
               /* Resize handles around a selected frame — same 8 corners/edges
                  as nodes use, minus the rotate arm. */
+              if (selectedIds.size + selectedFrameIds.size > 1) return null;
               if (!selectedFrameId) return null;
               const frame = frames.find((f) => f.id === selectedFrameId);
               if (!frame) return null;
@@ -5175,7 +5363,10 @@ export default function Board() {
             })()}
 
             {nodes.map((node) => {
-              const selected = selectedId === node.id || arrowSourceId === node.id;
+              const selected =
+                selectedIds.has(node.id) ||
+                selectedId === node.id ||
+                arrowSourceId === node.id;
               const arrowActive = arrowSource?.id === node.id;
               const commonProps = {
                 node,
