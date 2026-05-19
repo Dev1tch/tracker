@@ -105,6 +105,7 @@ import { useDocumentSync } from '@/lib/sync/useDocumentSync';
 import './Notes.css';
 
 const STORAGE_KEY = 'notes.filesystem';
+const VIEW_STORAGE_KEY = 'notes.viewState';
 const NOTES_DB_NAME = 'sal-notes';
 const NOTES_DB_STORE = 'state';
 const NOTES_DB_KEY = 'tree';
@@ -418,6 +419,43 @@ function loadTree() {
   }
 }
 
+function loadNotesViewState() {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(VIEW_STORAGE_KEY) || 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    return {
+      selectedFileId:
+        typeof parsed.selectedFileId === 'string'
+          ? parsed.selectedFileId
+          : typeof parsed.selectedId === 'string'
+            ? parsed.selectedId
+            : null,
+      openFolderIds: Array.isArray(parsed.openFolderIds)
+        ? parsed.openFolderIds.filter((id) => typeof id === 'string')
+        : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveNotesViewState({ selectedFileId, openFolders }) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      VIEW_STORAGE_KEY,
+      JSON.stringify({
+        selectedFileId: selectedFileId || null,
+        openFolderIds: Array.from(openFolders || []),
+      })
+    );
+  } catch {}
+}
+
 function openNotesDB() {
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || typeof window.indexedDB === 'undefined') {
@@ -533,6 +571,10 @@ function findFirstFile(nodes) {
   return null;
 }
 
+function isFolderId(nodes, id) {
+  return findNode(nodes, id)?.type === 'folder';
+}
+
 function getTargetFolderId(nodes, selectedId) {
   const selected = findNode(nodes, selectedId);
   if (!selected) return null;
@@ -585,6 +627,22 @@ function collectOpenFolders(nodes, ids = new Set()) {
   return ids;
 }
 
+function restoreNotesViewState(nodes) {
+  const viewState = loadNotesViewState();
+  const selectedNode = viewState?.selectedFileId
+    ? findNode(nodes, viewState.selectedFileId)
+    : null;
+
+  return {
+    selectedId: selectedNode?.type === 'file'
+      ? selectedNode.id
+      : findFirstFile(nodes)?.id || null,
+    openFolders: viewState?.openFolderIds
+      ? new Set(viewState.openFolderIds.filter((id) => isFolderId(nodes, id)))
+      : collectOpenFolders(nodes),
+  };
+}
+
 function filterTree(nodes, query) {
   const trimmed = query.trim().toLowerCase();
   if (!trimmed) return nodes;
@@ -620,6 +678,23 @@ function countTree(nodes) {
     },
     { files: 0, folders: 0 }
   );
+}
+
+function isLikelyFallbackTree(nodes) {
+  const counts = countTree(nodes);
+  if (counts.files > 1 || counts.folders > 1) return false;
+  const firstFolder = nodes[0];
+  if (firstFolder?.id !== 'notes-root-folder') return false;
+  const firstFile = firstFolder?.children?.[0];
+  return firstFile?.id === 'notes-welcome-file'
+    || firstFile?.content === 'A quiet place for quick notes.';
+}
+
+function isRicherTree(candidate, baseline) {
+  const candidateCounts = countTree(candidate);
+  const baselineCounts = countTree(baseline);
+  return candidateCounts.files > baselineCounts.files
+    || candidateCounts.folders > baselineCounts.folders;
 }
 
 function NodeIcon({ node }) {
@@ -1757,9 +1832,9 @@ function TreeNode({
 
 export default function Notes() {
   const [tree, setTree] = useState(loadTree);
-  const [selectedId, setSelectedId] = useState(() => findFirstFile(loadTree())?.id || null);
+  const [selectedId, setSelectedId] = useState(() => restoreNotesViewState(loadTree()).selectedId);
   const [query, setQuery] = useState('');
-  const [openFolders, setOpenFolders] = useState(() => collectOpenFolders(loadTree()));
+  const [openFolders, setOpenFolders] = useState(() => restoreNotesViewState(loadTree()).openFolders);
   const [editing, setEditing] = useState(null);
   const [iconPicker, setIconPicker] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
@@ -1783,6 +1858,14 @@ export default function Notes() {
   useEffect(() => {
     latestTreeRef.current = tree;
   }, [tree]);
+
+  useEffect(() => {
+    if (!notesHydratedRef.current) return;
+    saveNotesViewState({
+      selectedFileId: selectedFile?.id || loadNotesViewState()?.selectedFileId || null,
+      openFolders,
+    });
+  }, [openFolders, selectedFile?.id]);
 
   const notesSyncApi = useMemo(
     () => ({
@@ -1823,12 +1906,10 @@ export default function Notes() {
         if (cancelled) return;
         if (stored) {
           const hydrated = normalizeTree(stored);
+          const restoredView = restoreNotesViewState(hydrated);
           setTree(hydrated);
-          setSelectedId((current) => {
-            if (current && findNode(hydrated, current)) return current;
-            return findFirstFile(hydrated)?.id || null;
-          });
-          setOpenFolders(collectOpenFolders(hydrated));
+          setSelectedId(restoredView.selectedId);
+          setOpenFolders(restoredView.openFolders);
         } else {
           const seed = latestTreeRef.current;
           if (seed && seed.length) {
@@ -1874,19 +1955,35 @@ export default function Notes() {
         !localServerUpdatedAt ||
         (remoteUpdatedAt && remoteUpdatedAt > localServerUpdatedAt);
 
-      if (localDirty) {
+      if (
+        localDirty &&
+        isLikelyFallbackTree(latestTreeRef.current) &&
+        isRicherTree(remoteTree, latestTreeRef.current)
+      ) {
+        /* A fallback/default local tree should never overwrite a richer
+           server document. This protects against reload/hydration failures
+           that otherwise mark the placeholder tree as dirty. */
+        const hydrated = normalizeTree(remoteTree);
+        const restoredView = restoreNotesViewState(hydrated);
+        setTree(hydrated);
+        setSelectedId(restoredView.selectedId);
+        setOpenFolders(restoredView.openFolders);
+        await idbPutNotesTree(hydrated).catch(() => {});
+        await idbPutNotesSyncMeta({
+          serverUpdatedAt: remoteUpdatedAt,
+          dirty: false,
+        });
+      } else if (localDirty) {
         /* Unsynced local edits trump server. Push them up. */
         setSnapshot(latestTreeRef.current);
         schedulePush();
       } else if (remoteIsNewer) {
         /* Server has fresher data — adopt silently. */
         const hydrated = normalizeTree(remoteTree);
+        const restoredView = restoreNotesViewState(hydrated);
         setTree(hydrated);
-        setSelectedId((current) => {
-          if (current && findNode(hydrated, current)) return current;
-          return findFirstFile(hydrated)?.id || null;
-        });
-        setOpenFolders(collectOpenFolders(hydrated));
+        setSelectedId(restoredView.selectedId);
+        setOpenFolders(restoredView.openFolders);
         await idbPutNotesTree(hydrated).catch(() => {});
         await idbPutNotesSyncMeta({
           serverUpdatedAt: remoteUpdatedAt,
