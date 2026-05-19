@@ -377,6 +377,7 @@
   position: absolute;
   top: 0;
   left: 0;
+  z-index: 0;
   overflow: visible;
   pointer-events: none;
   color: var(--text-secondary);
@@ -524,7 +525,7 @@
   border: 2px solid var(--frame-color, #f87171);
   background: color-mix(in srgb, var(--frame-color, #f87171) 12%, transparent);
   cursor: grab;
-  z-index: 0;
+  z-index: 1;
   box-sizing: border-box;
   transition: box-shadow 120ms ease;
 }
@@ -964,11 +965,11 @@
   overflow: visible;
 }
 
-/* .boardTaskNode.expanded:has(.customSelectHeader.open),
+.boardTaskNode.expanded:has(.customSelectHeader.open),
 .boardTaskNode.expanded:has(.tasksDateTrigger.open),
 .boardTaskNode.expanded:has(.tasksTimeSelect.open) {
   z-index: 30;
-} */
+}
 
 .boardImportedTaskCard {
   width: calc(100% / var(--board-task-scale, 1));
@@ -1077,6 +1078,7 @@
 
 .boardTaskDetailEmbed .tasksDetailMain:has(.tasksDateTrigger.open),
 .boardTaskDetailEmbed .tasksDetailMain:has(.customSelectHeader.open) {
+  overflow: visible;
   z-index: 850;
 }
 
