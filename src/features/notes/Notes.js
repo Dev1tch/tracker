@@ -2113,6 +2113,16 @@ function TreeNode({
   );
 }
 
+export {
+  RichTextEditor,
+  loadTree as loadNotesTree,
+  idbGetNotesTree,
+  idbPutNotesTree,
+  findNode as findNoteNode,
+  updateNode as updateNoteNode,
+  NodeIcon as NotesNodeIcon,
+};
+
 export default function Notes() {
   const [tree, setTree] = useState(loadTree);
   const [selectedId, setSelectedId] = useState(() => restoreNotesViewState(loadTree()).selectedId);

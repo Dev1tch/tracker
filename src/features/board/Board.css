@@ -856,6 +856,149 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
 }
 
+/* ---------- Note node (embedded notes editor) ---------- */
+.boardNoteNode {
+  border: 1px solid var(--border-color-dim);
+  background-color: var(--bg-color);
+  background-image: linear-gradient(var(--surface-03), var(--surface-03));
+  cursor: grab;
+  overflow: hidden;
+  color: var(--text-primary);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+  display: flex;
+  flex-direction: column;
+}
+
+.boardNoteEmbed {
+  width: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.boardNoteDragHandle {
+  flex: 0 0 auto;
+  height: 14px;
+  background: linear-gradient(
+    180deg,
+    var(--surface-12),
+    var(--surface-04)
+  );
+  border-bottom: 1px solid var(--border-color-dim);
+  cursor: grab;
+}
+
+.boardNoteDragHandle:active {
+  cursor: grabbing;
+}
+
+.boardNoteNode.selected .boardNoteDragHandle {
+  background: linear-gradient(
+    180deg,
+    rgba(96, 165, 250, 0.22),
+    rgba(96, 165, 250, 0.08)
+  );
+}
+
+/* The inner editor renders at its natural size and is scaled via
+   --board-note-scale so the user can grow/shrink the node freely without
+   the editor's font sizes collapsing. Mirrors the boardImportedTaskCard
+   pattern. */
+.boardNoteScaled {
+  width: calc(100% / var(--board-note-scale, 1));
+  height: calc(100% / var(--board-note-scale, 1));
+  transform: scale(var(--board-note-scale, 1));
+  transform-origin: top left;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Override the Notes-view padding (uses 4vw which is viewport-relative and
+   doesn't fit a fixed-size node) with consistent in-node spacing. */
+.boardNoteEditorInner.notesEditor {
+  flex: 1;
+  min-height: 0;
+  padding: 18px 26px 22px;
+  background:
+    linear-gradient(180deg, transparent 0%, var(--surface-015) 100%),
+    var(--bg-color);
+}
+
+.boardNoteEditorInner .notesTitleInput {
+  font-size: 28px;
+  line-height: 1.15;
+  padding: 0 0 14px;
+}
+
+.boardNoteEditorInner .notesRichEditor {
+  flex: 1;
+  min-height: 0;
+}
+
+.boardNoteEditorInner .notesFormatToolbar {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color-dim);
+}
+
+.boardNoteEditorInner .notesRulerWrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.boardNoteEditorInner .notesBodyInput {
+  padding: 14px 0;
+}
+
+.boardNoteMissing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px;
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.boardNoteMissing p {
+  margin: 0;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.boardNoteMissing span {
+  font-size: 11px;
+}
+
+.boardImportNoteRow {
+  align-items: center;
+  gap: 8px;
+}
+
+.boardImportNoteIcon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.boardImportNotePath {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
 .boardLinkNode.selected {
   border-color: var(--surface-50);
   box-shadow: 0 0 0 1px var(--surface-35), 0 8px 24px rgba(0, 0, 0, 0.28);

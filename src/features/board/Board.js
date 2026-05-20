@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Eraser,
   ExternalLink,
+  FileText,
   Frame as FrameIcon,
   Image as ImageIcon,
   Italic,
@@ -46,6 +47,15 @@ import { boardApi, mediaApi } from '@/lib/api';
 import { useDocumentSync } from '@/lib/sync/useDocumentSync';
 import TaskDetailModal from '@/features/tasks/components/TasksBoard/components/TaskDetailModal';
 import {
+  RichTextEditor as NotesRichTextEditor,
+  idbGetNotesTree,
+  idbPutNotesTree,
+  loadNotesTree,
+  findNoteNode,
+  updateNoteNode,
+  NotesNodeIcon,
+} from '@/features/notes';
+import {
   PRIORITY_META,
   PRIORITY_ORDER,
   STATUS_META,
@@ -56,6 +66,7 @@ import { buildUpdatePayload } from '@/features/tasks/utils/task-form.utils';
 import { formatShortDate, toIsoOrNull } from '@/features/tasks/utils/task-date.utils';
 import '@/features/tasks/components/TasksBoard/TasksBoard.css';
 import '@/features/tasks/components/TasksBoard/components/TasksListMobile.css';
+import '@/features/notes/Notes.css';
 import './Board.css';
 
 const STORAGE_KEY = 'board.state';
@@ -157,6 +168,8 @@ const DEFAULT_TASK_NODE_WIDTH = 280;
 const DEFAULT_TASK_NODE_HEIGHT = 92;
 const DEFAULT_TASK_DETAIL_WIDTH = 950;
 const DEFAULT_TASK_DETAIL_HEIGHT = 730;
+const DEFAULT_NOTE_NODE_WIDTH = 640;
+const DEFAULT_NOTE_NODE_HEIGHT = 840;
 const BOARD_TASK_CARD_VIEW_SETTINGS = {
   title: true,
   description: true,
@@ -1473,6 +1486,197 @@ function TaskImportPanel({
   );
 }
 
+/* ---------- Note node ----------
+   Embeds the full notes RichTextEditor inline so each board note has the
+   same authoring affordances as the Notes view. The outer wrapper acts as a
+   standard board node (drag, resize, multi-select, arrow target, clip-path);
+   the inner editor is scaled via --board-note-scale so it can be sized
+   freely without the toolbar/font controls collapsing. */
+function NoteNode({
+  node,
+  selected,
+  tool,
+  zoom,
+  arrowActive,
+  arrowActiveSide,
+  onPickAnchor,
+  registerRef,
+  onMouseDown,
+  onClick,
+  clipPath,
+  noteFile,
+  onUpdateNoteContent,
+  onUpdateNoteName,
+  onUploadImage,
+}) {
+  const width = node.w || DEFAULT_NOTE_NODE_WIDTH;
+  const height = node.h || DEFAULT_NOTE_NODE_HEIGHT;
+  const rawScale = Math.min(
+    width / DEFAULT_NOTE_NODE_WIDTH,
+    height / DEFAULT_NOTE_NODE_HEIGHT
+  );
+  const noteScale = Math.max(0.2, Math.min(6, Number.isFinite(rawScale) ? rawScale : 1));
+  const handleContentChange = useCallback(
+    (content) => onUpdateNoteContent(node.id, content),
+    [node.id, onUpdateNoteContent]
+  );
+  const handleNameChange = useCallback(
+    (event) => onUpdateNoteName(node.id, event.target.value),
+    [node.id, onUpdateNoteName]
+  );
+
+  /* Interactive children of the embedded editor stop the board drag/select
+     from hijacking their gestures. The dedicated drag strip at the top of
+     the node remains the place to grab and move the note. */
+  function handleInnerMouseDown(event) {
+    if (
+      event.target.closest(
+        'input, textarea, button, select, [contenteditable="true"], .customSelect, .salColorPickerBtn'
+      )
+    ) {
+      event.stopPropagation();
+    }
+  }
+
+  return (
+    <div
+      className={`boardNode boardNoteNode ${selected ? 'selected' : ''} ${tool === 'arrow' ? 'arrowTarget' : ''}`}
+      style={{
+        left: node.x,
+        top: node.y,
+        width,
+        height,
+        '--board-note-scale': noteScale,
+        transform: nodeTransform(node),
+        transformOrigin: 'center',
+        clipPath,
+      }}
+      ref={(el) => registerRef(node.id, el)}
+      onMouseDown={onMouseDown}
+      onClick={onClick}
+    >
+      {/* Top drag strip — clicking here always starts the board drag, since
+          everything below is interactive (title input, toolbar, editor
+          body). Without this the user has nowhere to grab the note. */}
+      <div
+        className="boardNoteDragHandle"
+        title="Drag to move"
+        aria-hidden="true"
+      />
+      <div className="boardNoteEmbed">
+        {noteFile ? (
+          <div
+            className="boardNoteScaled"
+            onMouseDown={handleInnerMouseDown}
+          >
+            {/* Mirror the Notes view layout exactly: the .notesEditor
+                wrapper provides the same padding + background gradient,
+                with the title input above and the RichTextEditor below. */}
+            <div className="notesEditor boardNoteEditorInner">
+              <input
+                className="notesTitleInput"
+                value={noteFile.name}
+                onChange={handleNameChange}
+                aria-label="Note title"
+              />
+              <NotesRichTextEditor
+                key={noteFile.id}
+                file={noteFile}
+                onChange={handleContentChange}
+                onUploadImage={onUploadImage}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="boardNoteMissing">
+            <p>Note not found</p>
+            <span>This note may have been deleted in the Notes view.</span>
+          </div>
+        )}
+      </div>
+      {tool === 'arrow' ? (
+        <AnchorHandles
+          active
+          activeSide={arrowActive ? arrowActiveSide : null}
+          zoom={zoom}
+          onPickSide={onPickAnchor}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/* Flatten the notes tree into a list of files, preserving folder paths for
+   display, so the picker can present a searchable list. */
+function flattenNoteFiles(nodes, parents = []) {
+  if (!Array.isArray(nodes)) return [];
+  const result = [];
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      result.push({
+        id: node.id,
+        name: node.name,
+        path: parents.join(' / '),
+        updatedAt: node.updatedAt,
+        icon: node.icon,
+      });
+    } else if (node.type === 'folder' && Array.isArray(node.children)) {
+      result.push(...flattenNoteFiles(node.children, [...parents, node.name]));
+    }
+  }
+  return result;
+}
+
+function NotesImportPanel({ files, query, onQueryChange, onImport, onRefresh }) {
+  return (
+    <div className="boardImportPanel" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="boardImportPanelHeader">
+        <div>
+          <strong>Import note</strong>
+          <span>{files.length} files</span>
+        </div>
+        <button
+          type="button"
+          className="boardImportIconBtn"
+          onClick={onRefresh}
+          title="Refresh notes"
+          aria-label="Refresh notes"
+        >
+          <RefreshCw size={14} />
+        </button>
+      </div>
+      <label className="boardImportSearch">
+        <Search size={14} />
+        <input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Search notes"
+        />
+      </label>
+      <div className="boardImportTaskList">
+        {files.length === 0 ? (
+          <div className="boardImportEmpty">No notes found</div>
+        ) : (
+          files.map((file) => (
+            <button
+              type="button"
+              key={file.id}
+              className="tasksMobileRow boardImportTaskRow boardImportNoteRow"
+              onClick={() => onImport(file.id)}
+            >
+              <span className="boardImportNoteIcon">
+                <NotesNodeIcon node={{ type: 'file', icon: file.icon, name: file.name }} />
+              </span>
+              <span className="tasksMobileRowTitle">{file.name}</span>
+              <span className="boardImportNotePath">{file.path || 'Root'}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Selection frame (resize + rotate handles) ----------
    Lives inside the surface, so it scales + rotates with the world. Each
    handle counter-scales (1/zoom) to stay a constant size on screen. */
@@ -2603,6 +2807,13 @@ export default function Board() {
   const [tasksError, setTasksError] = useState('');
   const [isTaskImportOpen, setIsTaskImportOpen] = useState(false);
   const [taskImportQuery, setTaskImportQuery] = useState('');
+  const [isNoteImportOpen, setIsNoteImportOpen] = useState(false);
+  const [noteImportQuery, setNoteImportQuery] = useState('');
+  const [notesTree, setNotesTree] = useState(() => loadNotesTree());
+  const notesTreeRef = useRef(notesTree);
+  useEffect(() => {
+    notesTreeRef.current = notesTree;
+  }, [notesTree]);
   const [expandedTaskNodeId, setExpandedTaskNodeId] = useState(null);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
@@ -2648,6 +2859,37 @@ export default function Board() {
         return `${task.title || ''} ${task.description || ''}`.toLowerCase().includes(search);
       });
   }, [taskImportQuery, tasks]);
+
+  /* Notes tree is owned by the Notes feature; the board keeps a local mirror
+     that's rehydrated from IndexedDB on mount and refreshed whenever the
+     import panel opens (covers the case where the user added a note in the
+     Notes view since this Board mounted). */
+  const refreshNotesTree = useCallback(() => {
+    idbGetNotesTree()
+      .then((stored) => {
+        if (Array.isArray(stored) && stored.length > 0) setNotesTree(stored);
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshNotesTree();
+  }, [refreshNotesTree]);
+  useEffect(() => {
+    if (isNoteImportOpen) refreshNotesTree();
+  }, [isNoteImportOpen, refreshNotesTree]);
+
+  const noteFiles = useMemo(() => flattenNoteFiles(notesTree), [notesTree]);
+  const filteredImportNotes = useMemo(() => {
+    const search = noteImportQuery.trim().toLowerCase();
+    if (!search) return noteFiles;
+    return noteFiles.filter((f) =>
+      `${f.name} ${f.path}`.toLowerCase().includes(search)
+    );
+  }, [noteImportQuery, noteFiles]);
+  const noteFileById = useCallback(
+    (id) => findNoteNode(notesTreeRef.current, id),
+    []
+  );
 
   const loadLocalFontOptions = useCallback(async () => {
     if (
@@ -2971,6 +3213,7 @@ export default function Board() {
       if (target && typeof target.closest === 'function') {
         if (
           target.closest('.boardTaskDetailEmbed') ||
+          target.closest('.boardNoteEmbed') ||
           target.closest('.customSelectList') ||
           target.closest('.tasksDatePopover') ||
           target.closest('.tasksTimeSelectDropdown') ||
@@ -3604,6 +3847,74 @@ export default function Board() {
     selectTool('select');
     setIsTaskImportOpen(false);
   }
+
+  /* Place a note from the notes filesystem onto the board. The default size
+     is vertical (taller than wide) and counter-scaled by the current zoom so
+     the node lands at a consistent on-screen size regardless of how far the
+     user has zoomed out. */
+  function addNoteNode(noteId) {
+    if (!noteId || !wrapperRef.current) return;
+    const file = findNoteNode(notesTreeRef.current, noteId);
+    if (!file || file.type !== 'file') return;
+    const zoom = Math.max(viewport.zoom || 1, 0.01);
+    const w = (DEFAULT_NOTE_NODE_WIDTH * 0.75) / zoom;
+    const h = (DEFAULT_NOTE_NODE_HEIGHT * 0.75) / zoom;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const center = screenToWorld(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2
+    );
+    const id = generateId();
+    setNodes((prev) => [
+      ...prev,
+      {
+        id,
+        type: 'note',
+        noteId,
+        x: center.x - w / 2,
+        y: center.y - h / 2,
+        w,
+        h,
+      },
+    ]);
+    selectNode(id);
+    selectTool('select');
+    setIsNoteImportOpen(false);
+  }
+
+  /* Edits made inside the embedded note editor flow back to the notes tree
+     and IDB so the Notes view sees the same content on next load. We update
+     local state immediately to keep the editor responsive and persist
+     asynchronously. */
+  const updateNoteContent = useCallback((boardNodeId, content) => {
+    const node = nodes.find((n) => n.id === boardNodeId);
+    if (!node || node.type !== 'note' || !node.noteId) return;
+    const noteId = node.noteId;
+    setNotesTree((current) => {
+      const next = updateNoteNode(current, noteId, (file) => ({
+        ...file,
+        content,
+        updatedAt: new Date().toISOString(),
+      }));
+      idbPutNotesTree(next).catch(() => {});
+      return next;
+    });
+  }, [nodes]);
+
+  const updateNoteName = useCallback((boardNodeId, name) => {
+    const node = nodes.find((n) => n.id === boardNodeId);
+    if (!node || node.type !== 'note' || !node.noteId) return;
+    const noteId = node.noteId;
+    setNotesTree((current) => {
+      const next = updateNoteNode(current, noteId, (file) => ({
+        ...file,
+        name,
+        updatedAt: new Date().toISOString(),
+      }));
+      idbPutNotesTree(next).catch(() => {});
+      return next;
+    });
+  }, [nodes]);
 
   const handleUpdateTask = useCallback(async (taskId, patch) => {
     const current = tasks.find((task) => task.id === taskId);
@@ -5033,6 +5344,20 @@ export default function Board() {
 
           <button
             type="button"
+            className={`boardToolBtn ${isNoteImportOpen ? 'active' : ''}`}
+            onClick={() => {
+              setIsNoteImportOpen((open) => !open);
+              setIsTaskImportOpen(false);
+              selectTool('select');
+            }}
+            title="Import note"
+            aria-label="Import note"
+          >
+            <FileText size={18} />
+          </button>
+
+          <button
+            type="button"
             className="boardToolBtn danger"
             onClick={removeSelected}
             disabled={
@@ -5112,6 +5437,16 @@ export default function Board() {
             onRefresh={loadTaskData}
             loading={tasksLoading}
             error={tasksError}
+          />
+        ) : null}
+
+        {isNoteImportOpen ? (
+          <NotesImportPanel
+            files={filteredImportNotes}
+            query={noteImportQuery}
+            onQueryChange={setNoteImportQuery}
+            onImport={addNoteNode}
+            onRefresh={refreshNotesTree}
           />
         ) : null}
 
@@ -5597,6 +5932,19 @@ export default function Board() {
 
               if (node.type === 'drawing') {
                 return <DrawingNode key={node.id} {...commonProps} />;
+              }
+
+              if (node.type === 'note') {
+                const noteFile = noteFileById(node.noteId);
+                return (
+                  <NoteNode
+                    key={node.id}
+                    {...commonProps}
+                    noteFile={noteFile && noteFile.type === 'file' ? noteFile : null}
+                    onUpdateNoteContent={updateNoteContent}
+                    onUpdateNoteName={updateNoteName}
+                  />
+                );
               }
 
               return <ImageNode key={node.id} {...commonProps} />;
