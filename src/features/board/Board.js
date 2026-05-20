@@ -433,6 +433,52 @@ function nodesInsideFrame(frame, nodes, bounds) {
   return nodes.filter((n) => frameContains(frame, n, bounds));
 }
 
+/* Smallest frame this node belongs to, used to clip overflow against the
+   frame edges. We match if the node's centre is inside the frame OR the
+   frame's centre is inside the node — the second case keeps the clip when
+   the frame has been resized down so far that the node now wraps around
+   the frame entirely (its centre has been pushed out one side). */
+function findContainingFrame(node, frames, bounds) {
+  const w = bounds[node.id]?.w ?? node.w ?? 100;
+  const h = bounds[node.id]?.h ?? node.h ?? 40;
+  const cx = node.x + w / 2;
+  const cy = node.y + h / 2;
+  let best = null;
+  let bestArea = Infinity;
+  for (const f of frames) {
+    const nodeCenterIn =
+      cx >= f.x && cx <= f.x + f.w && cy >= f.y && cy <= f.y + f.h;
+    const fcx = f.x + f.w / 2;
+    const fcy = f.y + f.h / 2;
+    const frameCenterIn =
+      fcx >= node.x &&
+      fcx <= node.x + w &&
+      fcy >= node.y &&
+      fcy <= node.y + h;
+    if (nodeCenterIn || frameCenterIn) {
+      const area = f.w * f.h;
+      if (area < bestArea) {
+        best = f;
+        bestArea = area;
+      }
+    }
+  }
+  return best;
+}
+
+function frameClipFor(node, frame, bounds) {
+  if (!frame) return undefined;
+  if (node.rotation) return undefined;
+  const w = bounds[node.id]?.w ?? node.w ?? 100;
+  const h = bounds[node.id]?.h ?? node.h ?? 40;
+  const top = Math.max(0, frame.y - node.y);
+  const right = Math.max(0, node.x + w - (frame.x + frame.w));
+  const bottom = Math.max(0, node.y + h - (frame.y + frame.h));
+  const left = Math.max(0, frame.x - node.x);
+  if (top === 0 && right === 0 && bottom === 0 && left === 0) return undefined;
+  return `inset(${top}px ${right}px ${bottom}px ${left}px)`;
+}
+
 function nodeTransform(node) {
   return node.rotation ? `rotate(${node.rotation}deg)` : undefined;
 }
@@ -640,6 +686,7 @@ function TextNode({
   onDoubleClick,
   onMouseDown,
   onClick,
+  clipPath,
 }) {
   const ref = useRef(null);
 
@@ -686,6 +733,7 @@ function TextNode({
         lineHeight: 1.3,
         transform: nodeTransform(node),
         transformOrigin: 'center',
+        clipPath,
       }}
       ref={(el) => registerRef(node.id, el)}
       onMouseDown={onMouseDown}
@@ -920,6 +968,7 @@ function DrawingNode({
   registerRef,
   onMouseDown,
   onClick,
+  clipPath,
 }) {
   const variant = node.variant || 'pen';
   const color = node.color || '#ffffff';
@@ -977,6 +1026,7 @@ function DrawingNode({
         height: node.h,
         transform: nodeTransform(node),
         transformOrigin: 'center',
+        clipPath,
       }}
       ref={(el) => registerRef(node.id, el)}
       onMouseDown={onMouseDown}
@@ -1032,6 +1082,7 @@ function ImageNode({
   registerRef,
   onMouseDown,
   onClick,
+  clipPath,
 }) {
   return (
     <div
@@ -1043,6 +1094,7 @@ function ImageNode({
         height: node.h,
         transform: nodeTransform(node),
         transformOrigin: 'center',
+        clipPath,
       }}
       ref={(el) => registerRef(node.id, el)}
       onMouseDown={onMouseDown}
@@ -1072,6 +1124,7 @@ function LinkNode({
   registerRef,
   onMouseDown,
   onClick,
+  clipPath,
 }) {
   const preview = getLinkPreview(node.href || node.url || node.content || '');
   const width = node.w || DEFAULT_LINK_PREVIEW_WIDTH;
@@ -1092,6 +1145,7 @@ function LinkNode({
         '--board-link-scale': scale,
         transform: nodeTransform(node),
         transformOrigin: 'center',
+        clipPath,
       }}
       ref={(el) => registerRef(node.id, el)}
       onMouseDown={onMouseDown}
@@ -1230,6 +1284,7 @@ function TaskNode({
   onCreateSubtask,
   onDeleteSubtask,
   onOpenTask,
+  clipPath,
 }) {
   const width = expanded
     ? (node.detailW || DEFAULT_TASK_DETAIL_WIDTH)
@@ -1274,6 +1329,7 @@ function TaskNode({
         '--board-task-scale': taskScale,
         transform: nodeTransform(node),
         transformOrigin: 'center',
+        clipPath,
       }}
       ref={(el) => registerRef(node.id, el)}
       onMouseDown={handleMouseDown}
@@ -4493,6 +4549,55 @@ export default function Board() {
     const dir = HANDLE_DIRS[handleId];
     const alignmentTargets = frames;
 
+    /* Items inside the frame at resize-start must stay inside as the frame
+       shrinks — if an edge is about to cross them, they get pushed in. Their
+       size doesn't change. If they don't fit, they stick to the edge opposite
+       the one being dragged so the overflow happens on the far side from the
+       user's cursor. */
+    const memberSizes = new Map();
+    nodesInsideFrame(frame, nodes, nodeBounds).forEach((n) => {
+      const size = nodeSize(n, nodeBounds);
+      memberSizes.set(n.id, { kind: 'node', w: size.w, h: size.h });
+    });
+    frames.forEach((f) => {
+      if (f.id === frame.id) return;
+      const cx = f.x + f.w / 2;
+      const cy = f.y + f.h / 2;
+      const inside =
+        cx >= start.x &&
+        cx <= start.x + start.w &&
+        cy >= start.y &&
+        cy <= start.y + start.h;
+      if (inside) memberSizes.set(f.id, { kind: 'frame', w: f.w, h: f.h });
+    });
+
+    /* Track each member's current position across the gesture so once a
+       shrinking edge has pushed it inward, it stays put even if the edge
+       later moves back out — it doesn't snap to its original spot. */
+    const memberPos = new Map();
+
+    function constrainPos(curX, curY, m, bounds) {
+      const left = bounds.x;
+      const right = bounds.x + bounds.w;
+      const top = bounds.y;
+      const bottom = bounds.y + bounds.h;
+      let nx = curX;
+      let ny = curY;
+      if (m.w >= bounds.w) {
+        nx = dir.sx === -1 ? right - m.w : left;
+      } else {
+        if (nx < left) nx = left;
+        if (nx + m.w > right) nx = right - m.w;
+      }
+      if (m.h >= bounds.h) {
+        ny = dir.sy === -1 ? bottom - m.h : top;
+      } else {
+        if (ny < top) ny = top;
+        if (ny + m.h > bottom) ny = bottom - m.h;
+      }
+      return { x: nx, y: ny };
+    }
+
     function onMove(ev) {
       const world = screenToWorld(ev.clientX, ev.clientY);
       const dx = world.x - startWorld.x;
@@ -4527,10 +4632,30 @@ export default function Board() {
         vertical: aligned.vertical,
         horizontal: aligned.horizontal,
       });
+
       setFrames((prev) =>
-        prev.map((f) =>
-          f.id === frame.id ? { ...f, ...finalNext } : f
-        )
+        prev.map((f) => {
+          if (f.id === frame.id) return { ...f, ...finalNext };
+          const m = memberSizes.get(f.id);
+          if (!m || m.kind !== 'frame') return f;
+          const cur = memberPos.get(f.id) || { x: f.x, y: f.y };
+          const next = constrainPos(cur.x, cur.y, m, finalNext);
+          memberPos.set(f.id, next);
+          if (next.x === f.x && next.y === f.y) return f;
+          return { ...f, x: next.x, y: next.y };
+        })
+      );
+
+      setNodes((prev) =>
+        prev.map((n) => {
+          const m = memberSizes.get(n.id);
+          if (!m || m.kind !== 'node') return n;
+          const cur = memberPos.get(n.id) || { x: n.x, y: n.y };
+          const next = constrainPos(cur.x, cur.y, m, finalNext);
+          memberPos.set(n.id, next);
+          if (next.x === n.x && next.y === n.y) return n;
+          return { ...n, x: next.x, y: next.y };
+        })
       );
     }
     function onUp() {
@@ -5371,6 +5496,8 @@ export default function Board() {
                 selectedId === node.id ||
                 arrowSourceId === node.id;
               const arrowActive = arrowSource?.id === node.id;
+              const containingFrame = findContainingFrame(node, frames, nodeBounds);
+              const clipPath = frameClipFor(node, containingFrame, nodeBounds);
               const commonProps = {
                 node,
                 selected,
@@ -5382,6 +5509,7 @@ export default function Board() {
                 registerRef: registerNodeRef,
                 onClick: (e) => handleNodeClick(e, node),
                 onMouseDown: (e) => handleNodeMouseDown(e, node),
+                clipPath,
               };
 
               if (node.type === 'text') {
