@@ -1608,32 +1608,129 @@ function NoteNode({
 
 /* Flatten the notes tree into a list of files, preserving folder paths for
    display, so the picker can present a searchable list. */
-function flattenNoteFiles(nodes, parents = []) {
-  if (!Array.isArray(nodes)) return [];
-  const result = [];
+function countNoteFiles(nodes) {
+  if (!Array.isArray(nodes)) return 0;
+  let n = 0;
   for (const node of nodes) {
-    if (node.type === 'file') {
-      result.push({
-        id: node.id,
-        name: node.name,
-        path: parents.join(' / '),
-        updatedAt: node.updatedAt,
-        icon: node.icon,
-      });
-    } else if (node.type === 'folder' && Array.isArray(node.children)) {
-      result.push(...flattenNoteFiles(node.children, [...parents, node.name]));
+    if (node.type === 'file') n += 1;
+    else if (node.type === 'folder' && Array.isArray(node.children)) {
+      n += countNoteFiles(node.children);
     }
   }
-  return result;
+  return n;
 }
 
-function NotesImportPanel({ files, query, onQueryChange, onImport, onRefresh }) {
+/* Trim the tree to nodes whose name (or descendants' names) match the search.
+   Folders are kept if any descendant matches so the surrounding context shows
+   up; non-matching siblings are dropped. */
+function filterNoteTree(nodes, query) {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed || !Array.isArray(nodes)) return nodes || [];
+  const walk = (items) => {
+    const result = [];
+    for (const node of items) {
+      const nameMatches = (node.name || '').toLowerCase().includes(trimmed);
+      if (node.type === 'file') {
+        if (nameMatches) result.push(node);
+      } else if (node.type === 'folder') {
+        const children = walk(node.children || []);
+        if (nameMatches || children.length > 0) {
+          result.push({ ...node, children });
+        }
+      }
+    }
+    return result;
+  };
+  return walk(nodes);
+}
+
+/* Recursive row used inside the picker. Folders toggle expansion; files
+   commit the import. Depth drives the indent so the visual hierarchy reads
+   like the Notes sidebar. */
+function NoteImportTreeNode({ node, depth, openFolders, onToggle, onImport, forceOpen }) {
+  if (node.type === 'file') {
+    return (
+      <button
+        type="button"
+        className="boardImportNotePickerRow boardImportNotePickerFile"
+        style={{ '--notes-import-depth': depth }}
+        onClick={() => onImport(node.id)}
+      >
+        <span className="boardImportNotePickerChevron" />
+        <span className="boardImportNoteIcon">
+          <NotesNodeIcon node={node} />
+        </span>
+        <span className="boardImportNotePickerLabel">{node.name}</span>
+      </button>
+    );
+  }
+  const isOpen = forceOpen || openFolders.has(node.id);
+  const children = Array.isArray(node.children) ? node.children : [];
+  return (
+    <>
+      <button
+        type="button"
+        className="boardImportNotePickerRow boardImportNotePickerFolder"
+        style={{ '--notes-import-depth': depth }}
+        onClick={() => onToggle(node.id)}
+        aria-expanded={isOpen}
+      >
+        <span className={`boardImportNotePickerChevron ${isOpen ? 'open' : ''}`}>
+          <ChevronRight size={12} strokeWidth={1.7} />
+        </span>
+        <span className="boardImportNoteIcon">
+          <NotesNodeIcon node={node} />
+        </span>
+        <span className="boardImportNotePickerLabel">{node.name}</span>
+        <span className="boardImportNotePickerCount">{countNoteFiles(children)}</span>
+      </button>
+      {isOpen
+        ? children.map((child) => (
+            <NoteImportTreeNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              openFolders={openFolders}
+              onToggle={onToggle}
+              onImport={onImport}
+              forceOpen={forceOpen}
+            />
+          ))
+        : null}
+    </>
+  );
+}
+
+function NotesImportPanel({ tree, query, onQueryChange, onImport, onRefresh }) {
+  const totalFiles = useMemo(() => countNoteFiles(tree), [tree]);
+  const visibleTree = useMemo(() => filterNoteTree(tree, query), [tree, query]);
+  const [openFolders, setOpenFolders] = useState(() => {
+    /* Default-expand top-level folders so the user immediately sees their
+       structure without an extra click. */
+    const set = new Set();
+    (tree || []).forEach((node) => {
+      if (node.type === 'folder') set.add(node.id);
+    });
+    return set;
+  });
+  const toggleFolder = useCallback((id) => {
+    setOpenFolders((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const searching = query.trim().length > 0;
+  /* When searching, force every folder open so matches aren't hidden. */
+  const forceOpen = searching;
+
   return (
     <div className="boardImportPanel" onMouseDown={(event) => event.stopPropagation()}>
       <div className="boardImportPanelHeader">
         <div>
           <strong>Import note</strong>
-          <span>{files.length} files</span>
+          <span>{totalFiles} files</span>
         </div>
         <button
           type="button"
@@ -1653,23 +1750,20 @@ function NotesImportPanel({ files, query, onQueryChange, onImport, onRefresh }) 
           placeholder="Search notes"
         />
       </label>
-      <div className="boardImportTaskList">
-        {files.length === 0 ? (
+      <div className="boardImportTaskList boardImportNotePicker">
+        {visibleTree.length === 0 ? (
           <div className="boardImportEmpty">No notes found</div>
         ) : (
-          files.map((file) => (
-            <button
-              type="button"
-              key={file.id}
-              className="tasksMobileRow boardImportTaskRow boardImportNoteRow"
-              onClick={() => onImport(file.id)}
-            >
-              <span className="boardImportNoteIcon">
-                <NotesNodeIcon node={{ type: 'file', icon: file.icon, name: file.name }} />
-              </span>
-              <span className="tasksMobileRowTitle">{file.name}</span>
-              <span className="boardImportNotePath">{file.path || 'Root'}</span>
-            </button>
+          visibleTree.map((node) => (
+            <NoteImportTreeNode
+              key={node.id}
+              node={node}
+              depth={0}
+              openFolders={openFolders}
+              onToggle={toggleFolder}
+              onImport={onImport}
+              forceOpen={forceOpen}
+            />
           ))
         )}
       </div>
@@ -2878,14 +2972,6 @@ export default function Board() {
     if (isNoteImportOpen) refreshNotesTree();
   }, [isNoteImportOpen, refreshNotesTree]);
 
-  const noteFiles = useMemo(() => flattenNoteFiles(notesTree), [notesTree]);
-  const filteredImportNotes = useMemo(() => {
-    const search = noteImportQuery.trim().toLowerCase();
-    if (!search) return noteFiles;
-    return noteFiles.filter((f) =>
-      `${f.name} ${f.path}`.toLowerCase().includes(search)
-    );
-  }, [noteImportQuery, noteFiles]);
   const noteFileById = useCallback(
     (id) => findNoteNode(notesTreeRef.current, id),
     []
@@ -5442,7 +5528,7 @@ export default function Board() {
 
         {isNoteImportOpen ? (
           <NotesImportPanel
-            files={filteredImportNotes}
+            tree={notesTree}
             query={noteImportQuery}
             onQueryChange={setNoteImportQuery}
             onImport={addNoteNode}
