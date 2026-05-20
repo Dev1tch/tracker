@@ -4080,7 +4080,7 @@ export default function Board() {
         node,
         next,
         handleId,
-        nodes,
+        [...nodes, ...frames],
         nodeBounds,
         ALIGN_GUIDE_TOLERANCE_PX / viewport.zoom
       );
@@ -4163,19 +4163,56 @@ export default function Board() {
       const start = screenToWorld(e.clientX, e.clientY);
       setFrameDraft({ x1: start.x, y1: start.y, x2: start.x, y2: start.y });
 
+      /* Snap the moving corner against nearby nodes + frames so the user can
+         line up the new frame with existing elements during creation. The
+         start corner is fixed; only the cursor corner snaps — same idea as a
+         corner resize, so we reuse getResizeAlignment with the matching
+         corner handle. */
+      function computeSnap(cur) {
+        if (cur.x === start.x && cur.y === start.y) {
+          return { next: { x: start.x, y: start.y, w: 0, h: 0 }, vertical: [], horizontal: [] };
+        }
+        const sxDir = cur.x >= start.x ? 1 : -1;
+        const syDir = cur.y >= start.y ? 1 : -1;
+        const handleId =
+          sxDir > 0 ? (syDir > 0 ? 'br' : 'tr') : syDir > 0 ? 'bl' : 'tl';
+        const minX = Math.min(start.x, cur.x);
+        const minY = Math.min(start.y, cur.y);
+        const w = Math.abs(cur.x - start.x);
+        const h = Math.abs(cur.y - start.y);
+        return getResizeAlignment(
+          { id: '__frame_draft__' },
+          { x: minX, y: minY, w, h },
+          handleId,
+          [...frames, ...nodes],
+          nodeBounds,
+          ALIGN_GUIDE_TOLERANCE_PX / viewport.zoom,
+          0
+        );
+      }
+
       function onFrameMove(ev) {
         const cur = screenToWorld(ev.clientX, ev.clientY);
-        setFrameDraft({ x1: start.x, y1: start.y, x2: cur.x, y2: cur.y });
+        const aligned = computeSnap(cur);
+        setAlignmentGuides({
+          vertical: aligned.vertical,
+          horizontal: aligned.horizontal,
+        });
+        setFrameDraft({
+          x1: aligned.next.x,
+          y1: aligned.next.y,
+          x2: aligned.next.x + aligned.next.w,
+          y2: aligned.next.y + aligned.next.h,
+        });
       }
       function onFrameUp(ev) {
         window.removeEventListener('mousemove', onFrameMove);
         window.removeEventListener('mouseup', onFrameUp);
         setFrameDraft(null);
         const end = screenToWorld(ev.clientX, ev.clientY);
-        const x = Math.min(start.x, end.x);
-        const y = Math.min(start.y, end.y);
-        const w = Math.abs(end.x - start.x);
-        const h = Math.abs(end.y - start.y);
+        const aligned = computeSnap(end);
+        setAlignmentGuides({ vertical: [], horizontal: [] });
+        const { x, y, w, h } = aligned.next;
         if (w < MIN_FRAME_SIZE || h < MIN_FRAME_SIZE) return;
         const id = generateId();
         const color = FRAME_COLORS[frames.length % FRAME_COLORS.length];
@@ -4491,7 +4528,7 @@ export default function Board() {
     const nodeStarts = nodes
       .filter((item) => nodeGroupIds.has(item.id))
       .map((item) => ({ id: item.id, x: item.x, y: item.y }));
-    const alignmentTargets = frames;
+    const alignmentTargets = [...frames, ...nodes];
     let moved = false;
 
     function onMove(ev) {
@@ -4547,7 +4584,7 @@ export default function Board() {
     const start = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
     const startWorld = screenToWorld(e.clientX, e.clientY);
     const dir = HANDLE_DIRS[handleId];
-    const alignmentTargets = frames;
+    const alignmentTargets = [...frames, ...nodes];
 
     /* Items inside the frame at resize-start must stay inside as the frame
        shrinks — if an edge is about to cross them, they get pushed in. Their
@@ -4777,7 +4814,7 @@ export default function Board() {
         node,
         nextX,
         nextY,
-        nodes,
+        [...nodes, ...frames],
         nodeBounds,
         ALIGN_GUIDE_TOLERANCE_PX / zoomAtStart
       );
