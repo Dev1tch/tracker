@@ -605,10 +605,66 @@ function isFolderId(nodes, id) {
   return findNode(nodes, id)?.type === 'folder';
 }
 
+function findParentId(nodes, id, parentId = null) {
+  for (const node of nodes) {
+    if (node.id === id) return parentId;
+    if (node.type === 'folder') {
+      const found = findParentId(node.children, id, node.id);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
 function getTargetFolderId(nodes, selectedId) {
   const selected = findNode(nodes, selectedId);
   if (!selected) return null;
-  return selected.type === 'folder' ? selected.id : null;
+  if (selected.type === 'folder') return selected.id;
+  // File selected: create siblings next to it inside its parent folder.
+  const parent = findParentId(nodes, selectedId);
+  return parent ?? null;
+}
+
+function removeNodeReturn(nodes, id) {
+  let removed = null;
+  function strip(items) {
+    const out = [];
+    for (const node of items) {
+      if (node.id === id) {
+        removed = node;
+        continue;
+      }
+      if (node.type === 'folder') {
+        out.push({ ...node, children: strip(node.children) });
+      } else {
+        out.push(node);
+      }
+    }
+    return out;
+  }
+  const next = strip(nodes);
+  return { tree: next, removed };
+}
+
+function isDescendant(nodes, ancestorId, descendantId) {
+  const ancestor = findNode(nodes, ancestorId);
+  if (!ancestor || ancestor.type !== 'folder') return false;
+  return !!findNode(ancestor.children, descendantId);
+}
+
+function moveNode(nodes, draggedId, targetFolderId) {
+  if (!draggedId) return nodes;
+  if (draggedId === targetFolderId) return nodes;
+  if (targetFolderId && isDescendant(nodes, draggedId, targetFolderId)) return nodes;
+  const currentParent = findParentId(nodes, draggedId);
+  if (currentParent === undefined) return nodes;
+  if ((currentParent ?? null) === (targetFolderId ?? null)) return nodes;
+  const { tree: stripped, removed } = removeNodeReturn(nodes, draggedId);
+  if (!removed) return nodes;
+  return addChild(stripped, targetFolderId, {
+    ...removed,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 function updateNode(nodes, id, updater) {
@@ -690,6 +746,20 @@ function filterTree(nodes, query) {
     }
     return matches;
   }, []);
+}
+
+/* Alphabetical (case-insensitive, locale-aware) ordering at every level.
+   Folders come before files at the same depth — matches the standard file
+   manager convention so containers don't get lost between leaf items. */
+function sortTree(nodes) {
+  const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+  const sorted = [...nodes].sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    return collator.compare(a.name, b.name);
+  });
+  return sorted.map((node) =>
+    node.type === 'folder' ? { ...node, children: sortTree(node.children) } : node
+  );
 }
 
 function countTree(nodes) {
@@ -1816,11 +1886,17 @@ function TreeNode({
   onCancelRename,
   onOpenIconPicker,
   onDelete,
+  onMoveNode,
+  dragOverId,
+  onDragOverNode,
+  onDragLeaveNode,
+  onDragEnd,
 }) {
   const isFolder = node.type === 'folder';
   const isOpen = openFolders.has(node.id);
   const isSelected = selectedId === node.id;
   const isEditing = editingId === node.id;
+  const isDragOver = dragOverId === node.id;
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -1849,10 +1925,39 @@ function TreeNode({
       <div
         role="button"
         tabIndex={0}
-        className={`notesTreeItem ${isSelected ? 'active' : ''}`}
+        className={`notesTreeItem ${isSelected ? 'active' : ''} ${isDragOver ? 'dragOver' : ''}`}
         style={{ '--notes-depth': depth }}
         onClick={() => onSelect(node.id)}
         onKeyDown={handleRowKeyDown}
+        draggable={!isEditing}
+        onDragStart={(event) => {
+          event.stopPropagation();
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/x-notes-id', node.id);
+          event.dataTransfer.setData('text/plain', node.name);
+        }}
+        onDragEnd={onDragEnd}
+        onDragOver={(event) => {
+          if (!isFolder) return;
+          event.preventDefault();
+          event.stopPropagation();
+          event.dataTransfer.dropEffect = 'move';
+          onDragOverNode(node.id);
+        }}
+        onDragLeave={(event) => {
+          if (!isFolder) return;
+          event.stopPropagation();
+          onDragLeaveNode(node.id);
+        }}
+        onDrop={(event) => {
+          if (!isFolder) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const draggedId = event.dataTransfer.getData('text/x-notes-id');
+          onDragLeaveNode(node.id);
+          if (!draggedId || draggedId === node.id) return;
+          onMoveNode(draggedId, node.id);
+        }}
       >
         <span
           className={`notesTreeChevron ${isFolder && isOpen ? 'open' : ''}`}
@@ -1965,6 +2070,11 @@ function TreeNode({
               onCancelRename={onCancelRename}
               onOpenIconPicker={onOpenIconPicker}
               onDelete={onDelete}
+              onMoveNode={onMoveNode}
+              dragOverId={dragOverId}
+              onDragOverNode={onDragOverNode}
+              onDragLeaveNode={onDragLeaveNode}
+              onDragEnd={onDragEnd}
             />
           ))}
         </div>
@@ -1981,13 +2091,19 @@ export default function Notes() {
   const [editing, setEditing] = useState(null);
   const [iconPicker, setIconPicker] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+  const handleDragOverNode = useCallback((id) => setDragOverId(id), []);
+  const handleDragLeaveNode = useCallback((id) => {
+    setDragOverId((cur) => (cur === id ? null : cur));
+  }, []);
+  const handleDragEnd = useCallback(() => setDragOverId(null), []);
 
   const selectedNode = useMemo(() => findNode(tree, selectedId), [tree, selectedId]);
   const selectedFile = selectedNode?.type === 'file' ? selectedNode : null;
   const iconPickerNode = useMemo(() => findNode(tree, iconPicker?.nodeId), [iconPicker?.nodeId, tree]);
   const iconPickerNodeId = iconPicker?.nodeId || null;
   const pendingDeleteNode = useMemo(() => findNode(tree, pendingDeleteId), [pendingDeleteId, tree]);
-  const visibleTree = useMemo(() => filterTree(tree, query), [tree, query]);
+  const visibleTree = useMemo(() => sortTree(filterTree(tree, query)), [tree, query]);
   const treeCounts = useMemo(() => countTree(tree), [tree]);
 
   /* IndexedDB is the authoritative *local* cache. localStorage caps out
@@ -2245,6 +2361,13 @@ export default function Notes() {
     setOpenFolders((current) => new Set([...current, folder.id, ...(folderId ? [folderId] : [])]));
   }, [selectedId, tree]);
 
+  const moveNodeTo = useCallback((draggedId, targetFolderId) => {
+    setTree((current) => moveNode(current, draggedId, targetFolderId));
+    if (targetFolderId) {
+      setOpenFolders((current) => new Set([...current, targetFolderId]));
+    }
+  }, []);
+
   const startRename = useCallback((id) => {
     const node = findNode(tree, id);
     if (!node) return;
@@ -2343,7 +2466,27 @@ export default function Notes() {
           />
         </label>
 
-        <div className="notesTree" aria-label="File system">
+        <div
+          className={`notesTree ${dragOverId === '__root__' ? 'dragOverRoot' : ''}`}
+          aria-label="File system"
+          onDragOver={(event) => {
+            if (!event.dataTransfer.types.includes('text/x-notes-id')) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            setDragOverId('__root__');
+          }}
+          onDragLeave={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget)) return;
+            setDragOverId((cur) => (cur === '__root__' ? null : cur));
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const draggedId = event.dataTransfer.getData('text/x-notes-id');
+            setDragOverId(null);
+            if (!draggedId) return;
+            moveNodeTo(draggedId, null);
+          }}
+        >
           {visibleTree.length > 0 ? (
             visibleTree.map((node) => (
               <TreeNode
@@ -2363,6 +2506,11 @@ export default function Notes() {
                 onCancelRename={cancelRename}
                 onOpenIconPicker={(nodeId, anchorRect) => setIconPicker({ nodeId, anchorRect })}
                 onDelete={requestDeleteNode}
+                onMoveNode={moveNodeTo}
+                dragOverId={dragOverId}
+                onDragOverNode={handleDragOverNode}
+                onDragLeaveNode={handleDragLeaveNode}
+                onDragEnd={handleDragEnd}
               />
             ))
           ) : (
