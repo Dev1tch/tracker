@@ -5097,9 +5097,12 @@ export default function Board() {
         >
           <div
             ref={surfaceRef}
-            className="boardSurface"
+            className={`boardSurface${
+              selectedIds.size + selectedFrameIds.size > 1 ? ' multiSelectActive' : ''
+            }`}
             style={{
               transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+              '--board-zoom': viewport.zoom,
             }}
           >
             {/* Frames render behind everything else so they read as a

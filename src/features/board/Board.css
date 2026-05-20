@@ -535,8 +535,10 @@
 }
 
 .boardFrame.selected {
-  box-shadow: 0 0 0 1px var(--frame-color, #f87171),
-              0 0 12px color-mix(in srgb, var(--frame-color, #f87171) 40%, transparent);
+  outline: calc(2px / var(--board-zoom, 1)) solid var(--frame-color, #f87171);
+  outline-offset: calc(2px / var(--board-zoom, 1));
+  box-shadow: 0 0 calc(18px / var(--board-zoom, 1))
+              color-mix(in srgb, var(--frame-color, #f87171) 45%, transparent);
 }
 
 .boardFrameLabel {
@@ -629,11 +631,17 @@
   z-index: 2;
   user-select: none;
   box-sizing: border-box;
-  transition: box-shadow 120ms ease, border-color 120ms ease;
+  transition: box-shadow 120ms ease, border-color 120ms ease, outline-color 120ms ease;
 }
 
-.boardNode.selected {
-  box-shadow: 0 0 0 1px var(--surface-40), 0 0 0 4px rgba(255, 255, 255, 0.06);
+/* In single-select the SelectionFrame already draws an outline + handles,
+   so we don't add a competing ring here. Only show the per-node blue ring
+   when multi-select is active (SelectionFrame is hidden in that mode). */
+.boardSurface.multiSelectActive .boardNode.selected {
+  /* Counter-scale the ring so it stays visible at any zoom level. */
+  outline: calc(1.5px / var(--board-zoom, 1)) solid #60a5fa;
+  outline-offset: calc(2px / var(--board-zoom, 1));
+  box-shadow: 0 0 calc(18px / var(--board-zoom, 1)) rgba(96, 165, 250, 0.32);
 }
 
 .boardNode.arrowTarget,
@@ -853,6 +861,13 @@
   box-shadow: 0 0 0 1px var(--surface-35), 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
+.boardSurface.multiSelectActive .boardLinkNode.selected {
+  border-color: #60a5fa;
+  box-shadow:
+    0 0 calc(18px / var(--board-zoom, 1)) rgba(96, 165, 250, 0.32),
+    0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
 .boardLinkPreviewTop {
   display: flex;
   align-items: center;
@@ -986,6 +1001,13 @@
 .boardTaskNode.selected .boardImportedTaskCard {
   border-color: var(--surface-50);
   box-shadow: 0 0 0 1px var(--surface-35), 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.boardSurface.multiSelectActive .boardTaskNode.selected .boardImportedTaskCard {
+  border-color: #60a5fa;
+  box-shadow:
+    0 0 calc(18px / var(--board-zoom, 1)) rgba(96, 165, 250, 0.32),
+    0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
 .boardTaskMissing p {
