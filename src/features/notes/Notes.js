@@ -254,7 +254,9 @@ const NOTE_FONT_SIZE_SELECT_OPTIONS = NOTE_FONT_SIZE_OPTIONS.map((size) => ({
 }));
 const NOTES_EDITOR_WIDTH_STORAGE_KEY = 'notes.editorWidth';
 const NOTES_EDITOR_WIDTH_MIN = 520;
-const NOTES_EDITOR_WIDTH_MAX = 1520;
+/* Persistence ceiling only — the runtime max comes from the editor
+   container's measured width so the ruler adapts to the screen. */
+const NOTES_EDITOR_WIDTH_MAX = 6000;
 const NOTES_EDITOR_WIDTH_DEFAULT = 820;
 const NOTE_FONT_OPTIONS = [
   { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -994,6 +996,7 @@ function DeleteConfirmDialog({ node, onCancel, onConfirm }) {
 
 function RichTextEditor({ file, onChange, onUploadImage }) {
   const editorRef = useRef(null);
+  const editorRootRef = useRef(null);
   const selectionRef = useRef(null);
   const writingWidthRef = useRef(null);
   const rulerDragRef = useRef(null);
@@ -1011,22 +1014,49 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
   const [fontFamily, setFontFamily] = useState(NOTE_FONT_OPTIONS[0].value);
   const [fontSize, setFontSize] = useState('15');
   const [writingWidth, setWritingWidth] = useState(loadEditorWidth);
+  /* Runtime ceiling driven by the editor's measured width — lets the ruler
+     expand on wide screens and shrink with the window instead of being
+     pinned at a hardcoded 1520 px. */
+  const [dynamicMax, setDynamicMax] = useState(NOTES_EDITOR_WIDTH_MAX);
   const modifiedLabel = formatModifiedDate(file.updatedAt);
   const rulerSpanPercent = Math.max(
     0,
-    Math.min(100, (writingWidth / NOTES_EDITOR_WIDTH_MAX) * 100)
+    Math.min(100, (writingWidth / Math.max(dynamicMax, NOTES_EDITOR_WIDTH_MIN)) * 100)
   );
 
   useEffect(() => {
     writingWidthRef.current = writingWidth;
   }, [writingWidth]);
 
+  useEffect(() => {
+    const el = editorRootRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setDynamicMax(Math.max(NOTES_EDITOR_WIDTH_MIN, Math.round(w)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /* When the available width shrinks (e.g., window resized smaller) clamp
+     the user's saved writingWidth so the page indicator doesn't overflow. */
+  useEffect(() => {
+    if (writingWidth > dynamicMax) {
+      const next = Math.max(NOTES_EDITOR_WIDTH_MIN, dynamicMax);
+      setWritingWidth(next);
+      writingWidthRef.current = next;
+    }
+  }, [dynamicMax, writingWidth]);
+
   const normalizeWritingWidth = useCallback((value) => (
     Math.max(
       NOTES_EDITOR_WIDTH_MIN,
-      Math.min(NOTES_EDITOR_WIDTH_MAX, Number.parseInt(value, 10) || NOTES_EDITOR_WIDTH_DEFAULT)
+      Math.min(dynamicMax, Number.parseInt(value, 10) || NOTES_EDITOR_WIDTH_DEFAULT)
     )
-  ), []);
+  ), [dynamicMax]);
 
   const changeWritingWidth = useCallback((value, { persist = true } = {}) => {
     const next = normalizeWritingWidth(value);
@@ -1636,7 +1666,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
   }, [redo, undo]);
 
   return (
-    <div className="notesRichEditor">
+    <div className="notesRichEditor" ref={editorRootRef}>
       <div className="notesFormatToolbar" aria-label="Text formatting">
         <button
           type="button"
@@ -1821,7 +1851,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
                 tabIndex={0}
                 aria-label="Adjust left page edge"
                 aria-valuemin={NOTES_EDITOR_WIDTH_MIN}
-                aria-valuemax={NOTES_EDITOR_WIDTH_MAX}
+                aria-valuemax={dynamicMax}
                 aria-valuenow={writingWidth}
                 onPointerDown={(event) => handleRulerPointerDown(event, 'left')}
               />
@@ -1831,7 +1861,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
                 tabIndex={0}
                 aria-label="Adjust right page edge"
                 aria-valuemin={NOTES_EDITOR_WIDTH_MIN}
-                aria-valuemax={NOTES_EDITOR_WIDTH_MAX}
+                aria-valuemax={dynamicMax}
                 aria-valuenow={writingWidth}
                 onPointerDown={(event) => handleRulerPointerDown(event, 'right')}
               />
@@ -1840,7 +1870,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
               className="notesRulerInput"
               type="range"
               min={NOTES_EDITOR_WIDTH_MIN}
-              max={NOTES_EDITOR_WIDTH_MAX}
+              max={dynamicMax}
               step="20"
               value={writingWidth}
               onChange={(event) => changeWritingWidth(event.target.value)}
