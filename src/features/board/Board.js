@@ -5955,7 +5955,14 @@ export default function Board() {
                 arrowSourceId === node.id;
               const arrowActive = arrowSource?.id === node.id;
               const containingFrame = findContainingFrame(node, frames, nodeBounds);
-              const clipPath = frameClipFor(node, containingFrame, nodeBounds);
+              /* Suspend the frame clip while the node itself is selected so
+                 the user can see the whole node (resize handles, edges) even
+                 when it doesn't fit inside the frame anymore. The frame's
+                 own selection visuals (when it's the frame that's selected)
+                 are unaffected. */
+              const clipPath = selected
+                ? undefined
+                : frameClipFor(node, containingFrame, nodeBounds);
               const commonProps = {
                 node,
                 selected,
