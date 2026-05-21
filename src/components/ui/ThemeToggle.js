@@ -87,7 +87,15 @@ export default function ThemeToggle({
     function handleOutside(event) {
       const inWrapper = wrapperRef.current?.contains(event.target);
       const inPopover = popoverRef.current?.contains(event.target);
-      if (!inWrapper && !inPopover) {
+      /* The inner ColorPicker portal-mounts its popover to document.body, so
+         it isn't a descendant of popoverRef. Without this check, clicking a
+         remembered swatch inside the ColorPicker would close the whole theme
+         popover before the swatch click could register — the user only ever
+         got to define a new color, never reuse a remembered one. */
+      const inColorPicker = typeof event.target?.closest === 'function'
+        ? event.target.closest('.salColorPickerPopover')
+        : null;
+      if (!inWrapper && !inPopover && !inColorPicker) {
         setIsOpen(false);
       }
     }
