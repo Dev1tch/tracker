@@ -15,8 +15,12 @@ export class BoardApi {
     return normalizeDocument(data);
   }
 
-  async updateDocument({ state }) {
-    const data = await apiClient.put('/board/', { state });
+  async updateDocument({ state, baseVersion, allowEmptyOverwrite = false }) {
+    const data = await apiClient.put('/board/', {
+      state,
+      base_version: Number.isFinite(baseVersion) ? baseVersion : null,
+      allow_empty_overwrite: allowEmptyOverwrite,
+    });
     return normalizeDocument(data);
   }
 }

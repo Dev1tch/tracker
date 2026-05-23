@@ -288,6 +288,15 @@ function emptyBoardState() {
   return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
 }
 
+function isBoardStateEmpty(state) {
+  return Boolean(
+    state &&
+    (!Array.isArray(state.nodes) || state.nodes.length === 0) &&
+    (!Array.isArray(state.edges) || state.edges.length === 0) &&
+    (!Array.isArray(state.frames) || state.frames.length === 0)
+  );
+}
+
 function normalizeBoardState(parsed) {
   if (!parsed || typeof parsed !== 'object') return emptyBoardState();
   const nodes = Array.isArray(parsed.nodes)
@@ -2931,6 +2940,7 @@ export default function Board() {
      empty initial state could overwrite the user's saved board. */
   const persistHydratedRef = useRef(false);
   const persistTimerRef = useRef(null);
+  const suppressNextPersistRef = useRef(false);
 
   const taskTypeById = useMemo(
     () => new Map(taskTypes.map((type) => [String(type.id), type])),
@@ -3039,10 +3049,14 @@ export default function Board() {
   const boardSyncApi = useMemo(
     () => ({
       getDocument: () => boardApi.getDocument(),
-      updateDocument: async ({ snapshot }) => {
-        const doc = await boardApi.updateDocument({ state: snapshot });
+      updateDocument: async ({ snapshot, baseVersion }) => {
+        const doc = await boardApi.updateDocument({
+          state: snapshot,
+          baseVersion,
+        });
         await idbPutBoardSyncMeta({
           serverUpdatedAt: doc.updated_at,
+          serverVersion: doc.version,
           dirty: false,
         });
         return doc;
@@ -3055,6 +3069,7 @@ export default function Board() {
     initialServerDoc: initialServerBoard,
     markHydrated: markBoardHydrated,
     setSnapshot: setBoardSnapshot,
+    setBaseVersion: setBoardBaseVersion,
     schedulePush: scheduleBoardPush,
     isAuthenticated: isBoardAuthenticated,
   } = useDocumentSync({
@@ -3120,18 +3135,29 @@ export default function Board() {
       const meta = await idbGetBoardSyncMeta();
       const localDirty = Boolean(meta?.dirty);
       const localServerUpdatedAt = meta?.serverUpdatedAt || null;
+      const localServerVersion = Number.isFinite(meta?.serverVersion)
+        ? meta.serverVersion
+        : null;
       const remoteUpdatedAt = initialServerBoard.updated_at || null;
       const remoteState = initialServerBoard.state || {};
+      const localState = latestPersistRef.current;
 
       const remoteIsNewer =
         !localServerUpdatedAt ||
         (remoteUpdatedAt && remoteUpdatedAt > localServerUpdatedAt);
 
-      if (localDirty) {
-        setBoardSnapshot(latestPersistRef.current);
+      setBoardBaseVersion(initialServerBoard.version);
+
+      if (localDirty && !remoteIsNewer) {
+        setBoardBaseVersion(localServerVersion ?? initialServerBoard.version);
+        setBoardSnapshot(localState);
         scheduleBoardPush();
       } else if (remoteIsNewer) {
+        if (localDirty && isBoardStateEmpty(localState) && !isBoardStateEmpty(remoteState)) {
+          console.warn('Board: ignored stale empty local board because server has newer content.');
+        }
         const normalized = normalizeBoardState(remoteState);
+        suppressNextPersistRef.current = true;
         setNodes(normalized.nodes);
         setEdges(normalized.edges);
         setFrames(normalized.frames);
@@ -3148,11 +3174,13 @@ export default function Board() {
         }).catch(() => {});
         await idbPutBoardSyncMeta({
           serverUpdatedAt: remoteUpdatedAt,
+          serverVersion: initialServerBoard.version,
           dirty: false,
         });
       } else {
         await idbPutBoardSyncMeta({
           serverUpdatedAt: remoteUpdatedAt,
+          serverVersion: initialServerBoard.version,
           dirty: false,
         });
       }
@@ -3165,6 +3193,10 @@ export default function Board() {
   useEffect(() => {
     if (!persistHydratedRef.current) return;
     if (!initialBoardReconciledRef.current) return;
+    if (suppressNextPersistRef.current) {
+      suppressNextPersistRef.current = false;
+      return;
+    }
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current);
     }
@@ -3177,6 +3209,7 @@ export default function Board() {
         const meta = await idbGetBoardSyncMeta();
         await idbPutBoardSyncMeta({
           serverUpdatedAt: meta?.serverUpdatedAt || null,
+          serverVersion: Number.isFinite(meta?.serverVersion) ? meta.serverVersion : null,
           dirty: true,
         });
       } catch (err) {

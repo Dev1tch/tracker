@@ -16,7 +16,7 @@ import { apiClient, AUTH_CHANGE_EVENT } from '@/lib/api';
  * @param {{
  *   api: {
  *     getDocument(): Promise<{ updated_at: string, [k: string]: any }>,
- *     updateDocument(opts: { snapshot: any }): Promise<{ updated_at: string, [k: string]: any }>,
+ *     updateDocument(opts: { snapshot: any, baseVersion?: number|null }): Promise<{ updated_at: string, version?: number, [k: string]: any }>,
  *   },
  *   debounceMs?: number,
  *   featureKey: string,
@@ -31,6 +31,7 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
   const initialFetchDoneRef = useRef(false);
   const pendingTimerRef = useRef(null);
   const latestSnapshotRef = useRef(null);
+  const baseVersionRef = useRef(null);
   const inFlightRef = useRef(false);
   const queuedAfterFlightRef = useRef(false);
 
@@ -42,6 +43,10 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
 
   const setSnapshot = useCallback((snapshot) => {
     latestSnapshotRef.current = snapshot;
+  }, []);
+
+  const setBaseVersion = useCallback((version) => {
+    baseVersionRef.current = Number.isFinite(version) ? version : null;
   }, []);
 
   const flush = useCallback(async () => {
@@ -58,7 +63,13 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
 
     const snapshot = latestSnapshotRef.current;
     try {
-      const doc = await api.updateDocument({ snapshot });
+      const doc = await api.updateDocument({
+        snapshot,
+        baseVersion: baseVersionRef.current,
+      });
+      if (Number.isFinite(doc?.version)) {
+        baseVersionRef.current = doc.version;
+      }
       setLastSyncedAt(Date.now());
       return doc;
     } catch (err) {
@@ -141,6 +152,7 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
     lastSyncedAt,
     markHydrated,
     setSnapshot,
+    setBaseVersion,
     schedulePush,
     flushNow: flush,
     isAuthenticated,
