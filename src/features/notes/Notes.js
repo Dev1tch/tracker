@@ -330,24 +330,28 @@ function createId(prefix = 'note') {
 }
 
 function createFile(name = 'Untitled note') {
+  const now = new Date().toISOString();
   return {
     id: createId('file'),
     type: 'file',
     name,
     icon: DEFAULT_FILE_ICON,
     content: '',
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
 function createFolder(name = 'New folder') {
+  const now = new Date().toISOString();
   return {
     id: createId('folder'),
     type: 'folder',
     name,
     icon: DEFAULT_FOLDER_ICON,
     children: [],
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -357,6 +361,7 @@ const DEFAULT_TREE = [
     type: 'folder',
     name: 'Personal',
     icon: DEFAULT_FOLDER_ICON,
+    createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
     children: [
       {
@@ -365,6 +370,7 @@ const DEFAULT_TREE = [
         name: 'Welcome',
         icon: { kind: 'emoji', value: '📝', color: DEFAULT_ICON_COLOR },
         content: 'A quiet place for quick notes.',
+        createdAt: new Date(0).toISOString(),
         updatedAt: new Date(0).toISOString(),
       },
     ],
@@ -414,6 +420,7 @@ function normalizeTree(value) {
         type: 'folder',
         name: String(node.name),
         icon: normalizeIcon(node.icon, 'folder'),
+        createdAt: node.createdAt || node.updatedAt || new Date().toISOString(),
         updatedAt: node.updatedAt || new Date().toISOString(),
         children: Array.isArray(node.children)
           ? node.children.map(normalizeNode).filter(Boolean)
@@ -428,6 +435,7 @@ function normalizeTree(value) {
         name: String(node.name),
         icon: normalizeIcon(node.icon, 'file'),
         content: typeof node.content === 'string' ? node.content : '',
+        createdAt: node.createdAt || node.updatedAt || new Date().toISOString(),
         updatedAt: node.updatedAt || new Date().toISOString(),
       };
     }
@@ -750,14 +758,17 @@ function filterTree(nodes, query) {
   }, []);
 }
 
-/* Alphabetical (case-insensitive, locale-aware) ordering at every level.
-   Folders come before files at the same depth — matches the standard file
-   manager convention so containers don't get lost between leaf items. */
+function getCreatedTime(node) {
+  const value = Date.parse(node.createdAt || node.updatedAt || 0);
+  return Number.isNaN(value) ? 0 : value;
+}
+
+/* Creation-date ordering at every level. Folders still come before files at
+   the same depth so containers don't get lost between leaf items. */
 function sortTree(nodes) {
-  const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
   const sorted = [...nodes].sort((a, b) => {
     if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-    return collator.compare(a.name, b.name);
+    return getCreatedTime(b) - getCreatedTime(a);
   });
   return sorted.map((node) =>
     node.type === 'folder' ? { ...node, children: sortTree(node.children) } : node
