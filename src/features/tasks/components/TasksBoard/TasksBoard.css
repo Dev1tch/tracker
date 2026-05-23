@@ -998,6 +998,7 @@
   display: flex;
   flex-direction: column;
   overflow: visible;
+  container-type: inline-size;
 }
 
 .tasksColumn:not(:first-child)::before {
@@ -1150,6 +1151,7 @@ body.tasksDragging * {
   background-color: var(--bg-color);
   background-image: linear-gradient(var(--surface-03), var(--surface-03));
   padding: 11px 10px;
+  min-height: clamp(78px, 24cqw, 180px);
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -1198,8 +1200,9 @@ body.tasksDragging * {
 
 .tasksCardTop {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 7px;
+  min-width: 0;
 }
 
 .taskStatusDot {
@@ -1245,11 +1248,46 @@ body.tasksDragging * {
   text-transform: none;
   margin: 0;
   flex: 1;
+  min-width: 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
   line-clamp: 1;
   overflow: hidden;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
+
+@container (min-width: 320px) {
+  .tasksCard {
+    padding: 13px 12px;
+    gap: 9px;
+  }
+
+  .tasksCardTop h4 {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+}
+
+@container (min-width: 460px) {
+  .tasksCard {
+    padding: 14px 13px;
+    gap: 10px;
+  }
+
+  .tasksCardTop h4 {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+}
+
+@container (min-width: 680px) {
+  .tasksCardTop h4 {
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+  }
 }
 
 .tasksCardDeleteBtn {
