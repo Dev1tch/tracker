@@ -368,7 +368,6 @@ export default function TasksBoard() {
   );
   const projectOptions = useMemo(
     () => [
-      { value: 'all', label: 'All Tasks' },
       { value: 'personal', label: 'Personal' },
       ...projects.map((project) => ({
         value: project.id,
@@ -470,7 +469,7 @@ export default function TasksBoard() {
       if (filters.project_id === 'personal' && task.project_id) return false;
       if (
         filters.project_id &&
-        !['all', 'personal'].includes(filters.project_id) &&
+        filters.project_id !== 'personal' &&
         task.project_id !== filters.project_id
       ) return false;
 
@@ -558,7 +557,7 @@ export default function TasksBoard() {
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (filters.search.trim()) count += 1;
-    if (filters.project_id && filters.project_id !== 'all') count += 1;
+    if (filters.project_id) count += 1;
     if (filters.status.length > 0) count += 1;
     if (filters.priority.length > 0) count += 1;
     if (filters.task_type_id.length > 0) count += 1;
@@ -997,7 +996,7 @@ export default function TasksBoard() {
       setPendingDeleteProjectId(null);
       setFilters((prev) => ({
         ...prev,
-        project_id: prev.project_id === projectId ? 'all' : prev.project_id,
+        project_id: prev.project_id === projectId ? '' : prev.project_id,
       }));
       addToast('Project deleted', 'success');
     } catch (error) {
@@ -1395,7 +1394,7 @@ export default function TasksBoard() {
               options={projectOptions}
               value={filters.project_id}
               onChange={(value) => setFilters((prev) => ({ ...prev, project_id: value }))}
-              placeholder="All Tasks"
+              placeholder="All Projects"
             />
           </div>
           <div className="tasksFilterSelectWrapper">

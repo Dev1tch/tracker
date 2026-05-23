@@ -37,7 +37,7 @@ export const PRIORITY_META = {
 export function getDefaultFilters() {
   return {
     search: '',
-    project_id: 'all',
+    project_id: '',
     status: [],
     priority: [],
     task_type_id: [],
@@ -80,7 +80,7 @@ export function getCreateFormFromFilters(filters = {}, overrides = {}) {
   if (filteredTaskTypeId !== undefined) {
     next.task_type_id = filteredTaskTypeId;
   }
-  if (filters.project_id && !['all', 'personal'].includes(filters.project_id)) {
+  if (filters.project_id && filters.project_id !== 'personal') {
     next.project_id = filters.project_id;
   }
 
