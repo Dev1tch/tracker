@@ -8,6 +8,7 @@ import {
   Clock3,
   Eye,
   EyeOff,
+  FolderKanban,
   LayoutGrid,
   List,
   Loader2,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import {
   authApi,
+  projectsApi,
   TASK_PRIORITY,
   TASK_STATUS,
   tasksApi,
@@ -56,6 +58,7 @@ import TasksDatePicker from './components/TasksDatePicker';
 import TaskDetailModal from './components/TaskDetailModal';
 import TypeManagerModal from './components/TypeManagerModal';
 import TasksListMobile from './components/TasksListMobile';
+import ProjectManagerModal from './components/ProjectManagerModal';
 import './TasksBoard.css';
 
 function formatSpentTime(totalMinutes) {
@@ -307,6 +310,8 @@ export default function TasksBoard() {
 
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [membersByProject, setMembersByProject] = useState({});
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -314,6 +319,9 @@ export default function TasksBoard() {
   const [isCreatingSubtask, setIsCreatingSubtask] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [isCreatingType, setIsCreatingType] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
+  const [isInvitingProjectMember, setIsInvitingProjectMember] = useState(false);
 
   const [filters, setFilters] = useState(getDefaultFilters);
 
@@ -322,6 +330,14 @@ export default function TasksBoard() {
   const [bulkTargetStatus, setBulkTargetStatus] = useState(TASK_STATUS.IN_PROGRESS);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(DEFAULT_CREATE_FORM);
+  const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
+  const [projectForm, setProjectForm] = useState({
+    name: '',
+    description: '',
+    color: '#6ea8fe',
+  });
+  const [inviteForm, setInviteForm] = useState({ email: '' });
+  const [inviteProjectId, setInviteProjectId] = useState('');
 
   const [isTypeManagerOpen, setIsTypeManagerOpen] = useState(false);
   const [typeForm, setTypeForm] = useState(DEFAULT_TYPE_FORM);
@@ -335,6 +351,7 @@ export default function TasksBoard() {
 
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
+  const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState(null);
 
   const [dragTaskId, setDragTaskId] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState('');
@@ -345,6 +362,27 @@ export default function TasksBoard() {
     () => tasks.find((task) => task.id === detailTaskId) || null,
     [tasks, detailTaskId]
   );
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [String(project.id), project])),
+    [projects]
+  );
+  const projectOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Tasks' },
+      { value: 'personal', label: 'Personal' },
+      ...projects.map((project) => ({
+        value: project.id,
+        label: project.name,
+        color: project.color || '#6ea8fe',
+      })),
+    ],
+    [projects]
+  );
+  const currentUserId = useMemo(() => getAccountStorageId(), []);
+
+  useEffect(() => {
+    setInviteProjectId((current) => current || projects[0]?.id || '');
+  }, [projects]);
 
   useEffect(() => {
     return () => {
@@ -429,6 +467,13 @@ export default function TasksBoard() {
     const search = filters.search.trim().toLowerCase();
 
     return parentTasks.filter((task) => {
+      if (filters.project_id === 'personal' && task.project_id) return false;
+      if (
+        filters.project_id &&
+        !['all', 'personal'].includes(filters.project_id) &&
+        task.project_id !== filters.project_id
+      ) return false;
+
       if (search) {
         const hay = `${task.title || ''} ${task.description || ''}`.toLowerCase();
         if (!hay.includes(search)) return false;
@@ -513,6 +558,7 @@ export default function TasksBoard() {
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (filters.search.trim()) count += 1;
+    if (filters.project_id && filters.project_id !== 'all') count += 1;
     if (filters.status.length > 0) count += 1;
     if (filters.priority.length > 0) count += 1;
     if (filters.task_type_id.length > 0) count += 1;
@@ -540,13 +586,27 @@ export default function TasksBoard() {
     }
 
     try {
-      const [tasksResponse, taskTypesResponse] = await Promise.all([
+      const [tasksResponse, taskTypesResponse, projectsResponse] = await Promise.all([
         tasksApi.getTasks(),
         tasksApi.getTaskTypes(),
+        projectsApi.getProjects(),
       ]);
+      const nextProjects = Array.isArray(projectsResponse) ? projectsResponse : [];
+      const memberPairs = await Promise.all(
+        nextProjects.map(async (project) => {
+          try {
+            const members = await projectsApi.getProjectMembers(project.id);
+            return [project.id, members];
+          } catch {
+            return [project.id, []];
+          }
+        })
+      );
 
       setTasks(Array.isArray(tasksResponse) ? tasksResponse : []);
       setTaskTypes(Array.isArray(taskTypesResponse) ? taskTypesResponse : []);
+      setProjects(nextProjects);
+      setMembersByProject(Object.fromEntries(memberPairs));
     } catch (error) {
       console.error('Failed to load tasks flow data:', error);
       addToast(error?.message || 'Failed to load tasks data', 'error');
@@ -591,8 +651,10 @@ export default function TasksBoard() {
   useEffect(() => {
     const isAnyModalOpen =
       isCreateOpen ||
+      isProjectManagerOpen ||
       isTypeManagerOpen ||
       Boolean(detailTaskId) ||
+      Boolean(pendingDeleteProjectId) ||
       Boolean(pendingDeleteTaskId);
 
     if (isAnyModalOpen) {
@@ -605,7 +667,9 @@ export default function TasksBoard() {
   }, [
     detailTaskId,
     isCreateOpen,
+    isProjectManagerOpen,
     isTypeManagerOpen,
+    pendingDeleteProjectId,
     pendingDeleteTaskId,
   ]);
 
@@ -799,6 +863,7 @@ export default function TasksBoard() {
       const created = await tasksApi.createTask({
         title,
         description: createForm.description || null,
+        project_id: createForm.project_id || null,
         task_type_id: createForm.task_type_id || null,
         parent_task_id: createForm.parent_task_id || null,
         status: createForm.status,
@@ -809,7 +874,7 @@ export default function TasksBoard() {
 
       setTasks((prev) => [created, ...prev]);
       setIsCreateOpen(false);
-      setCreateForm(DEFAULT_CREATE_FORM);
+      setCreateForm(getCreateFormFromFilters(filters));
       addToast('Task created', 'success');
     } catch (error) {
       console.error('Create task failed:', error);
@@ -834,6 +899,7 @@ export default function TasksBoard() {
       const created = await tasksApi.createTask({
         title,
         description: form.description || null,
+        project_id: parent?.project_id || null,
         parent_task_id: parentTaskId,
         task_type_id: parent?.task_type_id || null,
         status: form.status || TASK_STATUS.TO_DO,
@@ -877,6 +943,93 @@ export default function TasksBoard() {
       addToast(error?.message || 'Failed to create task Category', 'error');
     } finally {
       setIsCreatingType(false);
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (isCreatingProject) return;
+    const name = projectForm.name.trim();
+    if (!name) {
+      addToast('Project name is required', 'error');
+      return;
+    }
+
+    setIsCreatingProject(true);
+
+    try {
+      const created = await projectsApi.createProject({
+        name,
+        description: projectForm.description || null,
+        color: projectForm.color || '#6ea8fe',
+      });
+      const members = await projectsApi.getProjectMembers(created.id);
+
+      setProjects((prev) => [created, ...prev]);
+      setMembersByProject((prev) => ({ ...prev, [created.id]: members }));
+      setInviteProjectId(created.id);
+      setProjectForm({ name: '', description: '', color: '#6ea8fe' });
+      setFilters((prev) => ({ ...prev, project_id: created.id }));
+      setIsProjectManagerOpen(false);
+      addToast('Project created', 'success');
+    } catch (error) {
+      console.error('Create project failed:', error);
+      addToast(error?.message || 'Failed to create project', 'error');
+    } finally {
+      setIsCreatingProject(false);
+    }
+  };
+
+  const handleDeleteProject = async (projectId) => {
+    if (isDeletingProject) return;
+
+    setIsDeletingProject(true);
+
+    try {
+      await projectsApi.deleteProject(projectId);
+      setProjects((prev) => prev.filter((item) => item.id !== projectId));
+      setMembersByProject((prev) => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
+      setTasks((prev) => prev.filter((task) => task.project_id !== projectId));
+      setInviteProjectId('');
+      setPendingDeleteProjectId(null);
+      setFilters((prev) => ({
+        ...prev,
+        project_id: prev.project_id === projectId ? 'all' : prev.project_id,
+      }));
+      addToast('Project deleted', 'success');
+    } catch (error) {
+      console.error('Delete project failed:', error);
+      addToast(error?.message || 'Failed to delete project', 'error');
+    } finally {
+      setIsDeletingProject(false);
+    }
+  };
+
+  const handleInviteProjectMember = async () => {
+    if (isInvitingProjectMember) return;
+    const email = inviteForm.email.trim();
+    if (!inviteProjectId || !email) {
+      addToast('Select a project and enter an email', 'error');
+      return;
+    }
+
+    setIsInvitingProjectMember(true);
+
+    try {
+      await projectsApi.inviteProjectMember(inviteProjectId, email);
+      const members = await projectsApi.getProjectMembers(inviteProjectId);
+      setMembersByProject((prev) => ({ ...prev, [inviteProjectId]: members }));
+      setInviteForm({ email: '' });
+      setIsProjectManagerOpen(false);
+      addToast('Invite sent', 'success');
+    } catch (error) {
+      console.error('Invite project member failed:', error);
+      addToast(error?.message || 'Failed to invite member', 'error');
+    } finally {
+      setIsInvitingProjectMember(false);
     }
   };
 
@@ -1045,6 +1198,14 @@ export default function TasksBoard() {
               >
                 <SquareCheck size={14} />
                 Select
+              </button>
+              <button
+                type="button"
+                className="tasksBtn"
+                onClick={() => setIsProjectManagerOpen(true)}
+              >
+                <FolderKanban size={14} />
+                Projects
               </button>
               <button
                 type="button"
@@ -1231,6 +1392,14 @@ export default function TasksBoard() {
           />
           <div className="tasksFilterSelectWrapper">
             <CustomSelect
+              options={projectOptions}
+              value={filters.project_id}
+              onChange={(value) => setFilters((prev) => ({ ...prev, project_id: value }))}
+              placeholder="All Tasks"
+            />
+          </div>
+          <div className="tasksFilterSelectWrapper">
+            <CustomSelect
               options={filterStatusOptions}
               value={filters.status}
               onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))}
@@ -1401,6 +1570,12 @@ export default function TasksBoard() {
                         task.task_type_id !== null && task.task_type_id !== undefined
                           ? (taskTypeById.get(String(task.task_type_id)) || null)
                           : null;
+                      const taskProject = task.project_id
+                        ? projectById.get(String(task.project_id))
+                        : null;
+                      const taskProjectColor = taskProject
+                        ? taskProject.color || '#6ea8fe'
+                        : '#6ea8fe';
                       const taskTypeColor = taskType?.color || '#6ea8fe';
                       const priorityMeta = PRIORITY_META[task.priority] || {
                         label: formatPriority(task.priority),
@@ -1474,6 +1649,15 @@ export default function TasksBoard() {
                             {cardViewSettings.task_type && taskType ? (
                               <span className="taskTypeMeta" style={{ color: taskTypeColor }}>
                                 {taskType.name}
+                              </span>
+                            ) : null}
+                            {taskProject ? (
+                              <span
+                                className="taskProjectMeta"
+                                style={{ color: taskProjectColor }}
+                              >
+                                <FolderKanban size={11} />
+                                {taskProject.name}
                               </span>
                             ) : null}
                             {cardViewSettings.priority ? (
@@ -1555,6 +1739,7 @@ export default function TasksBoard() {
         onSubmit={handleCreateTask}
         isSubmitting={isSubmitting}
         taskTypes={taskTypes}
+        projects={projects}
         statusColors={statusOptionColors}
         parentTasks={parentTasks}
         onOpenTypeManager={() => setIsTypeManagerOpen(true)}
@@ -1571,11 +1756,33 @@ export default function TasksBoard() {
         isCreating={isCreatingType}
       />
 
+      <ProjectManagerModal
+        isOpen={isProjectManagerOpen}
+        onClose={() => setIsProjectManagerOpen(false)}
+        projects={projects}
+        membersByProject={membersByProject}
+        projectColors={{}}
+        projectForm={projectForm}
+        setProjectForm={setProjectForm}
+        inviteForm={inviteForm}
+        setInviteForm={setInviteForm}
+        selectedProjectId={inviteProjectId}
+        setSelectedProjectId={setInviteProjectId}
+        currentUserId={currentUserId}
+        onCreateProject={handleCreateProject}
+        onDeleteProject={setPendingDeleteProjectId}
+        onInviteMember={handleInviteProjectMember}
+        isCreating={isCreatingProject}
+        isDeleting={isDeletingProject}
+        isInviting={isInvitingProjectMember}
+      />
+
       <TaskDetailModal
         key={detailTask?.id || 'task-detail-modal'}
         task={detailTask}
         allTasks={tasks}
         taskTypes={taskTypes}
+        projects={projects}
         onClose={() => setDetailTaskId(null)}
         onSave={handleUpdateTask}
         onDelete={(taskId) => setPendingDeleteTaskId(taskId)}
@@ -1588,6 +1795,19 @@ export default function TasksBoard() {
         statusColors={statusOptionColors}
         isSaving={isSavingTask}
         isMobile={isMobile}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(pendingDeleteProjectId)}
+        title="Delete Project"
+        message="This action will delete the project and every task in it. Continue?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        onCancel={() => setPendingDeleteProjectId(null)}
+        onConfirm={async () => {
+          if (!pendingDeleteProjectId) return;
+          await handleDeleteProject(pendingDeleteProjectId);
+        }}
       />
 
       <ConfirmModal

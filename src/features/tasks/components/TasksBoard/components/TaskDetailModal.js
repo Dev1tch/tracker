@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Clock3,
   Flag,
+  FolderKanban,
   FolderTree,
   GitBranch,
   Loader2,
@@ -76,6 +77,7 @@ function getNormalizedPayload(form) {
   return {
     title: form.title.trim(),
     description: form.description || null,
+    project_id: form.project_id || null,
     task_type_id: form.task_type_id || null,
     parent_task_id: form.parent_task_id || null,
     priority: form.priority,
@@ -95,6 +97,7 @@ export default function TaskDetailModal({
   task,
   allTasks,
   taskTypes,
+  projects,
   onClose,
   onSave,
   onDelete,
@@ -192,10 +195,19 @@ export default function TaskDetailModal({
     { value: '', label: 'None' },
     ...taskTypes.map((type) => ({ value: type.id, label: type.name, color: type.color || undefined })),
   ];
+  const projectOptions = [
+    { value: '', label: 'Personal' },
+    ...projects.map((project) => ({ value: project.id, label: project.name })),
+  ];
   const parentTaskOptions = [
     { value: '', label: 'None' },
     ...allTasks
-      .filter((item) => item.id !== task.id && !item.parent_task_id)
+      .filter(
+        (item) =>
+          item.id !== task.id &&
+          !item.parent_task_id &&
+          (item.project_id || '') === (form.project_id || '')
+      )
       .map((item) => ({ value: item.id, label: item.title })),
   ];
   const taskTypeById = new Map(taskTypes.map((type) => [String(type.id), type]));
@@ -364,6 +376,21 @@ export default function TaskDetailModal({
 
                 <div className="tasksField">
                   <label>
+                    <TaskFieldLabel icon={FolderKanban}>Project</TaskFieldLabel>
+                  </label>
+                  <CustomSelect
+                    options={projectOptions}
+                    value={form.project_id}
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, project_id: value, parent_task_id: '' }))
+                    }
+                    placeholder="Select project"
+                    listPosition={selectListPosition}
+                  />
+                </div>
+
+                <div className="tasksField">
+                  <label>
                     <TaskFieldLabel icon={Shapes}>Task Category</TaskFieldLabel>
                   </label>
                   <div className="tasksInlineField">
@@ -407,17 +434,7 @@ export default function TaskDetailModal({
 
                 <div className="tasksField">
                   <label>
-                    <TaskFieldLabel icon={Calendar}>Start Date</TaskFieldLabel>
-                  </label>
-                  <div className={`tasksReadonlyField ${form.start_date ? '' : 'tasksReadonlyFieldPlaceholder'}`.trim()}>
-                    <span>{startDateDisplay}</span>
-                    <Calendar size={14} />
-                  </div>
-                </div>
-
-                <div className="tasksField">
-                  <label>
-                    <TaskFieldLabel icon={CalendarClock}>Due Date</TaskFieldLabel>
+                    <TaskFieldLabel icon={CalendarClock}>Deadline</TaskFieldLabel>
                   </label>
                   <TasksDatePicker
                     value={form.due_date}
@@ -428,6 +445,11 @@ export default function TaskDetailModal({
                     showTime
                     className="tasksDateFieldInput"
                   />
+                </div>
+
+                <div className="tasksDetailStartDate tasksFieldFull">
+                  <Calendar size={13} />
+                  <span>Started: {startDateDisplay}</span>
                 </div>
             </div>
           </div>

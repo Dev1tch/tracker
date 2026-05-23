@@ -37,6 +37,7 @@ export const PRIORITY_META = {
 export function getDefaultFilters() {
   return {
     search: '',
+    project_id: 'all',
     status: [],
     priority: [],
     task_type_id: [],
@@ -49,6 +50,7 @@ export function getDefaultCreateForm() {
   return {
     title: '',
     description: '',
+    project_id: '',
     task_type_id: '',
     parent_task_id: '',
     status: TASK_STATUS.TO_DO,
@@ -77,6 +79,9 @@ export function getCreateFormFromFilters(filters = {}, overrides = {}) {
   }
   if (filteredTaskTypeId !== undefined) {
     next.task_type_id = filteredTaskTypeId;
+  }
+  if (filters.project_id && !['all', 'personal'].includes(filters.project_id)) {
+    next.project_id = filters.project_id;
   }
 
   return {

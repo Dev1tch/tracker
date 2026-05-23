@@ -1095,6 +1095,22 @@ body.tasksDragging * {
   font-weight: 500;
 }
 
+.taskProjectMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text-tertiary);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.taskProjectMeta svg {
+  flex-shrink: 0;
+}
+
 .taskDueDate {
   color: var(--text-muted);
   border: 1px solid var(--border-color-dim);
@@ -1810,6 +1826,193 @@ body.tasksDragging * {
   margin-top: 4px;
 }
 
+.tasksProjectModal {
+  max-width: 760px;
+}
+
+.tasksProjectCreateGrid {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color-dim);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tasksProjectColorField {
+  width: fit-content;
+}
+
+.tasksProjectColorField .tasksStatusConfigColorBtn {
+  width: 24px;
+  height: 24px;
+}
+
+.tasksProjectColorField .tasksStatusConfigColorPopover {
+  left: 0;
+  right: auto;
+}
+
+.tasksProjectList {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tasksProjectItem {
+  width: 100%;
+  border: 1px solid var(--border-color-dim);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.tasksProjectItem:hover,
+.tasksProjectItem.active {
+  border-color: var(--surface-30);
+  background: var(--surface-04);
+}
+
+.tasksProjectInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tasksProjectInfo strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.tasksProjectInfo p {
+  margin: 3px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.tasksProjectColor {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tasksProjectCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.tasksProjectSelected {
+  border-top: 1px solid var(--border-color-dim);
+  padding: 12px 14px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.95fr);
+  gap: 12px;
+}
+
+.tasksProjectSelectedHeader {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tasksProjectMembers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tasksProjectMemberRow {
+  border: 1px solid var(--border-color-dim);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+}
+
+.tasksProjectMemberRow span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.tasksProjectMemberRow small {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tasksProjectInvite {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tasksProjectInvite label {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tasksProjectInviteRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.tasksProjectInvite input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  padding: 10px 0;
+  outline: none;
+}
+
+.tasksProjectInvite input:focus {
+  border-color: var(--surface-80);
+}
+
+.tasksDetailStartDate {
+  align-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .tasksModalForm .customSelectContainer,
 .tasksModalForm .tasksDatePicker {
   margin-bottom: 0;
@@ -2281,13 +2484,18 @@ body.tasksDragging * {
     grid-template-columns: 1fr;
   }
 
-  .tasksTypeCreateGrid {
+  .tasksTypeCreateGrid,
+  .tasksProjectCreateGrid {
     grid-template-columns: 1fr;
     padding: 16px;
   }
 
   .tasksModal {
     border-radius: 8px;
+  }
+
+  .tasksProjectSelected {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2427,14 +2635,27 @@ body.tasksDragging * {
     gap: 12px;
   }
 
+  .tasksProjectInviteRow {
+    grid-template-columns: 1fr;
+  }
+
+  .tasksProjectInviteRow .tasksBtn {
+    width: 100%;
+    justify-content: center;
+  }
+
   /* Standardize padding for top-level modal contents */
   .tasksModal > .tasksFormGrid,
   .tasksModal > .tasksTypeList,
-  .tasksModal > .tasksTypeCreateGrid {
+  .tasksModal > .tasksTypeCreateGrid,
+  .tasksModal > .tasksProjectList,
+  .tasksModal > .tasksProjectCreateGrid,
+  .tasksModal > .tasksProjectSelected {
     padding: 16px;
   }
 
-  .tasksTypeList {
+  .tasksTypeList,
+  .tasksProjectList {
     padding: 0 16px 16px;
   }
 

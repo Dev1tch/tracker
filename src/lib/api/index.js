@@ -5,6 +5,7 @@ export * from './categories.js';
 export * from './habits.js';
 export * from './logs.js';
 export * from './tasks.js';
+export * from './projects.js';
 export * from './calendar.js';
 export * from './notes.js';
 export * from './board.js';

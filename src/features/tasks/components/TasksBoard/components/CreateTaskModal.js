@@ -1,11 +1,11 @@
 import React from 'react';
 import {
   AlignLeft,
-  Calendar,
   CalendarClock,
   CircleDot,
   ClipboardList,
   Flag,
+  FolderKanban,
   GitBranch,
   Loader2,
   Plus,
@@ -37,6 +37,7 @@ export default function CreateTaskModal({
   onSubmit,
   isSubmitting,
   taskTypes,
+  projects,
   statusColors,
   parentTasks,
   onOpenTypeManager,
@@ -57,9 +58,15 @@ export default function CreateTaskModal({
     { value: '', label: 'None' },
     ...taskTypes.map((type) => ({ value: type.id, label: type.name, color: type.color || undefined })),
   ];
+  const projectOptions = [
+    { value: '', label: 'Personal' },
+    ...projects.map((project) => ({ value: project.id, label: project.name })),
+  ];
   const parentTaskOptions = [
     { value: '', label: 'None' },
-    ...parentTasks.map((task) => ({ value: task.id, label: task.title })),
+    ...parentTasks
+      .filter((task) => (task.project_id || '') === (form.project_id || ''))
+      .map((task) => ({ value: task.id, label: task.title })),
   ];
 
   return (
@@ -134,6 +141,20 @@ export default function CreateTaskModal({
 
             <div className="tasksField">
               <label>
+                <TaskFieldLabel icon={FolderKanban}>Project</TaskFieldLabel>
+              </label>
+              <CustomSelect
+                options={projectOptions}
+                value={form.project_id}
+                onChange={(value) =>
+                  setForm((prev) => ({ ...prev, project_id: value, parent_task_id: '' }))
+                }
+                placeholder="Select project"
+              />
+            </div>
+
+            <div className="tasksField">
+              <label>
                 <TaskFieldLabel icon={Shapes}>Task Category</TaskFieldLabel>
               </label>
               <div className="tasksInlineField">
@@ -168,17 +189,7 @@ export default function CreateTaskModal({
 
             <div className="tasksField">
               <label>
-                <TaskFieldLabel icon={Calendar}>Start Date</TaskFieldLabel>
-              </label>
-              <div className="tasksReadonlyField tasksReadonlyFieldPlaceholder">
-                <span>Auto when you start the task</span>
-                <Calendar size={14} />
-              </div>
-            </div>
-
-            <div className="tasksField">
-              <label>
-                <TaskFieldLabel icon={CalendarClock}>Due Date</TaskFieldLabel>
+                <TaskFieldLabel icon={CalendarClock}>Deadline</TaskFieldLabel>
               </label>
               <TasksDatePicker
                 value={form.due_date}
