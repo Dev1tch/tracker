@@ -6,6 +6,7 @@ export function getTaskFormFromTask(task) {
     title: task?.title || '',
     description: task?.description || '',
     project_id: task?.project_id || '',
+    assignee_user_id: task?.assignee_user_id || '',
     task_type_id: task?.task_type_id || '',
     parent_task_id: task?.parent_task_id || '',
     status: task?.status || TASK_STATUS.TO_DO,
@@ -22,6 +23,10 @@ export function buildUpdatePayload(task, overrides = {}) {
       overrides.description !== undefined ? overrides.description : (task.description ?? null),
     project_id:
       overrides.project_id !== undefined ? overrides.project_id : (task.project_id ?? null),
+    assignee_user_id:
+      overrides.assignee_user_id !== undefined
+        ? overrides.assignee_user_id
+        : (task.assignee_user_id ?? null),
     task_type_id:
       overrides.task_type_id !== undefined
         ? overrides.task_type_id

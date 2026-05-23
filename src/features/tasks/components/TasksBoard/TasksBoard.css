@@ -1426,7 +1426,8 @@ body.tasksDragging * {
   font-weight: 500;
 }
 
-.taskProjectMeta {
+.taskProjectMeta,
+.taskAssigneeMeta {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1438,7 +1439,12 @@ body.tasksDragging * {
   text-transform: uppercase;
 }
 
-.taskProjectMeta svg {
+.taskAssigneeMeta {
+  color: var(--text-secondary);
+}
+
+.taskProjectMeta svg,
+.taskAssigneeMeta svg {
   flex-shrink: 0;
 }
 

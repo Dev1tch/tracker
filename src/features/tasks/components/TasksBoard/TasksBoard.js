@@ -19,6 +19,7 @@ import {
   SquareCheck,
   Tag,
   Trash2,
+  UserRound,
   X,
 } from 'lucide-react';
 import {
@@ -82,6 +83,8 @@ const DEFAULT_CARD_VIEW_SETTINGS = {
   description: true,
   status: true,
   task_type: true,
+  project: true,
+  assignee: true,
   priority: true,
   start_date: false,
   due_date: true,
@@ -93,6 +96,8 @@ const CARD_VIEW_SETTING_OPTIONS = [
   { key: 'description', label: 'Description' },
   { key: 'status', label: 'Status' },
   { key: 'task_type', label: 'Task Category' },
+  { key: 'project', label: 'Project', projectsOnly: true },
+  { key: 'assignee', label: 'Assignee', projectsOnly: true },
   { key: 'priority', label: 'Priority' },
   { key: 'start_date', label: 'Start Date' },
   { key: 'due_date', label: 'Due Date' },
@@ -184,6 +189,11 @@ function getDescriptionPreview(text, maxLength = 110) {
   const compact = text.replace(/\s+/g, ' ').trim();
   if (compact.length <= maxLength) return compact;
   return `${compact.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function getMemberDisplayName(member) {
+  const fullName = [member?.first_name, member?.last_name].filter(Boolean).join(' ').trim();
+  return fullName || member?.email || 'Member';
 }
 
 function getAccountStorageId() {
@@ -368,8 +378,20 @@ export default function TasksBoard({ mode = 'personal' }) {
     () => new Map(projects.map((project) => [String(project.id), project])),
     [projects]
   );
+  const cardViewSettingOptions = useMemo(
+    () => CARD_VIEW_SETTING_OPTIONS.filter((option) => !option.projectsOnly || isProjectsMode),
+    [isProjectsMode]
+  );
   const currentUserId = useMemo(() => getAccountStorageId(), []);
   const activeProjectId = isProjectsMode ? inviteProjectId : '';
+  const getDefaultAssigneeForProject = useCallback((projectId) => {
+    const members = projectId ? membersByProject[projectId] || [] : [];
+    return (
+      members.find((member) => member.user_id === currentUserId)?.user_id ||
+      members[0]?.user_id ||
+      ''
+    );
+  }, [currentUserId, membersByProject]);
 
   useEffect(() => {
     setInviteProjectId((current) => {
@@ -845,9 +867,14 @@ export default function TasksBoard({ mode = 'personal' }) {
     const targetProjectId = isProjectsMode
       ? (createForm.project_id || activeProjectId)
       : '';
+    const targetAssigneeId = isProjectsMode ? createForm.assignee_user_id : null;
 
     if (isProjectsMode && !targetProjectId) {
       addToast('Select a project first', 'error');
+      return;
+    }
+    if (isProjectsMode && !targetAssigneeId) {
+      addToast('Task assignee is required', 'error');
       return;
     }
 
@@ -864,6 +891,7 @@ export default function TasksBoard({ mode = 'personal' }) {
         title,
         description: createForm.description || null,
         project_id: isProjectsMode ? targetProjectId : null,
+        assignee_user_id: targetAssigneeId,
         task_type_id: createForm.task_type_id || null,
         parent_task_id: createForm.parent_task_id || null,
         status: createForm.status,
@@ -878,7 +906,15 @@ export default function TasksBoard({ mode = 'personal' }) {
       }
       setIsCreateOpen(false);
       setCreateForm(
-        getCreateFormFromFilters(filters, isProjectsMode ? { project_id: targetProjectId } : {})
+        getCreateFormFromFilters(
+          filters,
+          isProjectsMode
+            ? {
+                project_id: targetProjectId,
+                assignee_user_id: getDefaultAssigneeForProject(targetProjectId),
+              }
+            : {}
+        )
       );
       addToast('Task created', 'success');
     } catch (error) {
@@ -905,6 +941,7 @@ export default function TasksBoard({ mode = 'personal' }) {
         title,
         description: form.description || null,
         project_id: parent?.project_id || null,
+        assignee_user_id: parent?.assignee_user_id || null,
         parent_task_id: parentTaskId,
         task_type_id: parent?.task_type_id || null,
         status: form.status || TASK_STATUS.TO_DO,
@@ -1125,12 +1162,17 @@ export default function TasksBoard({ mode = 'personal' }) {
   const openCreateTask = useCallback((overrides = {}) => {
     setCreateForm(
       getCreateFormFromFilters(filters, {
-        ...(isProjectsMode ? { project_id: activeProjectId } : {}),
+        ...(isProjectsMode
+          ? {
+              project_id: activeProjectId,
+              assignee_user_id: getDefaultAssigneeForProject(activeProjectId),
+            }
+          : {}),
         ...overrides,
       })
     );
     setIsCreateOpen(true);
-  }, [activeProjectId, filters, isProjectsMode]);
+  }, [activeProjectId, filters, getDefaultAssigneeForProject, isProjectsMode]);
   const handleOpenCreateForStatus = useCallback((status) => {
     openCreateTask({ status });
   }, [openCreateTask]);
@@ -1287,7 +1329,7 @@ export default function TasksBoard({ mode = 'personal' }) {
                     </div>
 
                     <div className="tasksCardSettingsBody">
-                      {CARD_VIEW_SETTING_OPTIONS.map((option) => (
+                      {cardViewSettingOptions.map((option) => (
                         <label key={option.key} className="tasksCardSettingItem">
                           <input
                             type="checkbox"
@@ -1499,6 +1541,9 @@ export default function TasksBoard({ mode = 'personal' }) {
             boardByStatus={boardByStatus}
             statusConfig={statusConfig}
             taskTypeById={taskTypeById}
+            projectById={projectById}
+            membersByProject={membersByProject}
+            isProjectsMode={isProjectsMode}
             cardViewSettings={cardViewSettings}
             selectionMode={selectionMode}
             selectedTaskIds={selectedTaskIds}
@@ -1513,6 +1558,9 @@ export default function TasksBoard({ mode = 'personal' }) {
             boardByStatus={boardByStatus}
             statusConfig={statusConfig}
             taskTypeById={taskTypeById}
+            projectById={projectById}
+            membersByProject={membersByProject}
+            isProjectsMode={isProjectsMode}
             cardViewSettings={cardViewSettings}
             selectionMode={selectionMode}
             selectedTaskIds={selectedTaskIds}
@@ -1611,6 +1659,11 @@ export default function TasksBoard({ mode = 'personal' }) {
                       const taskProject = task.project_id
                         ? projectById.get(String(task.project_id))
                         : null;
+                      const assignee = task.project_id && task.assignee_user_id
+                        ? (membersByProject[task.project_id] || []).find(
+                            (member) => member.user_id === task.assignee_user_id
+                          )
+                        : null;
                       const taskProjectColor = taskProject
                         ? taskProject.color || '#6ea8fe'
                         : '#6ea8fe';
@@ -1689,13 +1742,19 @@ export default function TasksBoard({ mode = 'personal' }) {
                                 {taskType.name}
                               </span>
                             ) : null}
-                            {taskProject ? (
+                            {isProjectsMode && cardViewSettings.project && taskProject ? (
                               <span
                                 className="taskProjectMeta"
                                 style={{ color: taskProjectColor }}
                               >
                                 <FolderKanban size={11} />
                                 {taskProject.name}
+                              </span>
+                            ) : null}
+                            {isProjectsMode && cardViewSettings.assignee && assignee ? (
+                              <span className="taskAssigneeMeta">
+                                <UserRound size={11} />
+                                {getMemberDisplayName(assignee)}
                               </span>
                             ) : null}
                             {cardViewSettings.priority ? (
@@ -1779,10 +1838,13 @@ export default function TasksBoard({ mode = 'personal' }) {
         isSubmitting={isSubmitting}
         taskTypes={taskTypes}
         projects={projects}
+        membersByProject={membersByProject}
+        currentUserId={currentUserId}
         statusColors={statusOptionColors}
         parentTasks={parentTasks}
         onOpenTypeManager={() => setIsTypeManagerOpen(true)}
         showProjectField={isProjectsMode}
+        showAssigneeField={isProjectsMode}
       />
 
       <TypeManagerModal
@@ -1802,6 +1864,7 @@ export default function TasksBoard({ mode = 'personal' }) {
         allTasks={tasks}
         taskTypes={taskTypes}
         projects={projects}
+        membersByProject={membersByProject}
         onClose={() => setDetailTaskId(null)}
         onSave={handleUpdateTask}
         onDelete={(taskId) => setPendingDeleteTaskId(taskId)}
@@ -1815,6 +1878,7 @@ export default function TasksBoard({ mode = 'personal' }) {
         isSaving={isSavingTask}
         isMobile={isMobile}
         showProjectField={false}
+        showAssigneeField={Boolean(detailTask?.project_id)}
       />
 
       <ConfirmModal

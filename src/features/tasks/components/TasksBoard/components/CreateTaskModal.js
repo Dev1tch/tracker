@@ -11,6 +11,7 @@ import {
   Plus,
   Shapes,
   Tag,
+  UserRound,
   X,
 } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
@@ -29,6 +30,11 @@ const PRIORITY_OPTION_COLORS = {
   LOW: '#9ca3af',
 };
 
+function getMemberDisplayName(member) {
+  const fullName = [member?.first_name, member?.last_name].filter(Boolean).join(' ').trim();
+  return fullName || member?.email || 'Member';
+}
+
 export default function CreateTaskModal({
   isOpen,
   onClose,
@@ -38,10 +44,13 @@ export default function CreateTaskModal({
   isSubmitting,
   taskTypes,
   projects,
+  membersByProject,
+  currentUserId,
   statusColors,
   parentTasks,
   onOpenTypeManager,
   showProjectField = true,
+  showAssigneeField = false,
 }) {
   if (!isOpen) return null;
 
@@ -60,9 +69,22 @@ export default function CreateTaskModal({
     ...taskTypes.map((type) => ({ value: type.id, label: type.name, color: type.color || undefined })),
   ];
   const projectOptions = [
-    { value: '', label: 'Personal' },
+    ...(showAssigneeField ? [] : [{ value: '', label: 'Personal' }]),
     ...projects.map((project) => ({ value: project.id, label: project.name })),
   ];
+  const projectMembers = form.project_id ? membersByProject?.[form.project_id] || [] : [];
+  const assigneeOptions = projectMembers.map((member) => ({
+    value: member.user_id,
+    label: getMemberDisplayName(member),
+  }));
+  const getDefaultAssignee = (projectId) => {
+    const members = projectId ? membersByProject?.[projectId] || [] : [];
+    return (
+      members.find((member) => member.user_id === currentUserId)?.user_id ||
+      members[0]?.user_id ||
+      ''
+    );
+  };
   const parentTaskOptions = [
     { value: '', label: 'None' },
     ...parentTasks
@@ -149,9 +171,30 @@ export default function CreateTaskModal({
                   options={projectOptions}
                   value={form.project_id}
                   onChange={(value) =>
-                    setForm((prev) => ({ ...prev, project_id: value, parent_task_id: '' }))
+                    setForm((prev) => ({
+                      ...prev,
+                      project_id: value,
+                      assignee_user_id: getDefaultAssignee(value),
+                      parent_task_id: '',
+                    }))
                   }
                   placeholder="Select project"
+                />
+              </div>
+            ) : null}
+
+            {showAssigneeField ? (
+              <div className="tasksField">
+                <label>
+                  <TaskFieldLabel icon={UserRound}>Assignee *</TaskFieldLabel>
+                </label>
+                <CustomSelect
+                  options={assigneeOptions}
+                  value={form.assignee_user_id}
+                  onChange={(value) =>
+                    setForm((prev) => ({ ...prev, assignee_user_id: value }))
+                  }
+                  placeholder="Select assignee"
                 />
               </div>
             ) : null}

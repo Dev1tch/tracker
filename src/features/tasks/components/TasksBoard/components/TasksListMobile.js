@@ -4,7 +4,9 @@ import {
   Check,
   ChevronRight,
   Clock3,
+  FolderKanban,
   Plus,
+  UserRound,
 } from 'lucide-react';
 import { TASK_STATUS } from '@/lib/api';
 import {
@@ -40,11 +42,19 @@ function formatSpentTime(totalMinutes) {
   return parts.join(' ');
 }
 
+function getMemberDisplayName(member) {
+  const fullName = [member?.first_name, member?.last_name].filter(Boolean).join(' ').trim();
+  return fullName || member?.email || 'Member';
+}
+
 export default function TasksListMobile({
   visibleStatuses,
   boardByStatus,
   statusConfig,
   taskTypeById,
+  projectById,
+  membersByProject,
+  isProjectsMode = false,
   cardViewSettings,
   selectionMode,
   selectedTaskIds,
@@ -117,6 +127,15 @@ export default function TasksListMobile({
                         ? taskTypeById.get(String(task.task_type_id)) || null
                         : null;
                     const taskTypeColor = taskType?.color || '#6ea8fe';
+                    const taskProject = task.project_id
+                      ? projectById?.get(String(task.project_id)) || null
+                      : null;
+                    const assignee = task.project_id && task.assignee_user_id
+                      ? (membersByProject?.[task.project_id] || []).find(
+                          (member) => member.user_id === task.assignee_user_id
+                        )
+                      : null;
+                    const taskProjectColor = taskProject?.color || '#6ea8fe';
                     const priorityMeta = PRIORITY_META[task.priority] || {
                       label: formatPriority(task.priority),
                       className: 'normal',
@@ -170,6 +189,21 @@ export default function TasksListMobile({
                               style={{ color: taskTypeColor }}
                             >
                               {taskType.name}
+                            </span>
+                          ) : null}
+                          {isProjectsMode && cardViewSettings.project && taskProject ? (
+                            <span
+                              className="taskProjectMeta"
+                              style={{ color: taskProjectColor }}
+                            >
+                              <FolderKanban size={8} />
+                              {taskProject.name}
+                            </span>
+                          ) : null}
+                          {isProjectsMode && cardViewSettings.assignee && assignee ? (
+                            <span className="taskAssigneeMeta">
+                              <UserRound size={8} />
+                              {getMemberDisplayName(assignee)}
                             </span>
                           ) : null}
                           {cardViewSettings.priority ? (

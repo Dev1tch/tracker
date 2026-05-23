@@ -15,6 +15,7 @@ import { apiClient } from './client.js';
  * @property {string} title
  * @property {string} [description]
  * @property {string} [project_id]
+ * @property {string} [assignee_user_id]
  * @property {string} [task_type_id]
  * @property {string} [parent_task_id]
  * @property {TaskStatus} [status]
@@ -42,6 +43,7 @@ import { apiClient } from './client.js';
  * @property {string} title
  * @property {string|null} description
  * @property {string|null} project_id
+ * @property {string|null} assignee_user_id
  * @property {string|null} task_type_id
  * @property {string|null} parent_task_id
  * @property {TaskStatus} status
@@ -116,6 +118,7 @@ export class TaskCreatePayload {
     this.title = data.title ?? '';
     this.description = data.description;
     this.project_id = data.project_id;
+    this.assignee_user_id = data.assignee_user_id;
     this.task_type_id = data.task_type_id;
     this.parent_task_id = data.parent_task_id;
     this.status = data.status ?? TASK_STATUS.TO_DO;
@@ -129,6 +132,7 @@ export class TaskCreatePayload {
       title: this.title,
       description: this.description,
       project_id: this.project_id,
+      assignee_user_id: this.assignee_user_id,
       task_type_id: this.task_type_id,
       parent_task_id: this.parent_task_id,
       status: this.status,
@@ -216,6 +220,7 @@ export class TaskModel {
     this.title = data.title ?? '';
     this.description = data.description ?? null;
     this.project_id = data.project_id ?? null;
+    this.assignee_user_id = data.assignee_user_id ?? null;
     this.task_type_id = data.task_type_id ?? null;
     this.parent_task_id = data.parent_task_id ?? null;
     this.status = data.status ?? TASK_STATUS.TO_DO;
