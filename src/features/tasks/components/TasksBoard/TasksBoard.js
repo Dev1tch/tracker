@@ -1184,6 +1184,8 @@ export default function TasksBoard({ mode = 'personal' }) {
           removingMemberId={removingProjectMemberId}
           isOpen={isProjectSidebarOpen}
           onToggleOpen={() => setIsProjectSidebarOpen((prev) => !prev)}
+          onOpen={() => setIsProjectSidebarOpen(true)}
+          onClose={() => setIsProjectSidebarOpen(false)}
         />
       ) : null}
 

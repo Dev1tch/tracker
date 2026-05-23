@@ -47,6 +47,8 @@ export default function ProjectSidebar({
   removingMemberId,
   isOpen,
   onToggleOpen,
+  onOpen,
+  onClose,
 }) {
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) || null,
@@ -62,14 +64,18 @@ export default function ProjectSidebar({
   }, [setProjectForm]);
 
   return (
-    <>
+    <div
+      className={`tasksProjectDrawer ${isOpen ? 'open' : ''}`}
+      onMouseEnter={onOpen}
+      onMouseLeave={onClose}
+    >
       <button
         type="button"
-        className={`tasksProjectDrawerKnob ${isOpen ? 'open' : ''}`}
+        className="tasksProjectDrawerRail"
         onClick={onToggleOpen}
         title={isOpen ? 'Hide projects' : 'Show projects'}
-      aria-label={isOpen ? 'Hide projects' : 'Show projects'}
-    >
+        aria-label={isOpen ? 'Hide projects' : 'Show projects'}
+      >
         <ChevronRight size={16} />
       </button>
 
@@ -243,6 +249,6 @@ export default function ProjectSidebar({
         </div>
       ) : null}
       </aside>
-    </>
+    </div>
   );
 }
