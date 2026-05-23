@@ -1,12 +1,21 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { CheckCircle2, ListTodo, CalendarDays, FileText, LineChart, LayoutDashboard, LogOut } from 'lucide-react';
+import {
+  CalendarDays,
+  CheckCircle2,
+  FileText,
+  LayoutDashboard,
+  LineChart,
+  ListTodo,
+  LogOut,
+} from 'lucide-react';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import './Dashboard.css';
 
 export default function DashboardLayout({ children, activeTab, onTabChange, onLogout }) {
   const canvasRef = useRef(null);
+  const isTasksArea = activeTab === 'tasks' || activeTab === 'projects';
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -81,9 +90,29 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
       <header className="topHeader">
         <div className="brand">
           <img src="/logo.svg" alt="Life Tracker Logo" className="brandLogo" />
-          Life tracker 
-          <span style={{ opacity: 0.3, margin: '0 4px', textTransform: 'none' }}>/</span> 
-          <span style={{ color: 'var(--text-secondary)' }}>{activeTab}</span>
+          <span>Life tracker</span>
+          <span className="brandDivider">/</span>
+          {isTasksArea ? (
+            <div className="brandSectionNav" aria-label="Tasks section navigation">
+              <button
+                type="button"
+                className={`brandSectionLink ${activeTab === 'tasks' ? 'active' : ''}`}
+                onClick={() => onTabChange('tasks')}
+              >
+                Tasks
+              </button>
+              <span className="brandDivider">/</span>
+              <button
+                type="button"
+                className={`brandSectionLink ${activeTab === 'projects' ? 'active' : ''}`}
+                onClick={() => onTabChange('projects')}
+              >
+                Projects
+              </button>
+            </div>
+          ) : (
+            <span className="brandCurrent">{activeTab}</span>
+          )}
         </div>
         <div className="headerActions">
           <ThemeToggle className="dashboardThemeToggle" />
@@ -111,7 +140,7 @@ export default function DashboardLayout({ children, activeTab, onTabChange, onLo
             <span className="navLabel">Habits</span>
           </button>
           <button 
-            className={`navItem ${activeTab === 'tasks' ? 'active' : ''}`}
+            className={`navItem ${activeTab === 'tasks' || activeTab === 'projects' ? 'active' : ''}`}
             onClick={() => onTabChange('tasks')}
           >
             <ListTodo size={17} strokeWidth={1.5} />

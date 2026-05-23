@@ -111,6 +111,7 @@ export default function TaskDetailModal({
   isSaving,
   isMobile,
   embedded = false,
+  showProjectField = true,
 }) {
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [subtaskForm, setSubtaskForm] = useState(() => getDefaultSubtaskForm());
@@ -374,20 +375,22 @@ export default function TaskDetailModal({
                   />
                 </div>
 
-                <div className="tasksField">
-                  <label>
-                    <TaskFieldLabel icon={FolderKanban}>Project</TaskFieldLabel>
-                  </label>
-                  <CustomSelect
-                    options={projectOptions}
-                    value={form.project_id}
-                    onChange={(value) =>
-                      setForm((prev) => ({ ...prev, project_id: value, parent_task_id: '' }))
-                    }
-                    placeholder="Select project"
-                    listPosition={selectListPosition}
-                  />
-                </div>
+                {showProjectField ? (
+                  <div className="tasksField">
+                    <label>
+                      <TaskFieldLabel icon={FolderKanban}>Project</TaskFieldLabel>
+                    </label>
+                    <CustomSelect
+                      options={projectOptions}
+                      value={form.project_id}
+                      onChange={(value) =>
+                        setForm((prev) => ({ ...prev, project_id: value, parent_task_id: '' }))
+                      }
+                      placeholder="Select project"
+                      listPosition={selectListPosition}
+                    />
+                  </div>
+                ) : null}
 
                 <div className="tasksField">
                   <label>

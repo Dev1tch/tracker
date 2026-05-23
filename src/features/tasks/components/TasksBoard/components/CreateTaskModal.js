@@ -41,6 +41,7 @@ export default function CreateTaskModal({
   statusColors,
   parentTasks,
   onOpenTypeManager,
+  showProjectField = true,
 }) {
   if (!isOpen) return null;
 
@@ -139,19 +140,21 @@ export default function CreateTaskModal({
               />
             </div>
 
-            <div className="tasksField">
-              <label>
-                <TaskFieldLabel icon={FolderKanban}>Project</TaskFieldLabel>
-              </label>
-              <CustomSelect
-                options={projectOptions}
-                value={form.project_id}
-                onChange={(value) =>
-                  setForm((prev) => ({ ...prev, project_id: value, parent_task_id: '' }))
-                }
-                placeholder="Select project"
-              />
-            </div>
+            {showProjectField ? (
+              <div className="tasksField">
+                <label>
+                  <TaskFieldLabel icon={FolderKanban}>Project</TaskFieldLabel>
+                </label>
+                <CustomSelect
+                  options={projectOptions}
+                  value={form.project_id}
+                  onChange={(value) =>
+                    setForm((prev) => ({ ...prev, project_id: value, parent_task_id: '' }))
+                  }
+                  placeholder="Select project"
+                />
+              </div>
+            ) : null}
 
             <div className="tasksField">
               <label>

@@ -16,7 +16,7 @@ import { ToastProvider } from '@/components/ui/ToastProvider';
 const DEFAULT_TAB = 'habits';
 const ACTIVE_TAB_STORAGE_KEY = 'life_tracker.active_tab';
 const ACTIVE_TAB_CHANGE_EVENT = 'life-tracker:active-tab-change';
-const VALID_TABS = new Set(['habits', 'tasks', 'calendar', 'finance', 'board', 'notes']);
+const VALID_TABS = new Set(['habits', 'tasks', 'projects', 'calendar', 'finance', 'board', 'notes']);
 
 function normalizeTab(tab) {
   return VALID_TABS.has(tab) ? tab : DEFAULT_TAB;
@@ -140,7 +140,9 @@ export default function Home() {
       case 'habits':
         return <HabitTracker />;
       case 'tasks':
-        return <TasksBoard />;
+        return <TasksBoard mode="personal" />;
+      case 'projects':
+        return <TasksBoard mode="projects" />;
       case 'calendar':
         return <Calendar />;
       case 'finance':

@@ -65,6 +65,40 @@
   filter: drop-shadow(0 0 5px var(--glow-color));
 }
 
+.brandDivider {
+  opacity: 0.3;
+  margin: 0 4px;
+  text-transform: none;
+}
+
+.brandCurrent {
+  color: var(--text-secondary);
+}
+
+.brandSectionNav {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandSectionLink {
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.brandSectionLink:hover,
+.brandSectionLink.active {
+  color: var(--text-primary);
+  text-shadow: 0 0 10px var(--glow-color);
+}
+
 .headerActions {
   display: flex;
   align-items: center;

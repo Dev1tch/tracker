@@ -82,6 +82,10 @@ export class ProjectsApi {
     return data.map((item) => ProjectMemberModel.fromApi(item));
   }
 
+  async removeProjectMember(projectId, memberId) {
+    return apiClient.delete(`/projects/${projectId}/members/${memberId}`);
+  }
+
   async inviteProjectMember(projectId, email) {
     const data = await apiClient.post(`/projects/${projectId}/invite`, { email });
     return new ProjectInviteResponse(data);

@@ -58,7 +58,7 @@ import TasksDatePicker from './components/TasksDatePicker';
 import TaskDetailModal from './components/TaskDetailModal';
 import TypeManagerModal from './components/TypeManagerModal';
 import TasksListMobile from './components/TasksListMobile';
-import ProjectManagerModal from './components/ProjectManagerModal';
+import ProjectSidebar from './components/ProjectSidebar';
 import './TasksBoard.css';
 
 function formatSpentTime(totalMinutes) {
@@ -304,9 +304,10 @@ function saveStatusColumnOrder(statusColumnOrder) {
   }
 }
 
-export default function TasksBoard() {
+export default function TasksBoard({ mode = 'personal' }) {
   const addToast = useToast();
   const isMobile = useIsMobile();
+  const isProjectsMode = mode === 'projects';
 
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
@@ -322,6 +323,7 @@ export default function TasksBoard() {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [isInvitingProjectMember, setIsInvitingProjectMember] = useState(false);
+  const [removingProjectMemberId, setRemovingProjectMemberId] = useState('');
 
   const [filters, setFilters] = useState(getDefaultFilters);
 
@@ -330,7 +332,6 @@ export default function TasksBoard() {
   const [bulkTargetStatus, setBulkTargetStatus] = useState(TASK_STATUS.IN_PROGRESS);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(DEFAULT_CREATE_FORM);
-  const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
   const [projectForm, setProjectForm] = useState({
     name: '',
     description: '',
@@ -338,6 +339,7 @@ export default function TasksBoard() {
   });
   const [inviteForm, setInviteForm] = useState({ email: '' });
   const [inviteProjectId, setInviteProjectId] = useState('');
+  const [isProjectSidebarOpen, setIsProjectSidebarOpen] = useState(false);
 
   const [isTypeManagerOpen, setIsTypeManagerOpen] = useState(false);
   const [typeForm, setTypeForm] = useState(DEFAULT_TYPE_FORM);
@@ -366,21 +368,14 @@ export default function TasksBoard() {
     () => new Map(projects.map((project) => [String(project.id), project])),
     [projects]
   );
-  const projectOptions = useMemo(
-    () => [
-      { value: 'personal', label: 'Personal' },
-      ...projects.map((project) => ({
-        value: project.id,
-        label: project.name,
-        color: project.color || '#6ea8fe',
-      })),
-    ],
-    [projects]
-  );
   const currentUserId = useMemo(() => getAccountStorageId(), []);
+  const activeProjectId = isProjectsMode ? inviteProjectId : '';
 
   useEffect(() => {
-    setInviteProjectId((current) => current || projects[0]?.id || '');
+    setInviteProjectId((current) => {
+      if (current && projects.some((project) => project.id === current)) return current;
+      return projects[0]?.id || '';
+    });
   }, [projects]);
 
   useEffect(() => {
@@ -466,12 +461,12 @@ export default function TasksBoard() {
     const search = filters.search.trim().toLowerCase();
 
     return parentTasks.filter((task) => {
-      if (filters.project_id === 'personal' && task.project_id) return false;
-      if (
-        filters.project_id &&
-        filters.project_id !== 'personal' &&
-        task.project_id !== filters.project_id
-      ) return false;
+      if (isProjectsMode) {
+        if (!activeProjectId) return false;
+        if (task.project_id !== activeProjectId) return false;
+      } else if (task.project_id) {
+        return false;
+      }
 
       if (search) {
         const hay = `${task.title || ''} ${task.description || ''}`.toLowerCase();
@@ -489,7 +484,7 @@ export default function TasksBoard() {
 
       return true;
     });
-  }, [filters, parentTasks]);
+  }, [activeProjectId, filters, isProjectsMode, parentTasks]);
 
   const boardByStatus = useMemo(() => {
     return allStatuses.reduce((acc, status) => {
@@ -557,7 +552,6 @@ export default function TasksBoard() {
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (filters.search.trim()) count += 1;
-    if (filters.project_id) count += 1;
     if (filters.status.length > 0) count += 1;
     if (filters.priority.length > 0) count += 1;
     if (filters.task_type_id.length > 0) count += 1;
@@ -650,7 +644,6 @@ export default function TasksBoard() {
   useEffect(() => {
     const isAnyModalOpen =
       isCreateOpen ||
-      isProjectManagerOpen ||
       isTypeManagerOpen ||
       Boolean(detailTaskId) ||
       Boolean(pendingDeleteProjectId) ||
@@ -666,7 +659,6 @@ export default function TasksBoard() {
   }, [
     detailTaskId,
     isCreateOpen,
-    isProjectManagerOpen,
     isTypeManagerOpen,
     pendingDeleteProjectId,
     pendingDeleteTaskId,
@@ -850,6 +842,15 @@ export default function TasksBoard() {
 
   const handleCreateTask = async () => {
     if (isSubmitting) return;
+    const targetProjectId = isProjectsMode
+      ? (createForm.project_id || activeProjectId)
+      : '';
+
+    if (isProjectsMode && !targetProjectId) {
+      addToast('Select a project first', 'error');
+      return;
+    }
+
     const title = createForm.title.trim();
     if (!title) {
       addToast('Task title is required', 'error');
@@ -862,7 +863,7 @@ export default function TasksBoard() {
       const created = await tasksApi.createTask({
         title,
         description: createForm.description || null,
-        project_id: createForm.project_id || null,
+        project_id: isProjectsMode ? targetProjectId : null,
         task_type_id: createForm.task_type_id || null,
         parent_task_id: createForm.parent_task_id || null,
         status: createForm.status,
@@ -872,8 +873,13 @@ export default function TasksBoard() {
       });
 
       setTasks((prev) => [created, ...prev]);
+      if (isProjectsMode && targetProjectId !== activeProjectId) {
+        setInviteProjectId(targetProjectId);
+      }
       setIsCreateOpen(false);
-      setCreateForm(getCreateFormFromFilters(filters));
+      setCreateForm(
+        getCreateFormFromFilters(filters, isProjectsMode ? { project_id: targetProjectId } : {})
+      );
       addToast('Task created', 'success');
     } catch (error) {
       console.error('Create task failed:', error);
@@ -967,8 +973,6 @@ export default function TasksBoard() {
       setMembersByProject((prev) => ({ ...prev, [created.id]: members }));
       setInviteProjectId(created.id);
       setProjectForm({ name: '', description: '', color: '#6ea8fe' });
-      setFilters((prev) => ({ ...prev, project_id: created.id }));
-      setIsProjectManagerOpen(false);
       addToast('Project created', 'success');
     } catch (error) {
       console.error('Create project failed:', error);
@@ -994,10 +998,6 @@ export default function TasksBoard() {
       setTasks((prev) => prev.filter((task) => task.project_id !== projectId));
       setInviteProjectId('');
       setPendingDeleteProjectId(null);
-      setFilters((prev) => ({
-        ...prev,
-        project_id: prev.project_id === projectId ? '' : prev.project_id,
-      }));
       addToast('Project deleted', 'success');
     } catch (error) {
       console.error('Delete project failed:', error);
@@ -1022,13 +1022,32 @@ export default function TasksBoard() {
       const members = await projectsApi.getProjectMembers(inviteProjectId);
       setMembersByProject((prev) => ({ ...prev, [inviteProjectId]: members }));
       setInviteForm({ email: '' });
-      setIsProjectManagerOpen(false);
       addToast('Invite sent', 'success');
     } catch (error) {
       console.error('Invite project member failed:', error);
       addToast(error?.message || 'Failed to invite member', 'error');
     } finally {
       setIsInvitingProjectMember(false);
+    }
+  };
+
+  const handleRemoveProjectMember = async (projectId, memberId) => {
+    if (!projectId || !memberId || removingProjectMemberId) return;
+
+    setRemovingProjectMemberId(memberId);
+
+    try {
+      await projectsApi.removeProjectMember(projectId, memberId);
+      setMembersByProject((prev) => ({
+        ...prev,
+        [projectId]: (prev[projectId] || []).filter((member) => member.id !== memberId),
+      }));
+      addToast('Member removed', 'success');
+    } catch (error) {
+      console.error('Remove project member failed:', error);
+      addToast(error?.message || 'Failed to remove member', 'error');
+    } finally {
+      setRemovingProjectMemberId('');
     }
   };
 
@@ -1104,9 +1123,14 @@ export default function TasksBoard() {
     setDragOverStatus('');
   };
   const openCreateTask = useCallback((overrides = {}) => {
-    setCreateForm(getCreateFormFromFilters(filters, overrides));
+    setCreateForm(
+      getCreateFormFromFilters(filters, {
+        ...(isProjectsMode ? { project_id: activeProjectId } : {}),
+        ...overrides,
+      })
+    );
     setIsCreateOpen(true);
-  }, [filters]);
+  }, [activeProjectId, filters, isProjectsMode]);
   const handleOpenCreateForStatus = useCallback((status) => {
     openCreateTask({ status });
   }, [openCreateTask]);
@@ -1138,7 +1162,32 @@ export default function TasksBoard() {
   };
 
   return (
-    <section className="tasksFlowContainer" style={statusColorVars}>
+    <section className={`tasksWorkspace ${isProjectsMode ? 'withProjectsSidebar' : ''}`}>
+      {isProjectsMode ? (
+        <ProjectSidebar
+          projects={projects}
+          membersByProject={membersByProject}
+          projectForm={projectForm}
+          setProjectForm={setProjectForm}
+          inviteForm={inviteForm}
+          setInviteForm={setInviteForm}
+          selectedProjectId={inviteProjectId}
+          setSelectedProjectId={setInviteProjectId}
+          currentUserId={currentUserId}
+          onCreateProject={handleCreateProject}
+          onDeleteProject={setPendingDeleteProjectId}
+          onInviteMember={handleInviteProjectMember}
+          onRemoveMember={handleRemoveProjectMember}
+          isCreating={isCreatingProject}
+          isDeleting={isDeletingProject}
+          isInviting={isInvitingProjectMember}
+          removingMemberId={removingProjectMemberId}
+          isOpen={isProjectSidebarOpen}
+          onToggleOpen={() => setIsProjectSidebarOpen((prev) => !prev)}
+        />
+      ) : null}
+
+      <section className="tasksFlowContainer" style={statusColorVars}>
       <header className="tasksFlowHeader">
 
         <div className="tasksHeaderActions">
@@ -1201,14 +1250,6 @@ export default function TasksBoard() {
               <button
                 type="button"
                 className="tasksBtn"
-                onClick={() => setIsProjectManagerOpen(true)}
-              >
-                <FolderKanban size={14} />
-                Projects
-              </button>
-              <button
-                type="button"
-                className="tasksBtn"
                 onClick={() => setIsTypeManagerOpen(true)}
               >
                 <Tag size={14} />
@@ -1218,6 +1259,7 @@ export default function TasksBoard() {
                 type="button"
                 className="tasksBtn tasksBtnPrimary"
                 onClick={() => openCreateTask()}
+                disabled={isProjectsMode && !activeProjectId}
               >
                 <Plus size={14} />
                 Add Task
@@ -1389,14 +1431,6 @@ export default function TasksBoard() {
             onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
             placeholder="Search by title or description"
           />
-          <div className="tasksFilterSelectWrapper">
-            <CustomSelect
-              options={projectOptions}
-              value={filters.project_id}
-              onChange={(value) => setFilters((prev) => ({ ...prev, project_id: value }))}
-              placeholder="All Projects"
-            />
-          </div>
           <div className="tasksFilterSelectWrapper">
             <CustomSelect
               options={filterStatusOptions}
@@ -1716,6 +1750,7 @@ export default function TasksBoard() {
                           event.stopPropagation();
                           handleOpenCreateForStatus(status);
                         }}
+                        disabled={isProjectsMode && !activeProjectId}
                         title={`Add task in ${statusMeta.label}`}
                       >
                         <Plus size={14} />
@@ -1742,6 +1777,7 @@ export default function TasksBoard() {
         statusColors={statusOptionColors}
         parentTasks={parentTasks}
         onOpenTypeManager={() => setIsTypeManagerOpen(true)}
+        showProjectField={isProjectsMode}
       />
 
       <TypeManagerModal
@@ -1753,27 +1789,6 @@ export default function TasksBoard() {
         onCreate={handleCreateTaskType}
         onDelete={handleDeleteTaskType}
         isCreating={isCreatingType}
-      />
-
-      <ProjectManagerModal
-        isOpen={isProjectManagerOpen}
-        onClose={() => setIsProjectManagerOpen(false)}
-        projects={projects}
-        membersByProject={membersByProject}
-        projectColors={{}}
-        projectForm={projectForm}
-        setProjectForm={setProjectForm}
-        inviteForm={inviteForm}
-        setInviteForm={setInviteForm}
-        selectedProjectId={inviteProjectId}
-        setSelectedProjectId={setInviteProjectId}
-        currentUserId={currentUserId}
-        onCreateProject={handleCreateProject}
-        onDeleteProject={setPendingDeleteProjectId}
-        onInviteMember={handleInviteProjectMember}
-        isCreating={isCreatingProject}
-        isDeleting={isDeletingProject}
-        isInviting={isInvitingProjectMember}
       />
 
       <TaskDetailModal
@@ -1794,6 +1809,7 @@ export default function TasksBoard() {
         statusColors={statusOptionColors}
         isSaving={isSavingTask}
         isMobile={isMobile}
+        showProjectField={false}
       />
 
       <ConfirmModal
@@ -1822,6 +1838,7 @@ export default function TasksBoard() {
           setPendingDeleteTaskId(null);
         }}
       />
+      </section>
     </section>
   );
 }
