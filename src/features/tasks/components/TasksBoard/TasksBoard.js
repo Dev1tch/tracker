@@ -1187,7 +1187,10 @@ export default function TasksBoard({ mode = 'personal' }) {
         />
       ) : null}
 
-      <section className="tasksFlowContainer" style={statusColorVars}>
+      <section
+        className={`tasksFlowContainer ${isLoading ? 'isLoading' : ''}`}
+        style={statusColorVars}
+      >
       <header className="tasksFlowHeader">
 
         <div className="tasksHeaderActions">
