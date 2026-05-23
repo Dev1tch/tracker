@@ -102,10 +102,10 @@ const PRIORITY_OPTION_COLORS = {
 
 export default function TaskDetailModal({
   task,
-  allTasks,
-  taskTypes,
-  projects,
-  membersByProject,
+  allTasks = [],
+  taskTypes = [],
+  projects = [],
+  membersByProject = {},
   onClose,
   onSave,
   onDelete,

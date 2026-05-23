@@ -455,6 +455,27 @@ function nodesInsideFrame(frame, nodes, bounds) {
   return nodes.filter((n) => frameContains(frame, n, bounds));
 }
 
+function isNodeSelectedForRender(node, selectionState) {
+  return Boolean(
+    selectionState.selectedIds.has(node.id) ||
+    selectionState.selectedId === node.id ||
+    selectionState.arrowSourceId === node.id
+  );
+}
+
+function orderNodesForRender(nodes, selectionState) {
+  const regular = [];
+  const selected = [];
+  nodes.forEach((node) => {
+    if (isNodeSelectedForRender(node, selectionState)) {
+      selected.push(node);
+    } else {
+      regular.push(node);
+    }
+  });
+  return [...regular, ...selected];
+}
+
 /* Smallest frame this node belongs to, used to clip overflow against the
    frame edges. We match if the node's centre is inside the frame OR the
    frame's centre is inside the node — the second case keeps the clip when
@@ -1520,11 +1541,6 @@ function NoteNode({
 }) {
   const width = node.w || DEFAULT_NOTE_NODE_WIDTH;
   const height = node.h || DEFAULT_NOTE_NODE_HEIGHT;
-  const rawScale = Math.min(
-    width / DEFAULT_NOTE_NODE_WIDTH,
-    height / DEFAULT_NOTE_NODE_HEIGHT
-  );
-  const noteScale = Math.max(0.2, Math.min(6, Number.isFinite(rawScale) ? rawScale : 1));
   const handleContentChange = useCallback(
     (content) => onUpdateNoteContent(node.id, content),
     [node.id, onUpdateNoteContent]
@@ -1555,7 +1571,6 @@ function NoteNode({
         top: node.y,
         width,
         height,
-        '--board-note-scale': noteScale,
         transform: nodeTransform(node),
         transformOrigin: 'center',
         clipPath,
@@ -1564,14 +1579,6 @@ function NoteNode({
       onMouseDown={onMouseDown}
       onClick={onClick}
     >
-      {/* Top drag strip — clicking here always starts the board drag, since
-          everything below is interactive (title input, toolbar, editor
-          body). Without this the user has nowhere to grab the note. */}
-      <div
-        className="boardNoteDragHandle"
-        title="Drag to move"
-        aria-hidden="true"
-      />
       <div className="boardNoteEmbed">
         {noteFile ? (
           <div
@@ -2953,6 +2960,10 @@ export default function Board() {
         return acc;
       }, {}),
     []
+  );
+  const renderNodes = useMemo(
+    () => orderNodesForRender(nodes, { selectedIds, selectedId, arrowSourceId }),
+    [arrowSourceId, nodes, selectedId, selectedIds]
   );
   const filteredImportTasks = useMemo(() => {
     const search = taskImportQuery.trim().toLowerCase();
@@ -5981,7 +5992,7 @@ export default function Board() {
               );
             })()}
 
-            {nodes.map((node) => {
+            {renderNodes.map((node) => {
               const selected =
                 selectedIds.has(node.id) ||
                 selectedId === node.id ||
@@ -6069,6 +6080,7 @@ export default function Board() {
                     noteFile={noteFile && noteFile.type === 'file' ? noteFile : null}
                     onUpdateNoteContent={updateNoteContent}
                     onUpdateNoteName={updateNoteName}
+                    onUploadImage={uploadBoardImage}
                   />
                 );
               }

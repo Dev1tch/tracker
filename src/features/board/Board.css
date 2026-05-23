@@ -879,39 +879,9 @@
   overflow: visible;
 }
 
-.boardNoteDragHandle {
-  flex: 0 0 auto;
-  height: 14px;
-  background: linear-gradient(
-    180deg,
-    var(--surface-12),
-    var(--surface-04)
-  );
-  border-bottom: 1px solid var(--border-color-dim);
-  cursor: grab;
-}
-
-.boardNoteDragHandle:active {
-  cursor: grabbing;
-}
-
-.boardNoteNode.selected .boardNoteDragHandle {
-  background: linear-gradient(
-    180deg,
-    rgba(96, 165, 250, 0.22),
-    rgba(96, 165, 250, 0.08)
-  );
-}
-
-/* The inner editor renders at its natural size and is scaled via
-   --board-note-scale so the user can grow/shrink the node freely without
-   the editor's font sizes collapsing. Mirrors the boardImportedTaskCard
-   pattern. */
 .boardNoteScaled {
-  width: calc(100% / var(--board-note-scale, 1));
-  height: calc(100% / var(--board-note-scale, 1));
-  transform: scale(var(--board-note-scale, 1));
-  transform-origin: top left;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -922,35 +892,83 @@
 .boardNoteEditorInner.notesEditor {
   flex: 1;
   min-height: 0;
-  padding: 18px 26px 22px;
+  height: 100%;
+  padding: 14px 18px 18px;
+  container-type: inline-size;
   background:
     linear-gradient(180deg, transparent 0%, var(--surface-015) 100%),
     var(--bg-color);
 }
 
 .boardNoteEditorInner .notesTitleInput {
-  font-size: 28px;
+  flex: 0 0 auto;
+  font-size: 20px;
   line-height: 1.15;
-  padding: 0 0 14px;
+  padding: 0 0 12px;
 }
 
 .boardNoteEditorInner .notesRichEditor {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .boardNoteEditorInner .notesFormatToolbar {
+  flex: 0 0 auto;
   padding: 8px 0;
   border-bottom: 1px solid var(--border-color-dim);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
 }
 
 .boardNoteEditorInner .notesRulerWrap {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
 }
 
 .boardNoteEditorInner .notesBodyInput {
-  padding: 14px 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px 0 22px;
+  overflow-y: auto;
+}
+
+.boardNoteEditorInner .notesRuler {
+  grid-template-columns: auto minmax(24px, 1fr) auto;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.boardNoteEditorInner .notesRulerTrack {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.boardNoteEditorInner .notesRulerPage {
+  max-width: 100%;
+}
+
+.boardNoteEditorInner .notesRulerLabel,
+.boardNoteEditorInner .notesRulerValue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+@container (max-width: 260px) {
+  .boardNoteEditorInner .notesRuler {
+    grid-template-columns: minmax(24px, 1fr);
+  }
+
+  .boardNoteEditorInner .notesRulerLabel,
+  .boardNoteEditorInner .notesRulerValue {
+    display: none;
+  }
 }
 
 .boardNoteMissing {
