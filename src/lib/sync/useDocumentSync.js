@@ -146,6 +146,8 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const getBaseVersion = useCallback(() => baseVersionRef.current, []);
+
   return {
     initialServerDoc,
     syncing,
@@ -153,6 +155,7 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
     markHydrated,
     setSnapshot,
     setBaseVersion,
+    getBaseVersion,
     schedulePush,
     flushNow: flush,
     isAuthenticated,

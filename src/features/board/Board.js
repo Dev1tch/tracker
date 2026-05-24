@@ -43,7 +43,7 @@ import ColorPicker from '@/components/ui/ColorPicker';
 import CustomSelect from '@/components/ui/CustomSelect';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { tasksApi, TASK_STATUS } from '@/features/tasks/api';
-import { boardApi, mediaApi } from '@/lib/api';
+import { apiClient, boardApi, mediaApi } from '@/lib/api';
 import { useDocumentSync } from '@/lib/sync/useDocumentSync';
 import TaskDetailModal from '@/features/tasks/components/TasksBoard/components/TaskDetailModal';
 import {
@@ -3081,6 +3081,7 @@ export default function Board() {
     markHydrated: markBoardHydrated,
     setSnapshot: setBoardSnapshot,
     setBaseVersion: setBoardBaseVersion,
+    getBaseVersion: getBoardBaseVersion,
     schedulePush: scheduleBoardPush,
     isAuthenticated: isBoardAuthenticated,
   } = useDocumentSync({
@@ -3200,12 +3201,18 @@ export default function Board() {
   }, [initialServerBoard]);
 
   /* Persist board state to IDB and schedule a push. Mark dirty so a reload
-     before the PUT completes pushes the unsynced edits up. */
+     before the PUT completes pushes the unsynced edits up.
+
+     Viewport-only changes (pan/zoom) do NOT trigger a server push — they're
+     persisted to IDB but the user doesn't need a network round-trip every
+     time the canvas pans. Only nodes/edges/frames trigger a push. */
+  const lastContentSignatureRef = useRef('');
   useEffect(() => {
     if (!persistHydratedRef.current) return;
     if (!initialBoardReconciledRef.current) return;
     if (suppressNextPersistRef.current) {
       suppressNextPersistRef.current = false;
+      lastContentSignatureRef.current = serializeBoardState(nodes, edges) + JSON.stringify(frames);
       return;
     }
     if (persistTimerRef.current) {
@@ -3213,6 +3220,11 @@ export default function Board() {
     }
     const snapshot = { nodes, edges, frames, viewport };
     setBoardSnapshot(snapshot);
+
+    const contentSig = serializeBoardState(nodes, edges) + JSON.stringify(frames);
+    const contentChanged = contentSig !== lastContentSignatureRef.current;
+    lastContentSignatureRef.current = contentSig;
+
     persistTimerRef.current = setTimeout(async () => {
       persistTimerRef.current = null;
       try {
@@ -3221,13 +3233,17 @@ export default function Board() {
         await idbPutBoardSyncMeta({
           serverUpdatedAt: meta?.serverUpdatedAt || null,
           serverVersion: Number.isFinite(meta?.serverVersion) ? meta.serverVersion : null,
-          dirty: true,
+          dirty: contentChanged ? true : Boolean(meta?.dirty),
         });
       } catch (err) {
         console.warn('Board: failed to persist state to IndexedDB', err);
       }
     }, BOARD_PERSIST_DEBOUNCE_MS);
-    scheduleBoardPush();
+
+    if (contentChanged) {
+      scheduleBoardPush();
+    }
+
     return () => {
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
@@ -3273,7 +3289,8 @@ export default function Board() {
   }, [nodes, edges, frames, viewport]);
 
   /* Flush any pending write on unmount so a fast tab switch doesn't lose
-     the most recent edits. */
+     the most recent edits. Mark dirty in the same IDB write so the next
+     load knows local has unsynced changes. */
   useEffect(() => {
     return () => {
       if (!persistHydratedRef.current) return;
@@ -3282,7 +3299,46 @@ export default function Board() {
         persistTimerRef.current = null;
       }
       idbPutBoardState(latestPersistRef.current).catch(() => {});
+      idbGetBoardSyncMeta()
+        .then((meta) => idbPutBoardSyncMeta({
+          serverUpdatedAt: meta?.serverUpdatedAt || null,
+          serverVersion: Number.isFinite(meta?.serverVersion) ? meta.serverVersion : null,
+          dirty: true,
+        }))
+        .catch(() => {});
     };
+  }, []);
+
+  /* Browser refresh / tab close: fire a non-blocking PUT via sendBeacon so a
+     reload-during-save still reaches the server. sendBeacon can't set custom
+     headers, so we POST to a beacon endpoint that reads the JWT from the body. */
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onPagehide = () => {
+      if (!persistHydratedRef.current) return;
+      if (!initialBoardReconciledRef.current) return;
+      if (!isBoardAuthenticated()) return;
+      const snapshot = latestPersistRef.current;
+      if (!snapshot) return;
+      const token = apiClient.getToken();
+      if (!token) return;
+      const baseUrl = apiClient.getResolvedBaseUrl() || (typeof window !== 'undefined' ? '/api/v1' : '');
+      const url = `${baseUrl.replace(/\/+$/, '')}/board/beacon`;
+      const body = JSON.stringify({
+        token,
+        state: snapshot,
+        base_version: typeof getBoardBaseVersion === 'function' ? getBoardBaseVersion() : null,
+      });
+      try {
+        const blob = new Blob([body], { type: 'application/json' });
+        navigator.sendBeacon(url, blob);
+      } catch {
+        /* sendBeacon is best-effort; ignore failures */
+      }
+    };
+    window.addEventListener('pagehide', onPagehide);
+    return () => window.removeEventListener('pagehide', onPagehide);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* Board history: content only. Viewport changes are intentionally excluded. */
