@@ -876,15 +876,21 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
 }
 
+/* Render the embedded editor at its default footprint, then uniformly scale
+   it via CSS transform. This keeps the internal layout (toolbar, ruler,
+   title, body) frozen as the user resizes — only the rendered size changes,
+   matching how TaskNode/LinkNode behave. */
 .boardNoteScaled {
-  width: 100%;
-  height: 100%;
+  width: calc(100% / var(--board-note-scale, 1));
+  height: calc(100% / var(--board-note-scale, 1));
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transform: scale(var(--board-note-scale, 1));
+  transform-origin: top left;
 }
 
 /* Override the Notes-view padding (uses 4vw which is viewport-relative and
@@ -894,7 +900,6 @@
   min-height: 0;
   height: 100%;
   padding: 14px 18px 18px;
-  container-type: inline-size;
   background:
     linear-gradient(180deg, transparent 0%, var(--surface-015) 100%),
     var(--bg-color);
@@ -923,7 +928,7 @@
 }
 
 .boardNoteEditorInner .notesRulerWrap {
-  flex: 1 1 auto;
+  flex: 1;
   min-height: 0;
   width: 100%;
   margin: 0;
@@ -931,7 +936,7 @@
 }
 
 .boardNoteEditorInner .notesBodyInput {
-  flex: 1 1 auto;
+  flex: 1;
   min-height: 0;
   padding: 14px 0 22px;
   overflow-y: auto;
@@ -958,17 +963,6 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: clip;
-}
-
-@container (max-width: 260px) {
-  .boardNoteEditorInner .notesRuler {
-    grid-template-columns: minmax(24px, 1fr);
-  }
-
-  .boardNoteEditorInner .notesRulerLabel,
-  .boardNoteEditorInner .notesRulerValue {
-    display: none;
-  }
 }
 
 .boardNoteMissing {

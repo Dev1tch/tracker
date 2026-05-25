@@ -1541,6 +1541,17 @@ function NoteNode({
 }) {
   const width = node.w || DEFAULT_NOTE_NODE_WIDTH;
   const height = node.h || DEFAULT_NOTE_NODE_HEIGHT;
+  // Match TaskNode/LinkNode: pick a uniform scale so the embedded editor's
+  // internal layout (toolbar, ruler, title, body) never reflows on resize —
+  // only its rendered size changes.
+  const rawNoteScale = Math.min(
+    width / DEFAULT_NOTE_NODE_WIDTH,
+    height / DEFAULT_NOTE_NODE_HEIGHT
+  );
+  const noteScale = Math.max(
+    0.1,
+    Math.min(8, Number.isFinite(rawNoteScale) ? rawNoteScale : 1)
+  );
   const handleContentChange = useCallback(
     (content) => onUpdateNoteContent(node.id, content),
     [node.id, onUpdateNoteContent]
@@ -1571,6 +1582,7 @@ function NoteNode({
         top: node.y,
         width,
         height,
+        '--board-note-scale': noteScale,
         transform: nodeTransform(node),
         transformOrigin: 'center',
         clipPath,
