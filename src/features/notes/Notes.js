@@ -6,6 +6,8 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  BringToFront,
+  SendToBack,
   AlarmClock,
   Archive,
   Award,
@@ -1024,6 +1026,12 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
   const [frameStyle, setFrameStyle] = useState('outline');
   const [fontFamily, setFontFamily] = useState(NOTE_FONT_OPTIONS[0].value);
   const [fontSize, setFontSize] = useState('15');
+  /* Currently focused <img> for the alignment toolbar (inline / wrap-left /
+     wrap-right / block). Cleared when the user clicks elsewhere in the editor.
+     `imageMenuTick` bumps on layout-relevant changes (scroll, resize, alignment
+     applied) so the toolbar repositions itself. */
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imageMenuTick, setImageMenuTick] = useState(0);
   const [writingWidth, setWritingWidth] = useState(loadEditorWidth);
   /* Runtime ceiling driven by the editor's measured width — lets the ruler
      expand on wide screens and shrink with the window instead of being
@@ -1311,6 +1319,309 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
     }
     insertImageFromUpload(file);
   }, [insertImageFromUpload, onUploadImage, saveSelection]);
+
+  /* Click in the body: select the clicked <img> (so the alignment toolbar
+     appears) or clear the selection. For under-text images (z-index:-1)
+     clicks pass through to the text above, so we fall back to
+     elementsFromPoint to find any image at the click location. */
+  const handleEditorClick = useCallback((event) => {
+    const target = event.target;
+    if (target && target.tagName === 'IMG') {
+      setSelectedImage(target);
+      setImageMenuTick((tick) => tick + 1);
+      return;
+    }
+    // Look for an under-text image at the click point that the click passed
+    // through. Only if the user clicked plain whitespace / a text node, not
+    // an interactive element.
+    if (typeof document !== 'undefined' && document.elementsFromPoint) {
+      const els = document.elementsFromPoint(event.clientX, event.clientY);
+      const editor = editorRef.current;
+      const hiddenImg = els.find(
+        (el) => el.tagName === 'IMG' && editor && editor.contains(el)
+      );
+      if (hiddenImg) {
+        setSelectedImage(hiddenImg);
+        setImageMenuTick((tick) => tick + 1);
+        return;
+      }
+    }
+    if (selectedImage) setSelectedImage(null);
+  }, [selectedImage]);
+
+  /* Apply a layout mode to the selected image:
+       - inline       : default in-flow inline image
+       - wrap-left    : floats left, text wraps right
+       - wrap-right   : floats right, text wraps left
+       - over-text    : absolutely positioned ON TOP of text (z-index:2)
+       - under-text   : absolutely positioned BEHIND text (z-index:-1)
+     When switching to over/under text we snapshot the image's current
+     bounding rect (relative to the body) so it stays put visually.
+     The user's drag-resize width is preserved across mode changes. */
+  const applyImageAlignment = useCallback((alignment) => {
+    if (!selectedImage) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    const before = editor.innerHTML;
+    const preservedWidth = selectedImage.style.width;
+
+    /* Capture the image's current position relative to the body's scrolled
+       content area BEFORE we change layout — used as the initial top/left
+       for the absolute-positioned over-text / under-text modes. */
+    let capturedPos = null;
+    if (alignment === 'over-text' || alignment === 'under-text') {
+      const imgRect = selectedImage.getBoundingClientRect();
+      const bodyRect = editor.getBoundingClientRect();
+      capturedPos = {
+        left: imgRect.left - bodyRect.left + editor.scrollLeft,
+        top: imgRect.top - bodyRect.top + editor.scrollTop,
+      };
+    }
+
+    selectedImage.style.float = '';
+    selectedImage.style.display = '';
+    selectedImage.style.clear = '';
+    selectedImage.style.margin = '';
+    selectedImage.style.maxWidth = '';
+    selectedImage.style.position = '';
+    selectedImage.style.top = '';
+    selectedImage.style.left = '';
+    selectedImage.style.zIndex = '';
+
+    switch (alignment) {
+      case 'wrap-left':
+        // Image on the LEFT — text flows around its right side. Insert mid-
+        // paragraph for the wrap effect; the user should already have placed
+        // the image inside the text.
+        selectedImage.style.float = 'left';
+        selectedImage.style.margin = '4px 16px 8px 0';
+        selectedImage.style.maxWidth = '50%';
+        break;
+      case 'wrap-right':
+        // Image on the RIGHT — text flows around its left side.
+        selectedImage.style.float = 'right';
+        selectedImage.style.margin = '4px 0 8px 16px';
+        selectedImage.style.maxWidth = '50%';
+        break;
+      case 'over-text':
+        // Floats above the text as a layer. Position is captured from where
+        // the image currently sits in the document; the user can drag it
+        // afterwards (via the selection outline) to reposition.
+        selectedImage.style.position = 'absolute';
+        selectedImage.style.zIndex = '2';
+        if (capturedPos) {
+          selectedImage.style.left = `${capturedPos.left}px`;
+          selectedImage.style.top = `${capturedPos.top}px`;
+        }
+        break;
+      case 'under-text':
+        // Sits behind the text. z-index:-1 puts it underneath; the body has
+        // position:relative (in Notes.css) so the stacking context keeps the
+        // image inside the editor rather than disappearing behind it.
+        selectedImage.style.position = 'absolute';
+        selectedImage.style.zIndex = '-1';
+        if (capturedPos) {
+          selectedImage.style.left = `${capturedPos.left}px`;
+          selectedImage.style.top = `${capturedPos.top}px`;
+        }
+        break;
+      case 'inline':
+      default:
+        // Image flows inline with the surrounding text.
+        selectedImage.style.maxWidth = '100%';
+        break;
+    }
+    selectedImage.style.height = 'auto';
+    // Re-apply the user's explicit width (from prior resize) so switching
+    // wrap modes doesn't reset their sizing. maxWidth is left off so the
+    // explicit width takes precedence.
+    if (preservedWidth) {
+      selectedImage.style.width = preservedWidth;
+      selectedImage.style.maxWidth = 'none';
+    }
+    selectedImage.dataset.wrap = alignment;
+
+    const after = editor.innerHTML;
+    pushHistory(before, after);
+    setImageMenuTick((tick) => tick + 1);
+  }, [pushHistory, selectedImage]);
+
+  /* Drag-to-resize from the bottom-right corner handle on the selection
+     outline. Width is applied inline so it persists in the saved HTML.
+     We divide drag deltas by the visual-to-internal scale ratio so the
+     handle tracks correctly inside transformed parents (e.g., the board
+     view's scaled embedded note). Uses pointer events so it works with
+     mouse and touch. */
+  const resizeStateRef = useRef(null);
+  const handleResizeStart = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (resizeStateRef.current) return; // ignore the duplicate mousedown
+    if (!selectedImage || !editorRef.current) return;
+    const editor = editorRef.current;
+    const rect = selectedImage.getBoundingClientRect();
+    const internalWidth = selectedImage.offsetWidth;
+    if (rect.width <= 0 || internalWidth <= 0) return;
+    const scale = rect.width / internalWidth;
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startInternalWidth: internalWidth,
+      scale: scale || 1,
+      before: editor.innerHTML,
+    };
+
+    function handleMove(moveEvent) {
+      const state = resizeStateRef.current;
+      if (!state) return;
+      const viewportDx = moveEvent.clientX - state.startX;
+      const internalDx = viewportDx / state.scale;
+      const newWidth = Math.max(32, state.startInternalWidth + internalDx);
+      selectedImage.style.width = `${Math.round(newWidth)}px`;
+      selectedImage.style.height = 'auto';
+      // Override any wrap-mode maxWidth so the explicit drag size always wins.
+      selectedImage.style.maxWidth = 'none';
+      setImageMenuTick((tick) => tick + 1);
+    }
+
+    function handleEnd() {
+      const state = resizeStateRef.current;
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleEnd);
+      window.removeEventListener('pointercancel', handleEnd);
+      resizeStateRef.current = null;
+      if (state && editor) {
+        const after = editor.innerHTML;
+        if (after !== state.before) pushHistory(state.before, after);
+      }
+    }
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleEnd);
+    window.addEventListener('pointercancel', handleEnd);
+  }, [pushHistory, selectedImage]);
+
+  /* Drag the selection outline to reposition the image — only meaningful
+     when the image is in absolute mode (over-text / under-text). Updates
+     style.left / style.top, divided by the visual scale so it tracks the
+     cursor inside transformed parents (board view). */
+  const moveStateRef = useRef(null);
+  const handleMoveStart = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (moveStateRef.current) return;
+    if (!selectedImage || selectedImage.style.position !== 'absolute') return;
+    if (!editorRef.current) return;
+    const editor = editorRef.current;
+    const imgRect = selectedImage.getBoundingClientRect();
+    const internalWidth = selectedImage.offsetWidth;
+    if (imgRect.width <= 0 || internalWidth <= 0) return;
+    const scale = imgRect.width / internalWidth || 1;
+    moveStateRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: parseFloat(selectedImage.style.left) || 0,
+      startTop: parseFloat(selectedImage.style.top) || 0,
+      scale,
+      before: editor.innerHTML,
+    };
+
+    function handleMove(moveEvent) {
+      const state = moveStateRef.current;
+      if (!state) return;
+      const viewportDx = moveEvent.clientX - state.startX;
+      const viewportDy = moveEvent.clientY - state.startY;
+      const internalDx = viewportDx / state.scale;
+      const internalDy = viewportDy / state.scale;
+      selectedImage.style.left = `${Math.round(state.startLeft + internalDx)}px`;
+      selectedImage.style.top = `${Math.round(state.startTop + internalDy)}px`;
+      setImageMenuTick((tick) => tick + 1);
+    }
+
+    function handleEnd() {
+      const state = moveStateRef.current;
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleEnd);
+      window.removeEventListener('pointercancel', handleEnd);
+      moveStateRef.current = null;
+      if (state && editor) {
+        const after = editor.innerHTML;
+        if (after !== state.before) pushHistory(state.before, after);
+      }
+    }
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleEnd);
+    window.addEventListener('pointercancel', handleEnd);
+  }, [pushHistory, selectedImage]);
+
+  const isAbsoluteImage =
+    !!selectedImage && selectedImage.style.position === 'absolute';
+
+  /* Disable Firefox's native image-resize / inline-table-editing handles —
+     they appear inside contentEditable and visually clash with (and steal
+     clicks from) our custom outline + drag handle. Runs once. */
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    try {
+      document.execCommand('enableObjectResizing', false, 'false');
+      document.execCommand('enableInlineTableEditing', false, 'false');
+    } catch {
+      /* ignore — some browsers throw on unknown commands */
+    }
+  }, []);
+
+  /* Reposition the floating toolbar when the editor scrolls or the window
+     resizes, and drop the selection if the image disappears (undo, delete,
+     content swap). */
+  useEffect(() => {
+    if (!selectedImage) return undefined;
+    const editor = editorRef.current;
+    if (!editor || !editor.contains(selectedImage)) {
+      setSelectedImage(null);
+      return undefined;
+    }
+    const bump = () => setImageMenuTick((tick) => tick + 1);
+    const mo = new MutationObserver(() => {
+      if (!editor.contains(selectedImage)) {
+        setSelectedImage(null);
+      } else {
+        bump();
+      }
+    });
+    mo.observe(editor, { childList: true, subtree: true });
+    editor.addEventListener('scroll', bump, { passive: true });
+    window.addEventListener('resize', bump);
+    return () => {
+      mo.disconnect();
+      editor.removeEventListener('scroll', bump);
+      window.removeEventListener('resize', bump);
+    };
+  }, [selectedImage]);
+
+  /* Position the floating toolbar and selection outline relative to
+     .notesRichEditor (which is set position:relative in CSS). We compute
+     both off the same rects so they stay aligned together. */
+  const imagePlacement = useMemo(() => {
+    void imageMenuTick;
+    if (!selectedImage || !editorRootRef.current) return null;
+    if (!editorRef.current?.contains(selectedImage)) return null;
+    const containerRect = editorRootRef.current.getBoundingClientRect();
+    const imgRect = selectedImage.getBoundingClientRect();
+    return {
+      menu: {
+        left: imgRect.left - containerRect.left + imgRect.width / 2,
+        top: imgRect.top - containerRect.top,
+      },
+      outline: {
+        left: imgRect.left - containerRect.left,
+        top: imgRect.top - containerRect.top,
+        width: imgRect.width,
+        height: imgRect.height,
+      },
+    };
+  }, [selectedImage, imageMenuTick]);
+
+  const selectedImageWrap = selectedImage?.dataset.wrap || 'inline';
 
   const findSelectedFrame = useCallback(() => {
     const editor = editorRef.current;
@@ -1902,10 +2213,82 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
           onKeyUp={handleSelectionUpdate}
           onKeyDown={handleEditorKeyDown}
           onMouseUp={handleSelectionUpdate}
+          onClick={handleEditorClick}
           onFocus={handleSelectionUpdate}
           onPaste={handlePaste}
           onDrop={handleDrop}
         />
+        {selectedImage && imagePlacement ? (
+          <div
+            className={`notesImageSelectOutline ${isAbsoluteImage ? 'draggable' : ''}`}
+            style={imagePlacement.outline}
+            onPointerDown={isAbsoluteImage ? handleMoveStart : undefined}
+            onMouseDown={isAbsoluteImage ? handleMoveStart : undefined}
+            aria-hidden="true"
+          />
+        ) : null}
+        {selectedImage && imagePlacement ? (
+          <div
+            className="notesImageResizeHandle"
+            style={{
+              left: imagePlacement.outline.left + imagePlacement.outline.width - 9,
+              top: imagePlacement.outline.top + imagePlacement.outline.height - 9,
+            }}
+            onMouseDown={handleResizeStart}
+            onPointerDown={handleResizeStart}
+            title="Drag to resize"
+          />
+        ) : null}
+        {selectedImage && imagePlacement ? (
+          <div
+            className="notesImageAlignMenu"
+            style={imagePlacement.menu}
+            onMouseDown={(event) => event.preventDefault()}
+            role="toolbar"
+            aria-label="Image alignment"
+          >
+            <button
+              type="button"
+              className={`notesImageAlignBtn ${selectedImageWrap === 'inline' ? 'active' : ''}`}
+              title="Inline with text"
+              onClick={() => applyImageAlignment('inline')}
+            >
+              <Image size={14} strokeWidth={1.7} />
+            </button>
+            <button
+              type="button"
+              className={`notesImageAlignBtn ${selectedImageWrap === 'wrap-left' ? 'active' : ''}`}
+              title="Wrap text on the right (image on the left)"
+              onClick={() => applyImageAlignment('wrap-left')}
+            >
+              <AlignLeft size={14} strokeWidth={1.7} />
+            </button>
+            <button
+              type="button"
+              className={`notesImageAlignBtn ${selectedImageWrap === 'wrap-right' ? 'active' : ''}`}
+              title="Wrap text on the left (image on the right)"
+              onClick={() => applyImageAlignment('wrap-right')}
+            >
+              <AlignRight size={14} strokeWidth={1.7} />
+            </button>
+            <button
+              type="button"
+              className={`notesImageAlignBtn ${selectedImageWrap === 'over-text' ? 'active' : ''}`}
+              title="Over text (image floats on top)"
+              onClick={() => applyImageAlignment('over-text')}
+            >
+              <BringToFront size={14} strokeWidth={1.7} />
+            </button>
+            <button
+              type="button"
+              className={`notesImageAlignBtn ${selectedImageWrap === 'under-text' ? 'active' : ''}`}
+              title="Under text (image behind text, like a watermark)"
+              onClick={() => applyImageAlignment('under-text')}
+            >
+              <SendToBack size={14} strokeWidth={1.7} />
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

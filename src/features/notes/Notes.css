@@ -315,6 +315,90 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+/* Floating alignment toolbar shown when an <img> in the body is clicked.
+   Positioned by JS via inline left/top (relative to .notesRichEditor) and
+   pulled above the image with the translate. */
+.notesImageAlignMenu {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--panel-solid, #1f2230);
+  border: 1px solid var(--border-color-dim);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.36);
+  z-index: 5;
+}
+
+.notesImageAlignBtn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.notesImageAlignBtn:hover {
+  background: var(--surface-08, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary);
+}
+
+.notesImageAlignBtn.active {
+  background: var(--surface-15, rgba(255, 255, 255, 0.15));
+  color: var(--text-primary);
+}
+
+/* Non-interactive outline overlay placed on top of the currently-selected
+   image. Positioned by JS (inline left/top/width/height). Lives outside
+   the contentEditable so it never ends up in the serialized HTML. */
+.notesImageSelectOutline {
+  position: absolute;
+  pointer-events: none;
+  border: 2px solid #60a5fa;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.25);
+  z-index: 4;
+}
+
+/* For absolute-positioned images (over-text / under-text), the outline
+   becomes the drag-to-move surface — needed especially for under-text
+   images where the image itself can't be clicked through the text. */
+.notesImageSelectOutline.draggable {
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+}
+
+
+/* Drag handle rendered as a sibling of the outline (not nested inside) so
+   pointer-events aren't blocked by the outline's `pointer-events: none`.
+   Positioned by JS at the image's bottom-right corner. */
+.notesImageResizeHandle {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  background: #60a5fa;
+  border: 2px solid var(--bg-color, #0f1117);
+  border-radius: 3px;
+  cursor: nwse-resize;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  z-index: 6;
+  touch-action: none;
+}
+
+.notesImageResizeHandle:hover {
+  background: #93c5fd;
+  transform: scale(1.1);
 }
 
 .notesFormatToolbar {
@@ -629,6 +713,12 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+  /* Required so absolute-positioned <img> children (over-text / under-text
+     layouts) position relative to the body, not the viewport. Combined with
+     isolation:isolate, z-index:-1 images stay behind text but inside the
+     body's stacking context — they don't disappear behind the page. */
+  position: relative;
+  isolation: isolate;
 }
 
 .notesBodyInput * {
