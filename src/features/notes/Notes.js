@@ -679,6 +679,39 @@ function moveNode(nodes, draggedId, targetFolderId) {
   });
 }
 
+/* Insert `node` immediately before/after `targetId`, wherever it lives in
+   the tree. IDs are unique, so we insert at the first level that contains
+   the target and stop; otherwise recurse into folders. */
+function insertNodeRelative(nodes, targetId, node, position) {
+  const idx = nodes.findIndex((n) => n.id === targetId);
+  if (idx !== -1) {
+    const out = [...nodes];
+    out.splice(position === 'before' ? idx : idx + 1, 0, node);
+    return out;
+  }
+  return nodes.map((n) =>
+    n.type === 'folder'
+      ? { ...n, children: insertNodeRelative(n.children, targetId, node, position) }
+      : n
+  );
+}
+
+/* Reorder/move a node relative to a sibling target:
+     - 'before' → place just above the target (same level)
+     - 'after'  → place just below the target (same level)
+   Used for manual drag-to-reorder. */
+function moveNodeRelative(nodes, draggedId, targetId, position) {
+  if (!draggedId || draggedId === targetId) return nodes;
+  // Never move a folder around its own descendants (would orphan a subtree).
+  if (isDescendant(nodes, draggedId, targetId)) return nodes;
+  const { tree: stripped, removed } = removeNodeReturn(nodes, draggedId);
+  if (!removed) return nodes;
+  return insertNodeRelative(stripped, targetId, {
+    ...removed,
+    updatedAt: new Date().toISOString(),
+  }, position);
+}
+
 function updateNode(nodes, id, updater) {
   return nodes.map((node) => {
     if (node.id === id) return updater(node);
@@ -758,23 +791,6 @@ function filterTree(nodes, query) {
     }
     return matches;
   }, []);
-}
-
-function getCreatedTime(node) {
-  const value = Date.parse(node.createdAt || node.updatedAt || 0);
-  return Number.isNaN(value) ? 0 : value;
-}
-
-/* Creation-date ordering at every level. Folders still come before files at
-   the same depth so containers don't get lost between leaf items. */
-function sortTree(nodes) {
-  const sorted = [...nodes].sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-    return getCreatedTime(b) - getCreatedTime(a);
-  });
-  return sorted.map((node) =>
-    node.type === 'folder' ? { ...node, children: sortTree(node.children) } : node
-  );
 }
 
 function countTree(nodes) {
@@ -2436,6 +2452,7 @@ function TreeNode({
   onDelete,
   onMoveNode,
   dragOverId,
+  dragOverPos,
   onDragOverNode,
   onDragLeaveNode,
   onDragEnd,
@@ -2444,8 +2461,22 @@ function TreeNode({
   const isOpen = openFolders.has(node.id);
   const isSelected = selectedId === node.id;
   const isEditing = editingId === node.id;
-  const isDragOver = dragOverId === node.id;
+  const dropPos = dragOverId === node.id ? dragOverPos : null;
   const inputRef = useRef(null);
+
+  /* Decide where a drop lands based on the cursor's vertical position within
+     the row: folders get a middle "inside" zone (drop as child); the top and
+     bottom edges reorder before/after. Files only reorder before/after. */
+  const computeDropPosition = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
+    if (isFolder) {
+      if (ratio < 0.3) return 'before';
+      if (ratio > 0.7) return 'after';
+      return 'inside';
+    }
+    return ratio < 0.5 ? 'before' : 'after';
+  };
 
   useEffect(() => {
     if (!isEditing) return;
@@ -2473,7 +2504,7 @@ function TreeNode({
       <div
         role="button"
         tabIndex={0}
-        className={`notesTreeItem ${isSelected ? 'active' : ''} ${isDragOver ? 'dragOver' : ''}`}
+        className={`notesTreeItem ${isSelected ? 'active' : ''} ${dropPos === 'inside' ? 'dragOver' : ''} ${dropPos === 'before' ? 'dropBefore' : ''} ${dropPos === 'after' ? 'dropAfter' : ''}`}
         style={{ '--notes-depth': depth }}
         onClick={() => onSelect(node.id)}
         onKeyDown={handleRowKeyDown}
@@ -2486,25 +2517,24 @@ function TreeNode({
         }}
         onDragEnd={onDragEnd}
         onDragOver={(event) => {
-          if (!isFolder) return;
+          if (!event.dataTransfer.types.includes('text/x-notes-id')) return;
           event.preventDefault();
           event.stopPropagation();
           event.dataTransfer.dropEffect = 'move';
-          onDragOverNode(node.id);
+          onDragOverNode(node.id, computeDropPosition(event));
         }}
         onDragLeave={(event) => {
-          if (!isFolder) return;
           event.stopPropagation();
           onDragLeaveNode(node.id);
         }}
         onDrop={(event) => {
-          if (!isFolder) return;
           event.preventDefault();
           event.stopPropagation();
           const draggedId = event.dataTransfer.getData('text/x-notes-id');
+          const position = computeDropPosition(event);
           onDragLeaveNode(node.id);
           if (!draggedId || draggedId === node.id) return;
-          onMoveNode(draggedId, node.id);
+          onMoveNode(draggedId, node.id, position);
         }}
       >
         <span
@@ -2620,6 +2650,7 @@ function TreeNode({
               onDelete={onDelete}
               onMoveNode={onMoveNode}
               dragOverId={dragOverId}
+              dragOverPos={dragOverPos}
               onDragOverNode={onDragOverNode}
               onDragLeaveNode={onDragLeaveNode}
               onDragEnd={onDragEnd}
@@ -2650,18 +2681,27 @@ export default function Notes() {
   const [iconPicker, setIconPicker] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
-  const handleDragOverNode = useCallback((id) => setDragOverId(id), []);
+  // Where the drop will land relative to dragOverId: 'before' | 'after' | 'inside'.
+  const [dragOverPos, setDragOverPos] = useState(null);
+  const handleDragOverNode = useCallback((id, pos) => {
+    setDragOverId(id);
+    setDragOverPos(pos);
+  }, []);
   const handleDragLeaveNode = useCallback((id) => {
     setDragOverId((cur) => (cur === id ? null : cur));
   }, []);
-  const handleDragEnd = useCallback(() => setDragOverId(null), []);
+  const handleDragEnd = useCallback(() => {
+    setDragOverId(null);
+    setDragOverPos(null);
+  }, []);
 
   const selectedNode = useMemo(() => findNode(tree, selectedId), [tree, selectedId]);
   const selectedFile = selectedNode?.type === 'file' ? selectedNode : null;
   const iconPickerNode = useMemo(() => findNode(tree, iconPicker?.nodeId), [iconPicker?.nodeId, tree]);
   const iconPickerNodeId = iconPicker?.nodeId || null;
   const pendingDeleteNode = useMemo(() => findNode(tree, pendingDeleteId), [pendingDeleteId, tree]);
-  const visibleTree = useMemo(() => sortTree(filterTree(tree, query)), [tree, query]);
+  // Array order is authoritative so users can drag to reorder. (No auto-sort.)
+  const visibleTree = useMemo(() => filterTree(tree, query), [tree, query]);
   const treeCounts = useMemo(() => countTree(tree), [tree]);
 
   /* IndexedDB is the authoritative *local* cache. localStorage caps out
@@ -2919,10 +2959,15 @@ export default function Notes() {
     setOpenFolders((current) => new Set([...current, folder.id, ...(folderId ? [folderId] : [])]));
   }, [selectedId, tree]);
 
-  const moveNodeTo = useCallback((draggedId, targetFolderId) => {
-    setTree((current) => moveNode(current, draggedId, targetFolderId));
-    if (targetFolderId) {
-      setOpenFolders((current) => new Set([...current, targetFolderId]));
+  const moveNodeTo = useCallback((draggedId, targetId, position = 'inside') => {
+    setTree((current) =>
+      position === 'inside'
+        ? moveNode(current, draggedId, targetId)
+        : moveNodeRelative(current, draggedId, targetId, position)
+    );
+    // Auto-expand a folder we just dropped a child into.
+    if (position === 'inside' && targetId) {
+      setOpenFolders((current) => new Set([...current, targetId]));
     }
   }, []);
 
@@ -3066,6 +3111,7 @@ export default function Notes() {
                 onDelete={requestDeleteNode}
                 onMoveNode={moveNodeTo}
                 dragOverId={dragOverId}
+                dragOverPos={dragOverPos}
                 onDragOverNode={handleDragOverNode}
                 onDragLeaveNode={handleDragLeaveNode}
                 onDragEnd={handleDragEnd}
