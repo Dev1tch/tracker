@@ -318,6 +318,47 @@
   position: relative;
 }
 
+/* Bullet/numbered list chooser popover in the format toolbar. */
+.notesListControl {
+  position: relative;
+  display: inline-flex;
+}
+
+.notesListMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--panel-solid, #1f2230);
+  border: 1px solid var(--border-color-dim);
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+}
+
+.notesListMenuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.notesListMenuItem:hover {
+  background: var(--surface-08, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary);
+}
+
 /* Floating alignment toolbar shown when an <img> in the body is clicked.
    Positioned by JS via inline left/top (relative to .notesRichEditor) and
    pulled above the image with the translate. */
@@ -739,8 +780,17 @@
   margin: 8px 0;
 }
 
+.notesBodyInput ul {
+  list-style: disc outside;
+}
+
+.notesBodyInput ol {
+  list-style: decimal outside;
+}
+
 .notesBodyInput li {
   margin: 2px 0;
+  list-style: inherit;
 }
 
 .notesEmptyEditor {

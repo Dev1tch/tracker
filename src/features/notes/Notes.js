@@ -1032,6 +1032,8 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
      applied) so the toolbar repositions itself. */
   const [selectedImage, setSelectedImage] = useState(null);
   const [imageMenuTick, setImageMenuTick] = useState(0);
+  // Toggles the bullet/numbered list chooser popover in the toolbar.
+  const [listMenuOpen, setListMenuOpen] = useState(false);
   const [writingWidth, setWritingWidth] = useState(loadEditorWidth);
   /* Runtime ceiling driven by the editor's measured width — lets the ruler
      expand on wide screens and shrink with the window instead of being
@@ -1557,6 +1559,16 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
   const isAbsoluteImage =
     !!selectedImage && selectedImage.style.position === 'absolute';
 
+  /* Close the list chooser popover on any outside click. */
+  useEffect(() => {
+    if (!listMenuOpen) return undefined;
+    const onDocMouseDown = (e) => {
+      if (!e.target.closest?.('.notesListControl')) setListMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [listMenuOpen]);
+
   /* Disable Firefox's native image-resize / inline-table-editing handles —
      they appear inside contentEditable and visually clash with (and steal
      clicks from) our custom outline + drag handle. Runs once. */
@@ -1965,7 +1977,91 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
     applyFrameColor(color, frameStyle);
   }, [applyFrameColor, applyTextColor, colorTarget, frameStyle]);
 
+  /* Auto-start a list when the user types a list prefix at the start of a
+     block, then space:
+       - "N." (any digits) → ordered list, starting at N
+       - "-" or "*"        → bullet list
+     The typed prefix is removed via execCommand('delete') rather than a
+     manual Range deletion — that keeps the browser's editing state
+     consistent, which is what lets Enter keep continuing the list. */
+  const tryAutoList = useCallback((event) => {
+    if (event.key !== ' ') return false;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+    const editor = editorRef.current;
+    if (!editor) return false;
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (!sel || sel.rangeCount !== 1 || !sel.isCollapsed) return false;
+    const range = sel.getRangeAt(0);
+    if (!editor.contains(range.startContainer)) return false;
+
+    const BLOCK_TAGS = new Set([
+      'P', 'DIV', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+    ]);
+    let block = range.startContainer;
+    if (block.nodeType === Node.TEXT_NODE) block = block.parentNode;
+    while (block && block !== editor && !BLOCK_TAGS.has(block.tagName)) {
+      block = block.parentNode;
+    }
+    if (!block) block = editor;
+    // Already inside a list — let the browser handle the space normally.
+    if (block.tagName === 'LI') return false;
+
+    const probe = document.createRange();
+    probe.setStart(block, 0);
+    probe.setEnd(range.startContainer, range.startOffset);
+    const text = probe.toString();
+    const ordered = text.match(/^(\d+)\.$/);
+    const unordered = /^[-*]$/.test(text);
+    if (!ordered && !unordered) return false;
+
+    event.preventDefault();
+    const before = editor.innerHTML;
+
+    // Delete the typed prefix using the browser's own delete command so the
+    // selection / editing state stays consistent for the list insert.
+    sel.removeAllRanges();
+    sel.addRange(probe);
+    document.execCommand('delete');
+
+    if (ordered) {
+      document.execCommand('insertOrderedList');
+      const number = parseInt(ordered[1], 10);
+      if (number > 1) {
+        // Walk up from the live caret to the enclosing <ol> and set its
+        // start number. Walking the tree (vs. closest()) is robust whether
+        // the caret landed on the <li>, a text node, or a <br>.
+        const liveSel = window.getSelection();
+        let node = liveSel && liveSel.rangeCount > 0
+          ? liveSel.getRangeAt(0).startContainer
+          : null;
+        let ol = null;
+        while (node && node !== editor) {
+          if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'OL') {
+            ol = node;
+            break;
+          }
+          node = node.parentNode;
+        }
+        // Fallback: if the walk missed (selection landed outside the OL),
+        // use the last <ol> in the editor — it's the one we just made.
+        if (!ol) {
+          const all = editor.querySelectorAll('ol');
+          ol = all[all.length - 1] || null;
+        }
+        if (ol) ol.setAttribute('start', String(number));
+      }
+    } else {
+      document.execCommand('insertUnorderedList');
+    }
+
+    const after = editor.innerHTML;
+    if (before !== after) pushHistory(before, after);
+    saveSelection();
+    return true;
+  }, [pushHistory, saveSelection]);
+
   const handleEditorKeyDown = useCallback((event) => {
+    if (tryAutoList(event)) return;
     if (!event.ctrlKey && !event.metaKey) return;
 
     const key = event.key.toLowerCase();
@@ -1985,7 +2081,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
       event.preventDefault();
       redo();
     }
-  }, [redo, undo]);
+  }, [redo, undo, tryAutoList]);
 
   return (
     <div className="notesRichEditor" ref={editorRootRef}>
@@ -2144,15 +2240,43 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
           </button>
         </div>
         <span className="notesFormatDivider" />
-        <button
-          type="button"
-          className="notesFormatBtn text"
-          title="Bullet list"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => runCommand('insertUnorderedList')}
-        >
-          • List
-        </button>
+        <div className="notesListControl">
+          <button
+            type="button"
+            className="notesFormatBtn text"
+            title="Lists"
+            aria-haspopup="true"
+            aria-expanded={listMenuOpen}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setListMenuOpen((open) => !open)}
+          >
+            Lists ▾
+          </button>
+          {listMenuOpen ? (
+            <div className="notesListMenu" onMouseDown={(event) => event.preventDefault()}>
+              <button
+                type="button"
+                className="notesListMenuItem"
+                onClick={() => {
+                  runCommand('insertUnorderedList');
+                  setListMenuOpen(false);
+                }}
+              >
+                • Bullet list
+              </button>
+              <button
+                type="button"
+                className="notesListMenuItem"
+                onClick={() => {
+                  runCommand('insertOrderedList');
+                  setListMenuOpen(false);
+                }}
+              >
+                1. Numbered list
+              </button>
+            </div>
+          ) : null}
+        </div>
         <span className="notesModifiedAt">{modifiedLabel}</span>
       </div>
 
