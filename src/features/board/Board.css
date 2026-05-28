@@ -598,6 +598,11 @@
   cursor: crosshair;
 }
 
+.boardCursor-frame .boardFrame,
+.boardCursor-frame .boardFrame:active {
+  cursor: crosshair;
+}
+
 /* Popout label used in the frame-style popout next to the toolbar. */
 .boardPopoutLabel {
   font-size: 10px;

@@ -455,6 +455,29 @@ function nodesInsideFrame(frame, nodes, bounds) {
   return nodes.filter((n) => frameContains(frame, n, bounds));
 }
 
+function framesInsideFrame(frame, frames) {
+  return frames.filter((item) => item.id !== frame.id && frameContains(frame, item, {}));
+}
+
+function collectNestedFrameIds(seedIds, frames) {
+  const collected = new Set(seedIds);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    frames.forEach((frame) => {
+      if (!collected.has(frame.id)) return;
+      framesInsideFrame(frame, frames).forEach((child) => {
+        if (collected.has(child.id)) return;
+        collected.add(child.id);
+        changed = true;
+      });
+    });
+  }
+
+  return collected;
+}
+
 function isNodeSelectedForRender(node, selectionState) {
   return Boolean(
     selectionState.selectedIds.has(node.id) ||
@@ -474,6 +497,10 @@ function orderNodesForRender(nodes, selectionState) {
     }
   });
   return [...regular, ...selected];
+}
+
+function orderFramesForRender(frames) {
+  return [...frames].sort((a, b) => (b.w * b.h) - (a.w * a.h));
 }
 
 /* Smallest frame this node belongs to, used to clip overflow against the
@@ -4661,7 +4688,11 @@ export default function Board() {
   function handleSurfaceMouseDown(e) {
     // Drawing tools should always capture the mousedown, even when it lands
     // on an existing node, so the user can draw over anything.
-    if (!MARKUP_TOOLS.includes(tool) && e.target !== e.currentTarget) return;
+    if (
+      !MARKUP_TOOLS.includes(tool) &&
+      tool !== 'frame' &&
+      e.target !== e.currentTarget
+    ) return;
     if (editingId || editingFrameId) return;
 
     /* Frame tool: drag a rectangle on empty surface to create a new frame.
@@ -4978,6 +5009,7 @@ export default function Board() {
   function handleFrameClick(e, frame) {
     e.stopPropagation();
     if (editingFrameId === frame.id) return;
+    if (tool === 'frame') return;
     const isMultiSelect = e.ctrlKey || e.metaKey || e.shiftKey;
     if (tool === 'select' && isMultiSelect) {
       toggleFrameSelection(frame.id);
@@ -5008,9 +5040,10 @@ export default function Board() {
     if (editingFrameId === frame.id) return;
     e.stopPropagation();
     const isMultiSelectGesture = e.ctrlKey || e.metaKey || e.shiftKey;
-    const frameGroupIds = selectedFrameIds.has(frame.id)
-      ? new Set(selectedFrameIds)
-      : new Set([frame.id]);
+    const frameGroupIds = collectNestedFrameIds(
+      selectedFrameIds.has(frame.id) ? selectedFrameIds : new Set([frame.id]),
+      frames
+    );
     const nodeGroupIds = selectedFrameIds.has(frame.id)
       ? new Set(selectedIds)
       : new Set();
@@ -5283,7 +5316,7 @@ export default function Board() {
       ? new Set(selectedIds)
       : new Set([node.id]);
     const selectedGroupFrameIds = selectedIds.has(node.id)
-      ? new Set(selectedFrameIds)
+      ? collectNestedFrameIds(selectedFrameIds, frames)
       : new Set();
 
     if (!isMultiSelectGesture && !selectedIds.has(node.id)) {
@@ -5802,7 +5835,7 @@ export default function Board() {
           >
             {/* Frames render behind everything else so they read as a
                 grouping container, not a foreground panel. */}
-            {frames.map((frame) => {
+            {orderFramesForRender(frames).map((frame) => {
               const arrowActive = arrowSource?.id === frame.id;
               return (
                 <FrameNode
