@@ -422,6 +422,18 @@
   color: var(--text-primary);
 }
 
+.notesImageAlignBtn.danger:hover {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+.notesImageAlignDivider {
+  align-self: stretch;
+  width: 1px;
+  margin: 3px 2px;
+  background: var(--border-color-dim);
+}
+
 /* Non-interactive outline overlay placed on top of the currently-selected
    image. Positioned by JS (inline left/top/width/height). Lives outside
    the contentEditable so it never ends up in the serialized HTML. */

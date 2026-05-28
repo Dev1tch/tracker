@@ -48,7 +48,7 @@ import {
   Headphones,
   Heart,
   Home,
-  Image,
+  Image as ImageIcon,
   Inbox,
   Italic,
   KeyRound,
@@ -179,7 +179,7 @@ const ICON_OPTIONS = [
   { name: 'lightbulb', label: 'Idea', Icon: Lightbulb },
   { name: 'rocket', label: 'Rocket', Icon: Rocket },
   { name: 'palette', label: 'Palette', Icon: Palette },
-  { name: 'image', label: 'Image', Icon: Image },
+  { name: 'image', label: 'Image', Icon: ImageIcon },
   { name: 'music', label: 'Music', Icon: Music },
   { name: 'coffee', label: 'Coffee', Icon: Coffee },
   { name: 'compass', label: 'Compass', Icon: Compass },
@@ -1270,40 +1270,95 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
     saveSelection();
   }, [pushHistory, restoreSelection, saveSelection]);
 
-  /* Async image insertion: we save the cursor position synchronously (so the
-     insert lands where the user actually pasted), do the upload, then insert
-     <img src=URL> at that range. If the editor is gone by then (e.g. user
-     switched notes), we drop the result silently. */
-  const insertImageFromUpload = useCallback(async (file) => {
+  /* Optimistic image insertion. We insert the <img> synchronously with a
+     blob URL so the user sees it instantly. In parallel we read the file
+     as a data URL and swap it in — the data URL is what gets persisted to
+     IndexedDB / the server, so closing the tab right after pasting still
+     saves the image (the blob URL window is only a few ms). Once the
+     background upload finishes we swap the src to the hosted URL so the
+     persisted document stays compact. */
+  const insertImageFromUpload = useCallback((file) => {
     if (!onUploadImage || !file) return;
     const editor = editorRef.current;
     if (!editor) return;
     saveSelection();
     const savedRange = selectionRef.current ? selectionRef.current.cloneRange() : null;
-    try {
-      const url = await onUploadImage(file);
-      if (!url) return;
-      const currentEditor = editorRef.current;
-      if (!currentEditor) return;
-      currentEditor.focus();
-      const sel = typeof window !== 'undefined' ? window.getSelection() : null;
-      if (sel && savedRange && currentEditor.contains(savedRange.commonAncestorContainer)) {
-        sel.removeAllRanges();
-        sel.addRange(savedRange);
-      }
-      const before = currentEditor.innerHTML;
-      const safeUrl = String(url).replace(/"/g, '&quot;');
-      document.execCommand(
-        'insertHTML',
-        false,
-        `<img src="${safeUrl}" alt="" style="max-width:100%;height:auto;" />`
-      );
-      const after = currentEditor.innerHTML;
-      pushHistory(before, after);
-      saveSelection();
-    } catch (err) {
-      console.warn('Notes: image upload failed', err);
+
+    const placeholderId = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const blobUrl = typeof URL !== 'undefined' && URL.createObjectURL
+      ? URL.createObjectURL(file)
+      : '';
+    if (!blobUrl) return;
+
+    editor.focus();
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (sel && savedRange && editor.contains(savedRange.commonAncestorContainer)) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
     }
+    const before = editor.innerHTML;
+    const safeBlobUrl = blobUrl.replace(/"/g, '&quot;');
+    document.execCommand(
+      'insertHTML',
+      false,
+      `<img src="${safeBlobUrl}" data-uploading-id="${placeholderId}" alt="" style="max-width:100%;height:auto;" />`
+    );
+    const after = editor.innerHTML;
+    pushHistory(before, after);
+    saveSelection();
+
+    const findPlaceholder = () => {
+      const editorNow = editorRef.current;
+      if (!editorNow) return null;
+      return editorNow.querySelector(`img[data-uploading-id="${placeholderId}"]`);
+    };
+
+    /* Read the file as a data URL in parallel. Once it resolves we swap
+       blob → data URL so the persisted tree carries a self-contained src
+       (blob URLs don't survive a reload). */
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const placeholder = findPlaceholder();
+      if (!dataUrl || !placeholder) return;
+      if (!placeholder.src.startsWith('blob:')) return;
+      const editorNow = editorRef.current;
+      if (!editorNow) return;
+      const stateBefore = editorNow.innerHTML;
+      placeholder.src = dataUrl;
+      const stateAfter = editorNow.innerHTML;
+      pushHistory(stateBefore, stateAfter);
+    };
+    reader.onerror = () => {};
+    reader.readAsDataURL(file);
+
+    /* Background upload + src swap. On success we replace the inline data
+       URL with the hosted URL so the persisted document stays compact. On
+       failure we leave the data URL in place — it's a valid src. */
+    (async () => {
+      try {
+        const url = await onUploadImage(file);
+        const placeholder = findPlaceholder();
+        if (!placeholder) return;
+        const editorNow = editorRef.current;
+        if (!editorNow) return;
+        const stateBefore = editorNow.innerHTML;
+        if (url) placeholder.src = url;
+        placeholder.removeAttribute('data-uploading-id');
+        const stateAfter = editorNow.innerHTML;
+        pushHistory(stateBefore, stateAfter);
+      } catch (err) {
+        console.warn('Notes: image upload failed', err);
+        const placeholder = findPlaceholder();
+        if (placeholder) placeholder.removeAttribute('data-uploading-id');
+      } finally {
+        /* Defer revocation: the blob URL may still be referenced from a
+           history snapshot if the FileReader didn't finish swapping yet.
+           5s is plenty of slack — FileReader for in-memory clipboard
+           bytes completes in tens of ms. */
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      }
+    })();
   }, [onUploadImage, pushHistory, saveSelection]);
 
   const handlePaste = useCallback((event) => {
@@ -1462,6 +1517,21 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
     const after = editor.innerHTML;
     pushHistory(before, after);
     setImageMenuTick((tick) => tick + 1);
+  }, [pushHistory, selectedImage]);
+
+  const deleteSelectedImage = useCallback(() => {
+    if (!selectedImage) return;
+    const editor = editorRef.current;
+    if (!editor || !editor.contains(selectedImage)) {
+      setSelectedImage(null);
+      return;
+    }
+
+    const before = editor.innerHTML;
+    selectedImage.remove();
+    const after = editor.innerHTML;
+    pushHistory(before, after);
+    setSelectedImage(null);
   }, [pushHistory, selectedImage]);
 
   /* Drag-to-resize from the bottom-right corner handle on the selection
@@ -2393,7 +2463,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
               title="Inline with text"
               onClick={() => applyImageAlignment('inline')}
             >
-              <Image size={14} strokeWidth={1.7} />
+              <ImageIcon size={14} strokeWidth={1.7} />
             </button>
             <button
               type="button"
@@ -2426,6 +2496,16 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
               onClick={() => applyImageAlignment('under-text')}
             >
               <SendToBack size={14} strokeWidth={1.7} />
+            </button>
+            <span className="notesImageAlignDivider" />
+            <button
+              type="button"
+              className="notesImageAlignBtn danger"
+              title="Delete image"
+              aria-label="Delete selected image"
+              onClick={deleteSelectedImage}
+            >
+              <Trash2 size={14} strokeWidth={1.7} />
             </button>
           </div>
         ) : null}
