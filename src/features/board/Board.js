@@ -16,6 +16,7 @@ import {
   Bold,
   Brush as BrushIcon,
   Calendar,
+  ChevronLeft,
   ChevronRight,
   Eraser,
   ExternalLink,
@@ -31,6 +32,7 @@ import {
   MousePointer2,
   Pencil as PencilIcon,
   PenTool as PenIcon,
+  Plus,
   RefreshCw,
   Search,
   Trash2,
@@ -94,6 +96,8 @@ const FRAME_COLORS = [
 ];
 const BOARD_HISTORY_LIMIT = 80;
 const URL_PATTERN = /^(https?:\/\/[^\s]+|www\.[^\s]+)$/i;
+const DEFAULT_BOARD_ID = 'board-1';
+const BOARD_TABS_PAGE_SIZE = 4;
 
 function normalizeUrl(value) {
   const text = (value || '').trim();
@@ -288,7 +292,17 @@ function emptyBoardState() {
   return { nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT };
 }
 
+function emptyBoardDocument() {
+  return {
+    boards: [{ id: DEFAULT_BOARD_ID, label: '1', ...emptyBoardState() }],
+    activeBoardId: DEFAULT_BOARD_ID,
+  };
+}
+
 function isBoardStateEmpty(state) {
+  if (Array.isArray(state?.boards)) {
+    return state.boards.every((board) => isBoardStateEmpty(board));
+  }
   return Boolean(
     state &&
     (!Array.isArray(state.nodes) || state.nodes.length === 0) &&
@@ -326,12 +340,80 @@ function normalizeBoardState(parsed) {
   };
 }
 
+function normalizeBoardDocument(parsed) {
+  if (!parsed || typeof parsed !== 'object') return emptyBoardDocument();
+
+  if (Array.isArray(parsed.boards)) {
+    const boards = parsed.boards
+      .map((board, index) => {
+        const normalized = normalizeBoardState(board);
+        const id = typeof board?.id === 'string' && board.id
+          ? board.id
+          : `board-${index + 1}`;
+        return {
+          id,
+          label: String(index + 1),
+          ...normalized,
+        };
+      })
+      .filter(Boolean);
+
+    const safeBoards = boards.length > 0 ? boards : emptyBoardDocument().boards;
+    const activeBoardId = safeBoards.some((board) => board.id === parsed.activeBoardId)
+      ? parsed.activeBoardId
+      : safeBoards[0].id;
+    return { boards: safeBoards, activeBoardId };
+  }
+
+  return {
+    boards: [{ id: DEFAULT_BOARD_ID, label: '1', ...normalizeBoardState(parsed) }],
+    activeBoardId: DEFAULT_BOARD_ID,
+  };
+}
+
+function boardDocumentSnapshot(boards, activeBoardId, activeState) {
+  const nextBoards = boards.map((board, index) => {
+    const state = board.id === activeBoardId ? activeState : board;
+    const normalized = normalizeBoardState(state);
+    return {
+      id: board.id,
+      label: String(index + 1),
+      ...normalized,
+    };
+  });
+  return {
+    boards: nextBoards.length > 0 ? nextBoards : emptyBoardDocument().boards,
+    activeBoardId: nextBoards.some((board) => board.id === activeBoardId)
+      ? activeBoardId
+      : nextBoards[0]?.id || DEFAULT_BOARD_ID,
+  };
+}
+
+function boardTabsFromBoards(boards) {
+  return (boards || []).map((board, index) => ({
+    id: board.id,
+    label: String(index + 1),
+  }));
+}
+
+function boardContentSignature(documentState) {
+  return JSON.stringify({
+    boards: (documentState.boards || []).map((board) => ({
+      id: board.id,
+      label: board.label,
+      nodes: board.nodes || [],
+      edges: board.edges || [],
+      frames: board.frames || [],
+    })),
+  });
+}
+
 function loadLegacyLocalState() {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    return normalizeBoardState(JSON.parse(raw));
+    return normalizeBoardDocument(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -431,7 +513,7 @@ async function idbPutBoardSyncMeta(meta) {
 /* Synchronous initial state used for first paint. IndexedDB hydration
    replaces this asynchronously on mount — see hydration effect. */
 function loadState() {
-  return loadLegacyLocalState() || emptyBoardState();
+  return loadLegacyLocalState() || emptyBoardDocument();
 }
 
 /* A node's center point — used to decide whether it sits inside a frame. */
@@ -2912,11 +2994,18 @@ function FrameNode({
 
 /* ============================ Main ============================ */
 export default function Board() {
-  const initial = loadState();
-  const [nodes, setNodes] = useState(initial.nodes);
-  const [edges, setEdges] = useState(initial.edges);
-  const [frames, setFrames] = useState(initial.frames);
-  const [viewport, setViewport] = useState(initial.viewport);
+  const initial = useMemo(loadState, []);
+  const initialActiveBoard =
+    initial.boards.find((board) => board.id === initial.activeBoardId) ||
+    initial.boards[0] ||
+    emptyBoardDocument().boards[0];
+  const [boardTabs, setBoardTabs] = useState(() => boardTabsFromBoards(initial.boards));
+  const [activeBoardId, setActiveBoardId] = useState(initial.activeBoardId);
+  const [boardTabsPage, setBoardTabsPage] = useState(0);
+  const [nodes, setNodes] = useState(initialActiveBoard.nodes);
+  const [edges, setEdges] = useState(initialActiveBoard.edges);
+  const [frames, setFrames] = useState(initialActiveBoard.frames);
+  const [viewport, setViewport] = useState(initialActiveBoard.viewport);
   const [tool, setTool] = useState('select');
   const [selectedId, setSelectedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -2979,7 +3068,7 @@ export default function Board() {
   const redoStackRef = useRef([]);
   const restoringHistoryRef = useRef(false);
   const loadingLocalFontsRef = useRef(false);
-  const lastBoardStateRef = useRef(serializeBoardState(initial.nodes, initial.edges));
+  const lastBoardStateRef = useRef(serializeBoardState(initialActiveBoard.nodes, initialActiveBoard.edges));
   const nodeDragMovedRef = useRef(false);
   const lastNodeClickRef = useRef({ id: null, time: 0 });
   /* IndexedDB hydration must finish before we start writing, otherwise an
@@ -2987,6 +3076,7 @@ export default function Board() {
   const persistHydratedRef = useRef(false);
   const persistTimerRef = useRef(null);
   const suppressNextPersistRef = useRef(false);
+  const latestPersistRef = useRef(initial);
 
   const taskTypeById = useMemo(
     () => new Map(taskTypes.map((type) => [String(type.id), type])),
@@ -3004,6 +3094,22 @@ export default function Board() {
     () => orderNodesForRender(nodes, { selectedIds, selectedId, arrowSourceId }),
     [arrowSourceId, nodes, selectedId, selectedIds]
   );
+  const boardSnapshot = useMemo(
+    () => boardDocumentSnapshot(
+      latestPersistRef.current?.boards || initial.boards,
+      activeBoardId,
+      { nodes, edges, frames, viewport }
+    ),
+    [activeBoardId, edges, frames, initial.boards, nodes, viewport]
+  );
+  const boardTabsPageCount = Math.max(1, Math.ceil(boardTabs.length / BOARD_TABS_PAGE_SIZE));
+  const visibleBoardTabs = boardTabs.slice(
+    boardTabsPage * BOARD_TABS_PAGE_SIZE,
+    boardTabsPage * BOARD_TABS_PAGE_SIZE + BOARD_TABS_PAGE_SIZE
+  );
+  useEffect(() => {
+    setBoardTabsPage((page) => Math.min(page, boardTabsPageCount - 1));
+  }, [boardTabsPageCount]);
   const filteredImportTasks = useMemo(() => {
     const search = taskImportQuery.trim().toLowerCase();
     return tasks
@@ -3129,6 +3235,28 @@ export default function Board() {
     featureKey: 'board',
   });
 
+  const loadBoardIntoCanvas = useCallback((board) => {
+    const normalized = normalizeBoardState(board);
+    setNodes(normalized.nodes);
+    setEdges(normalized.edges);
+    setFrames(normalized.frames);
+    setViewport(normalized.viewport);
+    setSelectedId(null);
+    setSelectedIds(new Set());
+    setSelectedEdgeId(null);
+    setSelectedFrameId(null);
+    setSelectedFrameIds(new Set());
+    setEditingId(null);
+    setEditingFrameId(null);
+    setFrameDraft(null);
+    setArrowSource(null);
+    setArrowPointSource(null);
+    setMousePos(null);
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    lastBoardStateRef.current = serializeBoardState(normalized.nodes, normalized.edges);
+  }, []);
+
   /* Hydrate from IndexedDB on mount. */
   useEffect(() => {
     let cancelled = false;
@@ -3137,26 +3265,20 @@ export default function Board() {
         const stored = await idbGetBoardState();
         if (cancelled) return;
         if (stored) {
-          const normalized = normalizeBoardState(stored);
-          setNodes(normalized.nodes);
-          setEdges(normalized.edges);
-          setFrames(normalized.frames);
-          setViewport(normalized.viewport);
-          lastBoardStateRef.current = serializeBoardState(
-            normalized.nodes,
-            normalized.edges
-          );
-        } else if (
-          initial.nodes.length ||
-          initial.edges.length ||
-          initial.frames.length
-        ) {
-          await idbPutBoardState({
-            nodes: initial.nodes,
-            edges: initial.edges,
-            frames: initial.frames,
-            viewport: initial.viewport,
-          }).catch(() => {});
+          const normalized = normalizeBoardDocument(stored);
+          const activeBoard =
+            normalized.boards.find((board) => board.id === normalized.activeBoardId) ||
+            normalized.boards[0];
+          latestPersistRef.current = normalized;
+          setBoardTabs(boardTabsFromBoards(normalized.boards));
+          setActiveBoardId(normalized.activeBoardId);
+          setBoardTabsPage(Math.floor(
+            Math.max(0, normalized.boards.findIndex((board) => board.id === normalized.activeBoardId)) /
+            BOARD_TABS_PAGE_SIZE
+          ));
+          loadBoardIntoCanvas(activeBoard);
+        } else if (!isBoardStateEmpty(initial)) {
+          await idbPutBoardState(initial).catch(() => {});
         }
       } catch (err) {
         console.warn('Board: IndexedDB hydration failed, using localStorage fallback', err);
@@ -3171,7 +3293,7 @@ export default function Board() {
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadBoardIntoCanvas]);
 
   /* Reconcile with initial server doc by timestamp. No conflict UI: local
      dirty wins, then newer side wins, otherwise no-op. */
@@ -3207,22 +3329,20 @@ export default function Board() {
         if (localDirty && isBoardStateEmpty(localState) && !isBoardStateEmpty(remoteState)) {
           console.warn('Board: ignored stale empty local board because server has newer content.');
         }
-        const normalized = normalizeBoardState(remoteState);
+        const normalized = normalizeBoardDocument(remoteState);
+        const activeBoard =
+          normalized.boards.find((board) => board.id === normalized.activeBoardId) ||
+          normalized.boards[0];
         suppressNextPersistRef.current = true;
-        setNodes(normalized.nodes);
-        setEdges(normalized.edges);
-        setFrames(normalized.frames);
-        setViewport(normalized.viewport);
-        lastBoardStateRef.current = serializeBoardState(
-          normalized.nodes,
-          normalized.edges
-        );
-        await idbPutBoardState({
-          nodes: normalized.nodes,
-          edges: normalized.edges,
-          frames: normalized.frames,
-          viewport: normalized.viewport,
-        }).catch(() => {});
+        latestPersistRef.current = normalized;
+        setBoardTabs(boardTabsFromBoards(normalized.boards));
+        setActiveBoardId(normalized.activeBoardId);
+        setBoardTabsPage(Math.floor(
+          Math.max(0, normalized.boards.findIndex((board) => board.id === normalized.activeBoardId)) /
+          BOARD_TABS_PAGE_SIZE
+        ));
+        loadBoardIntoCanvas(activeBoard);
+        await idbPutBoardState(normalized).catch(() => {});
         await idbPutBoardSyncMeta({
           serverUpdatedAt: remoteUpdatedAt,
           serverVersion: initialServerBoard.version,
@@ -3237,7 +3357,7 @@ export default function Board() {
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialServerBoard]);
+  }, [initialServerBoard, loadBoardIntoCanvas]);
 
   /* Persist board state to IDB and schedule a push. Mark dirty so a reload
      before the PUT completes pushes the unsynced edits up.
@@ -3251,16 +3371,16 @@ export default function Board() {
     if (!initialBoardReconciledRef.current) return;
     if (suppressNextPersistRef.current) {
       suppressNextPersistRef.current = false;
-      lastContentSignatureRef.current = serializeBoardState(nodes, edges) + JSON.stringify(frames);
+      lastContentSignatureRef.current = boardContentSignature(boardSnapshot);
       return;
     }
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current);
     }
-    const snapshot = { nodes, edges, frames, viewport };
+    const snapshot = boardSnapshot;
     setBoardSnapshot(snapshot);
 
-    const contentSig = serializeBoardState(nodes, edges) + JSON.stringify(frames);
+    const contentSig = boardContentSignature(snapshot);
     const contentChanged = contentSig !== lastContentSignatureRef.current;
     lastContentSignatureRef.current = contentSig;
 
@@ -3289,7 +3409,7 @@ export default function Board() {
         persistTimerRef.current = null;
       }
     };
-  }, [nodes, edges, frames, viewport, scheduleBoardPush, setBoardSnapshot]);
+  }, [boardSnapshot, scheduleBoardPush, setBoardSnapshot]);
 
   /* Image upload helper: uploads when authenticated, falls back to inline
      base64 (today's behaviour) when logged out. */
@@ -3322,10 +3442,9 @@ export default function Board() {
 
   /* Mirror latest state into a ref so the unmount flush below sees the
      most recent values without resubscribing on every change. */
-  const latestPersistRef = useRef({ nodes, edges, frames, viewport });
   useEffect(() => {
-    latestPersistRef.current = { nodes, edges, frames, viewport };
-  }, [nodes, edges, frames, viewport]);
+    latestPersistRef.current = boardSnapshot;
+  }, [boardSnapshot]);
 
   /* Flush any pending write on unmount so a fast tab switch doesn't lose
      the most recent edits. Mark dirty in the same IDB write so the next
@@ -5492,9 +5611,97 @@ export default function Board() {
     setViewport(DEFAULT_VIEWPORT);
   }
 
+  function selectBoard(boardId) {
+    if (boardId === activeBoardId) return;
+    const snapshot = boardSnapshot;
+    const nextBoard = snapshot.boards.find((board) => board.id === boardId);
+    if (!nextBoard) return;
+    const nextIndex = snapshot.boards.findIndex((board) => board.id === boardId);
+    latestPersistRef.current = { ...snapshot, activeBoardId: boardId };
+    setBoardTabs(boardTabsFromBoards(snapshot.boards));
+    setActiveBoardId(boardId);
+    setBoardTabsPage(Math.floor(Math.max(0, nextIndex) / BOARD_TABS_PAGE_SIZE));
+    setIsTaskImportOpen(false);
+    setIsNoteImportOpen(false);
+    setIsDrawingPaletteOpen(false);
+    selectTool('select');
+    loadBoardIntoCanvas(nextBoard);
+  }
+
+  function addBoard() {
+    const snapshot = boardSnapshot;
+    const newBoard = {
+      id: generateId(),
+      label: String(snapshot.boards.length + 1),
+      ...emptyBoardState(),
+    };
+    const nextBoards = [...snapshot.boards, newBoard].map((board, index) => ({
+      ...board,
+      label: String(index + 1),
+    }));
+    const nextPage = Math.floor((nextBoards.length - 1) / BOARD_TABS_PAGE_SIZE);
+
+    latestPersistRef.current = boardDocumentSnapshot(nextBoards, newBoard.id, newBoard);
+    setBoardTabs(boardTabsFromBoards(nextBoards));
+    setActiveBoardId(newBoard.id);
+    setBoardTabsPage(nextPage);
+    setIsTaskImportOpen(false);
+    setIsNoteImportOpen(false);
+    setIsDrawingPaletteOpen(false);
+    selectTool('select');
+    loadBoardIntoCanvas(newBoard);
+  }
+
   return (
     <div className="boardShell">
       <div className="boardLayout">
+        <div className="boardTabs" aria-label="Boards">
+          <button
+            type="button"
+            className="boardTabArrow"
+            onClick={() => setBoardTabsPage((page) => Math.max(0, page - 1))}
+            disabled={boardTabsPage === 0}
+            title="Previous boards"
+            aria-label="Previous boards"
+          >
+            <ChevronLeft size={13} />
+          </button>
+          <div className="boardTabNumbers">
+            {visibleBoardTabs.map((board) => (
+              <button
+                key={board.id}
+                type="button"
+                className={`boardTabNumber ${board.id === activeBoardId ? 'active' : ''}`}
+                onClick={() => selectBoard(board.id)}
+                title={`Board ${board.label}`}
+                aria-label={`Board ${board.label}`}
+              >
+                {board.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="boardTabArrow"
+            onClick={() => setBoardTabsPage((page) =>
+              Math.min(boardTabsPageCount - 1, page + 1)
+            )}
+            disabled={boardTabsPage >= boardTabsPageCount - 1}
+            title="Next boards"
+            aria-label="Next boards"
+          >
+            <ChevronRight size={13} />
+          </button>
+          <button
+            type="button"
+            className="boardTabAdd"
+            onClick={addBoard}
+            title="Add board"
+            aria-label="Add board"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
        <div className="boardToolbarCluster">
         <aside className="boardToolbar" aria-label="Board tools">
           <button
