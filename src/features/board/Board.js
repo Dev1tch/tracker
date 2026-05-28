@@ -3070,6 +3070,7 @@ export default function Board() {
   const loadingLocalFontsRef = useRef(false);
   const lastBoardStateRef = useRef(serializeBoardState(initialActiveBoard.nodes, initialActiveBoard.edges));
   const nodeDragMovedRef = useRef(false);
+  const suppressNextFrameClickRef = useRef(false);
   const lastNodeClickRef = useRef({ id: null, time: 0 });
   /* IndexedDB hydration must finish before we start writing, otherwise an
      empty initial state could overwrite the user's saved board. */
@@ -4804,6 +4805,40 @@ export default function Board() {
 
   /* ---------- surface interactions (pan / click) ---------- */
 
+  function startViewportPan(e, { suppressFrameClick = false } = {}) {
+    const startScreenX = e.clientX;
+    const startScreenY = e.clientY;
+    const startViewX = viewport.x;
+    const startViewY = viewport.y;
+    let moved = false;
+    setIsPanning(true);
+
+    function onMove(ev) {
+      const dx = ev.clientX - startScreenX;
+      const dy = ev.clientY - startScreenY;
+      if (!moved && Math.hypot(dx, dy) < 3) return;
+      moved = true;
+      setViewport((prev) => ({
+        ...prev,
+        x: startViewX + dx,
+        y: startViewY + dy,
+      }));
+    }
+
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setIsPanning(false);
+      if (moved && suppressFrameClick) {
+        suppressNextFrameClickRef.current = true;
+      }
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => moved;
+  }
+
   function handleSurfaceMouseDown(e) {
     // Drawing tools should always capture the mousedown, even when it lands
     // on an existing node, so the user can draw over anything.
@@ -4999,29 +5034,10 @@ export default function Board() {
       return;
     }
 
-    const startScreenX = e.clientX;
-    const startScreenY = e.clientY;
-    const startViewX = viewport.x;
-    const startViewY = viewport.y;
-    let moved = false;
-    setIsPanning(true);
-
-    function onMove(ev) {
-      const dx = ev.clientX - startScreenX;
-      const dy = ev.clientY - startScreenY;
-      if (!moved && Math.hypot(dx, dy) < 3) return;
-      moved = true;
-      setViewport((prev) => ({
-        ...prev,
-        x: startViewX + dx,
-        y: startViewY + dy,
-      }));
-    }
+    const didMove = startViewportPan(e);
     function onUp(ev) {
-      window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      setIsPanning(false);
-      if (moved) return;
+      if (didMove()) return;
       // It was a click, not a drag — handle per-tool.
       setSelectedEdgeId(null);
       setSelectedFrameId(null);
@@ -5060,7 +5076,6 @@ export default function Board() {
         collapseExpandedTaskNode();
       }
     }
-    window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }
 
@@ -5125,8 +5140,28 @@ export default function Board() {
 
   /* ---------- frame interactions ---------- */
 
+  function frameCoversViewport(frame) {
+    const wrap = wrapperRef.current;
+    if (!wrap) return false;
+    const rect = wrap.getBoundingClientRect();
+    const zoom = viewport.zoom || 1;
+    const left = rect.left + viewport.x + frame.x * zoom;
+    const top = rect.top + viewport.y + frame.y * zoom;
+    const right = left + frame.w * zoom;
+    const bottom = top + frame.h * zoom;
+    const overlapW = Math.max(0, Math.min(right, rect.right) - Math.max(left, rect.left));
+    const overlapH = Math.max(0, Math.min(bottom, rect.bottom) - Math.max(top, rect.top));
+    const viewportArea = rect.width * rect.height;
+    if (viewportArea <= 0) return false;
+    return (overlapW * overlapH) / viewportArea >= 0.5;
+  }
+
   function handleFrameClick(e, frame) {
     e.stopPropagation();
+    if (suppressNextFrameClickRef.current) {
+      suppressNextFrameClickRef.current = false;
+      return;
+    }
     if (editingFrameId === frame.id) return;
     if (tool === 'frame') return;
     const isMultiSelect = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -5158,6 +5193,10 @@ export default function Board() {
     if (tool !== 'select') return;
     if (editingFrameId === frame.id) return;
     e.stopPropagation();
+    if (frameCoversViewport(frame)) {
+      startViewportPan(e, { suppressFrameClick: true });
+      return;
+    }
     const isMultiSelectGesture = e.ctrlKey || e.metaKey || e.shiftKey;
     const frameGroupIds = collectNestedFrameIds(
       selectedFrameIds.has(frame.id) ? selectedFrameIds : new Set([frame.id]),
