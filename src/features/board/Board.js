@@ -3320,15 +3320,22 @@ export default function Board() {
         !localServerUpdatedAt ||
         (remoteUpdatedAt && remoteUpdatedAt > localServerUpdatedAt);
 
+      /* Multi-tab data-loss guard: a blank/stale local board (a second tab that
+         opened an empty board, or an IndexedDB cache another tab cleared) must
+         never win over real server content. When local is empty but the server
+         is not, always adopt the server and never push the empty local up. */
+      const forceAdoptRemote =
+        isBoardStateEmpty(localState) && !isBoardStateEmpty(remoteState);
+
       setBoardBaseVersion(initialServerBoard.version);
 
-      if (localDirty && !remoteIsNewer) {
+      if (localDirty && !remoteIsNewer && !forceAdoptRemote) {
         setBoardBaseVersion(localServerVersion ?? initialServerBoard.version);
         setBoardSnapshot(localState);
         scheduleBoardPush();
-      } else if (remoteIsNewer) {
-        if (localDirty && isBoardStateEmpty(localState) && !isBoardStateEmpty(remoteState)) {
-          console.warn('Board: ignored stale empty local board because server has newer content.');
+      } else if (remoteIsNewer || forceAdoptRemote) {
+        if (forceAdoptRemote) {
+          console.warn('Board: adopted server board over an empty local cache (multi-tab guard).');
         }
         const normalized = normalizeBoardDocument(remoteState);
         const activeBoard =

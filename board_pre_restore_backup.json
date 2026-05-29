@@ -1,0 +1,22 @@
+{
+  "user_id": "81ad62e7-9b45-485c-9da8-317b0787b03e",
+  "state": {
+    "boards": [
+      {
+        "id": "board-1",
+        "edges": [],
+        "label": "1",
+        "nodes": [],
+        "frames": [],
+        "viewport": {
+          "x": 725.933349609375,
+          "y": 715,
+          "zoom": 0.2
+        }
+      }
+    ],
+    "activeBoardId": "board-1"
+  },
+  "version": 392,
+  "updated_at": "2026-05-29T08:32:27.209887+00:00"
+}
