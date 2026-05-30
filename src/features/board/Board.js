@@ -45,7 +45,8 @@ import ColorPicker from '@/components/ui/ColorPicker';
 import CustomSelect from '@/components/ui/CustomSelect';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { tasksApi, TASK_STATUS } from '@/features/tasks/api';
-import { apiClient, boardApi, mediaApi } from '@/lib/api';
+import { apiClient, boardApi, mediaApi, stripInlineImageNodes } from '@/lib/api';
+import { useToast } from '@/components/ui/ToastProvider';
 import { useDocumentSync } from '@/lib/sync/useDocumentSync';
 import TaskDetailModal from '@/features/tasks/components/TasksBoard/components/TaskDetailModal';
 import {
@@ -2994,6 +2995,7 @@ function FrameNode({
 
 /* ============================ Main ============================ */
 export default function Board() {
+  const addToast = useToast();
   const initial = useMemo(loadState, []);
   const initialActiveBoard =
     initial.boards.find((board) => board.id === initial.activeBoardId) ||
@@ -3439,12 +3441,11 @@ export default function Board() {
       const result = await mediaApi.upload({ file, kind: 'board' });
       return result?.url || '';
     } catch (err) {
-      console.warn('Board: image upload failed, falling back to inline base64', err);
-      try {
-        return await readImageFileAsDataUrl(file);
-      } catch {
-        return '';
-      }
+      /* Do NOT fall back to inline base64 here: a base64 image embedded in the
+         synced board blob can push it past the serverless payload cap and break
+         every save/load. The caller surfaces the failure and drops the node. */
+      console.warn('Board: image upload failed', err);
+      return '';
     }
   }, [isBoardAuthenticated, readImageFileAsDataUrl]);
 
@@ -3492,7 +3493,7 @@ export default function Board() {
       const url = `${baseUrl.replace(/\/+$/, '')}/board/beacon`;
       const body = JSON.stringify({
         token,
-        state: snapshot,
+        state: stripInlineImageNodes(snapshot),
         base_version: typeof getBoardBaseVersion === 'function' ? getBoardBaseVersion() : null,
       });
       try {
@@ -4511,7 +4512,15 @@ export default function Board() {
     }
 
     const uploadedUrl = await uploadBoardImage(file);
-    if (!uploadedUrl) return;
+    if (!uploadedUrl) {
+      /* Upload failed. Never keep the inline base64 preview — it would bloat the
+         synced board (413) and vanish on reload anyway. Drop it and tell the user. */
+      if (previewUrl) {
+        setNodes((prev) => prev.filter((node) => node.id !== id));
+      }
+      addToast('Image upload failed — please try again.', 'error');
+      return;
+    }
 
     if (!previewUrl) {
       addImageNode(uploadedUrl, worldX, worldY, { id });
@@ -4525,7 +4534,7 @@ export default function Board() {
           : node
       ))
     );
-  }, [addImageNode, isBoardAuthenticated, readImageFileAsDataUrl, uploadBoardImage]);
+  }, [addImageNode, addToast, isBoardAuthenticated, readImageFileAsDataUrl, uploadBoardImage]);
 
   useEffect(() => {
     function handlePaste(e) {
