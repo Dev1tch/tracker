@@ -3059,6 +3059,7 @@ export default function Board() {
   const [expandedTaskNodeId, setExpandedTaskNodeId] = useState(null);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
+  const [pendingDeleteBoardId, setPendingDeleteBoardId] = useState(null);
 
   const wrapperRef = useRef(null);
   const surfaceRef = useRef(null);
@@ -5844,6 +5845,47 @@ export default function Board() {
     loadBoardIntoCanvas(newBoard);
   }
 
+  /* Delete a board (tab) and everything on it. The last remaining board can't
+     be deleted — there must always be at least one. After removing it we fall
+     back to the neighbouring board (the next one, or the new last one). */
+  function deleteBoard(boardId) {
+    const snapshot = boardSnapshot;
+    if (snapshot.boards.length <= 1) return;
+    const idx = snapshot.boards.findIndex((board) => board.id === boardId);
+    if (idx === -1) return;
+
+    const remaining = snapshot.boards.filter((board) => board.id !== boardId);
+    const fallback = remaining[Math.min(idx, remaining.length - 1)];
+    const nextDoc = boardDocumentSnapshot(remaining, fallback.id, fallback);
+    const nextIndex = Math.max(
+      0,
+      nextDoc.boards.findIndex((board) => board.id === nextDoc.activeBoardId)
+    );
+
+    latestPersistRef.current = nextDoc;
+    setBoardTabs(boardTabsFromBoards(nextDoc.boards));
+    setActiveBoardId(nextDoc.activeBoardId);
+    setBoardTabsPage(Math.floor(nextIndex / BOARD_TABS_PAGE_SIZE));
+    setIsTaskImportOpen(false);
+    setIsNoteImportOpen(false);
+    setIsDrawingPaletteOpen(false);
+    selectTool('select');
+    loadBoardIntoCanvas(nextDoc.boards[nextIndex]);
+    setPendingDeleteBoardId(null);
+  }
+
+  /* Confirm before deleting a board with content; an empty board goes quietly. */
+  function requestDeleteBoard() {
+    const snapshot = boardSnapshot;
+    if (snapshot.boards.length <= 1) return;
+    const active = snapshot.boards.find((board) => board.id === activeBoardId);
+    if (active && !isBoardStateEmpty(active)) {
+      setPendingDeleteBoardId(activeBoardId);
+    } else {
+      deleteBoard(activeBoardId);
+    }
+  }
+
   return (
     <div className="boardShell">
       <div className="boardLayout">
@@ -5892,6 +5934,16 @@ export default function Board() {
             aria-label="Add board"
           >
             <Plus size={14} />
+          </button>
+          <button
+            type="button"
+            className="boardTabDelete"
+            onClick={requestDeleteBoard}
+            disabled={boardTabs.length <= 1}
+            title={boardTabs.length <= 1 ? "Can't delete the only board" : 'Delete this board'}
+            aria-label="Delete this board"
+          >
+            <Trash2 size={14} />
           </button>
         </div>
        <div className="boardToolbarCluster">
@@ -6734,6 +6786,15 @@ export default function Board() {
         cancelText="Cancel"
         onCancel={() => setPendingDeleteTaskId(null)}
         onConfirm={() => handleDeleteTask(pendingDeleteTaskId)}
+      />
+      <ConfirmModal
+        isOpen={Boolean(pendingDeleteBoardId)}
+        title="Delete Board"
+        message="This permanently removes this board and everything on it. Continue?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        onCancel={() => setPendingDeleteBoardId(null)}
+        onConfirm={() => deleteBoard(pendingDeleteBoardId)}
       />
     </div>
   );

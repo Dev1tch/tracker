@@ -296,7 +296,8 @@
 
 .boardTabNumber,
 .boardTabArrow,
-.boardTabAdd {
+.boardTabAdd,
+.boardTabDelete {
   height: 26px;
   border: 1px solid transparent;
   background: transparent;
@@ -318,7 +319,8 @@
 }
 
 .boardTabArrow,
-.boardTabAdd {
+.boardTabAdd,
+.boardTabDelete {
   width: 24px;
 }
 
@@ -327,6 +329,16 @@
 .boardTabAdd:hover {
   color: var(--text-primary);
   background: var(--surface-05);
+}
+
+.boardTabDelete:hover:not(:disabled) {
+  color: #ff4d4d;
+  background: rgba(255, 77, 77, 0.12);
+}
+
+.boardTabDelete:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
 }
 
 .boardTabNumber.active {
