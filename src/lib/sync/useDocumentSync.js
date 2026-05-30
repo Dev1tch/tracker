@@ -3,11 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient, AUTH_CHANGE_EVENT } from '@/lib/api';
 
+/* How many times a single flush re-fetches the current version and retries
+   after a 409 version conflict before giving up. Without this, one stale
+   base version permanently wedges the tab — every later save 409s and is
+   silently dropped, losing all new items until a manual reload. */
+const MAX_CONFLICT_RETRIES = 3;
+
 /**
  * Timestamp-based LWW sync for a single-blob document (notes tree / board
  * state). No conflict UI: whichever side has the newer `updated_at` wins.
- * Offline use is not supported — failed requests are logged and the next
- * successful round-trip resolves divergence automatically.
+ * Offline use is not supported. A 409 version conflict self-heals — the push
+ * re-fetches the current version, rebases, and retries (see flush) so a stale
+ * base version can't permanently wedge saving; other failures are logged.
  *
  * The hook fetches once on mount and exposes the server doc back to the
  * parent, which compares timestamps and adopts-or-pushes. After that, every
@@ -49,12 +56,14 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
     baseVersionRef.current = Number.isFinite(version) ? version : null;
   }, []);
 
-  const flush = useCallback(async () => {
+  const flush = useCallback(async (attempt = 0) => {
     if (!hydratedRef.current) return null;
     if (!isAuthenticated()) return null;
     if (!latestSnapshotRef.current) return null;
 
-    if (inFlightRef.current) {
+    /* Only the initial attempt respects in-flight coalescing; conflict retries
+       run inside the same flush and must not bail out here. */
+    if (attempt === 0 && inFlightRef.current) {
       queuedAfterFlightRef.current = true;
       return null;
     }
@@ -75,16 +84,36 @@ export function useDocumentSync({ api, debounceMs = 800, featureKey }) {
     } catch (err) {
       if (err?.status === 401) {
         /* Token expired — api client clears the token; parent unmounts. */
-      } else {
-        console.warn(`[${featureKey}] sync push failed`, err);
+        return null;
       }
+      if (err?.status === 409 && attempt < MAX_CONFLICT_RETRIES) {
+        /* Stale base version (another tab, the pagehide beacon, or a
+           server-side change moved it). Re-fetch the current version, rebase,
+           and retry so the tab doesn't get permanently wedged. The local
+           snapshot re-applies on top — last-write-wins, this hook's model. */
+        try {
+          const remote = await api.getDocument();
+          if (Number.isFinite(remote?.version)) {
+            baseVersionRef.current = remote.version;
+          }
+        } catch (refetchErr) {
+          console.warn(`[${featureKey}] conflict re-fetch failed`, refetchErr);
+          return null;
+        }
+        return flush(attempt + 1);
+      }
+      console.warn(`[${featureKey}] sync push failed`, err);
       return null;
     } finally {
-      inFlightRef.current = false;
-      setSyncing(false);
-      if (queuedAfterFlightRef.current) {
-        queuedAfterFlightRef.current = false;
-        schedulePush();
+      /* Only the outermost attempt owns the in-flight flag and the queued
+         follow-up; nested retries must leave them untouched. */
+      if (attempt === 0) {
+        inFlightRef.current = false;
+        setSyncing(false);
+        if (queuedAfterFlightRef.current) {
+          queuedAfterFlightRef.current = false;
+          schedulePush();
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
