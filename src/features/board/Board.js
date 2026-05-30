@@ -4858,10 +4858,20 @@ export default function Board() {
   function handleSurfaceMouseDown(e) {
     // Drawing tools should always capture the mousedown, even when it lands
     // on an existing node, so the user can draw over anything.
+    //
+    // Frames render as background grouping containers, so a click that lands on
+    // a frame still counts as "on the surface" for the text tool — otherwise
+    // text could never be created inside a frame. Real nodes are DOM siblings
+    // of frames (not descendants), so node clicks are unaffected by this.
+    const clickedOnFrame =
+      e.target !== e.currentTarget &&
+      typeof e.target?.closest === 'function' &&
+      Boolean(e.target.closest('.boardFrame'));
     if (
       !MARKUP_TOOLS.includes(tool) &&
       tool !== 'frame' &&
-      e.target !== e.currentTarget
+      e.target !== e.currentTarget &&
+      !(tool === 'text' && clickedOnFrame)
     ) return;
     if (editingId || editingFrameId) return;
 
@@ -5060,6 +5070,10 @@ export default function Board() {
       if (tool === 'text') {
         const w = screenToWorld(ev.clientX, ev.clientY);
         addTextNode(w.x, w.y);
+        // When the text was dropped on a frame, swallow the trailing frame
+        // click so it doesn't select the frame and steal focus from the new
+        // text node we just opened for editing.
+        if (clickedOnFrame) suppressNextFrameClickRef.current = true;
       } else if (tool === 'arrow') {
         const w = screenToWorld(ev.clientX, ev.clientY);
         if (arrowSource) {
