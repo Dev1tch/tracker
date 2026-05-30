@@ -2075,6 +2075,26 @@ body.tasksDragging * {
   resize: vertical;
 }
 
+/* Images pasted into a task description, shown as thumbnails below the field. */
+.tasksDescriptionImages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.tasksDescriptionImage {
+  max-width: 140px;
+  max-height: 140px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color-dim);
+  object-fit: cover;
+}
+.tasksDescriptionUploading {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
 .tasksReadonlyField {
   width: 100%;
   min-height: 43px;

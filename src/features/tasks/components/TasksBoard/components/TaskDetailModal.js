@@ -26,7 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
-import { TASK_STATUS } from '@/lib/api';
+import { TASK_STATUS, mediaApi } from '@/lib/api';
 import {
   PRIORITY_META,
   PRIORITY_ORDER,
@@ -49,11 +49,34 @@ import {
 import TasksDatePicker from './TasksDatePicker';
 import TaskFieldLabel from './TaskFieldLabel';
 
+/* Pasted images live in the description as `![alt](url)` tokens. */
 function getDescriptionPreview(text, maxLength = 110) {
   if (!text) return '';
-  const compact = text.replace(/\s+/g, ' ').trim();
+  // Drop image tokens from the text preview so cards don't show raw markdown.
+  const withoutImages = text.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
+  const compact = withoutImages.replace(/\s+/g, ' ').trim();
   if (compact.length <= maxLength) return compact;
   return `${compact.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+/* Renders the images embedded in a description as thumbnails. Builds React
+   <img> elements from parsed URLs only (no dangerouslySetInnerHTML), so a
+   shared task's description can never inject HTML. */
+function DescriptionImages({ text }) {
+  const urls = useMemo(() => {
+    if (!text) return [];
+    return Array.from(text.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g), (m) => m[1]);
+  }, [text]);
+
+  if (urls.length === 0) return null;
+  return (
+    <div className="tasksDescriptionImages">
+      {urls.map((url, index) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img key={`${index}-${url}`} src={url} alt="" className="tasksDescriptionImage" />
+      ))}
+    </div>
+  );
 }
 
 function formatSpentTime(totalMinutes) {
@@ -130,6 +153,47 @@ export default function TaskDetailModal({
   const lastSavedFingerprintRef = useRef(payloadFingerprint);
   const autoSaveTimerRef = useRef(null);
   const autoSaveRequestIdRef = useRef(0);
+  const descriptionRef = useRef(null);
+  const subtaskDescriptionRef = useRef(null);
+  const [uploadingField, setUploadingField] = useState(null);
+
+  /* Paste an image into a description: upload it to storage and insert a
+     `![image](url)` token at the cursor (rendered as a thumbnail by
+     DescriptionImages). Kept as a token rather than inline HTML so the
+     description stays plain text and safe to show across shared tasks.
+     Shared by the task and subtask descriptions via `applyDescription`. */
+  const pasteImageIntoDescription = async (event, textareaRef, fieldKey, applyDescription) => {
+    const imageItem = Array.from(event.clipboardData?.items || [])
+      .find((item) => item.type && item.type.startsWith('image/'));
+    if (!imageItem) return; // not an image — let the normal text paste happen
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? null;
+    const end = textarea?.selectionEnd ?? null;
+    setUploadingField(fieldKey);
+    let url = '';
+    try {
+      const result = await mediaApi.upload({ file, kind: 'board' });
+      url = result?.url || '';
+    } catch (err) {
+      console.warn('Task description image upload failed', err);
+    } finally {
+      setUploadingField((current) => (current === fieldKey ? null : current));
+    }
+    if (!url) return;
+
+    applyDescription((value) => {
+      const v = value || '';
+      const s = start == null ? v.length : Math.min(start, v.length);
+      const e = end == null ? v.length : Math.min(end, v.length);
+      const lead = s > 0 && !v.slice(0, s).endsWith('\n') ? '\n' : '';
+      const token = `${lead}![image](${url})\n`;
+      return `${v.slice(0, s)}${token}${v.slice(e)}`;
+    });
+  };
 
   useEffect(() => {
     lastSavedFingerprintRef.current = payloadFingerprint;
@@ -355,12 +419,23 @@ export default function TaskDetailModal({
                     <TaskFieldLabel icon={AlignLeft}>Description</TaskFieldLabel>
                   </label>
                   <textarea
+                    ref={descriptionRef}
                     value={form.description}
                     onChange={(e) =>
                       setForm((prev) => ({ ...prev, description: e.target.value }))
                     }
+                    onPaste={(e) =>
+                      pasteImageIntoDescription(e, descriptionRef, 'task', (updater) =>
+                        setForm((prev) => ({ ...prev, description: updater(prev.description) }))
+                      )
+                    }
                     rows={8}
+                    placeholder="Write a description… paste an image to attach it"
                   />
+                  {uploadingField === 'task' ? (
+                    <div className="tasksDescriptionUploading">Uploading image…</div>
+                  ) : null}
+                  <DescriptionImages text={form.description} />
                 </div>
 
                 <div className="tasksField">
@@ -528,12 +603,23 @@ export default function TaskDetailModal({
                       <TaskFieldLabel icon={AlignLeft}>Description</TaskFieldLabel>
                     </label>
                     <textarea
+                      ref={subtaskDescriptionRef}
                       rows={3}
                       value={subtaskForm.description}
                       onChange={(e) =>
                         setSubtaskForm((prev) => ({ ...prev, description: e.target.value }))
                       }
+                      onPaste={(e) =>
+                        pasteImageIntoDescription(e, subtaskDescriptionRef, 'subtask', (updater) =>
+                          setSubtaskForm((prev) => ({ ...prev, description: updater(prev.description) }))
+                        )
+                      }
+                      placeholder="Write a description… paste an image to attach it"
                     />
+                    {uploadingField === 'subtask' ? (
+                      <div className="tasksDescriptionUploading">Uploading image…</div>
+                    ) : null}
+                    <DescriptionImages text={subtaskForm.description} />
                   </div>
                   <div className="tasksField">
                     <label>
