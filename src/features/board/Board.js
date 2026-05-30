@@ -28,6 +28,7 @@ import {
   Link as LinkIcon,
   ListTodo,
   List,
+  Lock,
   Maximize,
   MousePointer2,
   Pencil as PencilIcon,
@@ -38,6 +39,7 @@ import {
   Trash2,
   Type,
   Underline,
+  Unlock,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -2913,7 +2915,7 @@ function FrameNode({
 
   return (
     <div
-      className={`boardFrame ${selected ? 'selected' : ''}`}
+      className={`boardFrame ${selected ? 'selected' : ''} ${frame.locked ? 'locked' : ''}`}
       style={{
         left: frame.x,
         top: frame.y,
@@ -4154,6 +4156,12 @@ export default function Board() {
     );
   }
 
+  function setFrameLocked(id, locked) {
+    setFrames((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, locked } : f))
+    );
+  }
+
   /* ---------- mutations ---------- */
 
   function addTextNode(worldX, worldY) {
@@ -5308,9 +5316,124 @@ export default function Board() {
     window.addEventListener('mouseup', onUp);
   }
 
+  /* Locked frame: resizing scales the frame AND everything inside it
+     proportionally about the fixed (opposite) anchor — a group scale that
+     preserves the layout while growing/shrinking contents together. Unlocked
+     frames keep the free-resize behaviour in handleFrameResizeStart. */
+  function handleFrameScale(e, handleId, frame) {
+    const start = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
+    const startWorld = screenToWorld(e.clientX, e.clientY);
+    const dir = HANDLE_DIRS[handleId];
+
+    // The side/corner opposite the dragged handle stays fixed; edge handles
+    // scale about the centre of the cross axis.
+    const anchorX =
+      dir.sx === 1 ? start.x : dir.sx === -1 ? start.x + start.w : start.x + start.w / 2;
+    const anchorY =
+      dir.sy === 1 ? start.y : dir.sy === -1 ? start.y + start.h : start.y + start.h / 2;
+
+    // Snapshot members' start geometry so each move scales from the original
+    // spot rather than compounding frame-to-frame.
+    const nodeStarts = new Map();
+    nodesInsideFrame(frame, nodes, nodeBounds).forEach((n) => nodeStarts.set(n.id, { ...n }));
+    const frameStarts = new Map();
+    frames.forEach((f) => {
+      if (f.id === frame.id) return;
+      const cx = f.x + f.w / 2;
+      const cy = f.y + f.h / 2;
+      if (cx >= start.x && cx <= start.x + start.w && cy >= start.y && cy <= start.y + start.h) {
+        frameStarts.set(f.id, { x: f.x, y: f.y, w: f.w, h: f.h });
+      }
+    });
+
+    const minScale = MIN_FRAME_SIZE / Math.min(start.w, start.h);
+    // Members are resized, so suspend the auto-fit reflow for the gesture.
+    reflowDisabledRef.current = true;
+
+    function scaledNode(n0, s) {
+      const out = {
+        ...n0,
+        x: anchorX + (n0.x - anchorX) * s,
+        y: anchorY + (n0.y - anchorY) * s,
+      };
+      if (Number.isFinite(n0.w)) out.w = n0.w * s;
+      if (Number.isFinite(n0.h)) out.h = n0.h * s;
+      if (n0.type === 'text' && Number.isFinite(n0.fontSize)) {
+        out.fontSize = Math.max(8, Math.min(120, n0.fontSize * s));
+      }
+      if (n0.type === 'task') {
+        if (Number.isFinite(n0.cardW)) out.cardW = n0.cardW * s;
+        if (Number.isFinite(n0.cardH)) out.cardH = n0.cardH * s;
+        if (Number.isFinite(n0.detailW)) out.detailW = n0.detailW * s;
+        if (Number.isFinite(n0.detailH)) out.detailH = n0.detailH * s;
+      }
+      if (n0.type === 'drawing' && Array.isArray(n0.points)) {
+        out.points = n0.points.map((p) => ({ ...p, x: p.x * s, y: p.y * s }));
+      }
+      return out;
+    }
+
+    function onMove(ev) {
+      const world = screenToWorld(ev.clientX, ev.clientY);
+      const dx = world.x - startWorld.x;
+      const dy = world.y - startWorld.y;
+      const propW = dir.sx === 1 ? start.w + dx : dir.sx === -1 ? start.w - dx : start.w;
+      const propH = dir.sy === 1 ? start.h + dy : dir.sy === -1 ? start.h - dy : start.h;
+      const ratios = [];
+      if (dir.sx !== 0) ratios.push(propW / start.w);
+      if (dir.sy !== 0) ratios.push(propH / start.h);
+      // Drive the uniform scale from whichever dragged axis moved most.
+      let s = ratios.length
+        ? ratios.reduce((best, r) => (Math.abs(r - 1) > Math.abs(best - 1) ? r : best), ratios[0])
+        : 1;
+      s = Math.max(s, minScale);
+
+      setFrames((prev) =>
+        prev.map((f) => {
+          if (f.id === frame.id) {
+            return {
+              ...f,
+              x: anchorX + (start.x - anchorX) * s,
+              y: anchorY + (start.y - anchorY) * s,
+              w: start.w * s,
+              h: start.h * s,
+            };
+          }
+          const m = frameStarts.get(f.id);
+          if (!m) return f;
+          return {
+            ...f,
+            x: anchorX + (m.x - anchorX) * s,
+            y: anchorY + (m.y - anchorY) * s,
+            w: m.w * s,
+            h: m.h * s,
+          };
+        })
+      );
+
+      setNodes((prev) =>
+        prev.map((n) => {
+          const n0 = nodeStarts.get(n.id);
+          return n0 ? scaledNode(n0, s) : n;
+        })
+      );
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      reflowDisabledRef.current = false;
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
   function handleFrameResizeStart(e, handleId, frame) {
     e.stopPropagation();
     e.preventDefault();
+    if (frame.locked) {
+      handleFrameScale(e, handleId, frame);
+      return;
+    }
     const start = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
     const startWorld = screenToWorld(e.clientX, e.clientY);
     const dir = HANDLE_DIRS[handleId];
@@ -6048,38 +6171,73 @@ export default function Board() {
           const frame = frames.find((f) => f.id === activeFrameId);
           if (!frame) return null;
           return (
-            <div className="boardToolbarPopout" aria-label="Frame style">
-              <input
-                className="boardPopoutLabel boardFrameNameInput"
-                value={frame.name || ''}
-                placeholder="Frame"
-                onChange={(e) => setFrameName(frame.id, e.target.value)}
-                aria-label="Frame name"
-              />
+            <div className="boardToolbarPopout boardFramePopout" aria-label="Frame style">
+              <div className="boardFrameRow">
+                <span className="boardFrameRowLabel">Name</span>
+                <input
+                  className="boardFrameNameInput"
+                  value={frame.name || ''}
+                  placeholder="Frame"
+                  size={6}
+                  onChange={(e) => setFrameName(frame.id, e.target.value)}
+                  aria-label="Frame name"
+                />
+              </div>
               <span className="boardPopoutDivider" aria-hidden="true" />
-              <ColorPicker
-                value={frame.color}
-                onChange={(c) => setFrameColor(frame.id, c)}
-              />
-              <div className="boardFrameFillToggle" aria-label="Frame fill">
-                <button
-                  className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'translucent' ? 'active' : ''}`}
-                  onClick={() => setFrameFillMode(frame.id, 'translucent')}
-                  type="button"
-                  title="Transparent fill"
-                  aria-label="Transparent fill"
-                >
-                  <FrameIcon size={13} />
-                </button>
-                <button
-                  className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'solid' ? 'active' : ''}`}
-                  onClick={() => setFrameFillMode(frame.id, 'solid')}
-                  type="button"
-                  title="Solid fill"
-                  aria-label="Solid fill"
-                >
-                  <Layers size={13} />
-                </button>
+              <div className="boardFrameControls">
+                <div className="boardFrameControl">
+                  <span className="boardFrameRowLabel">Color</span>
+                  <ColorPicker
+                    value={frame.color}
+                    onChange={(c) => setFrameColor(frame.id, c)}
+                  />
+                </div>
+                <div className="boardFrameControl">
+                  <span className="boardFrameRowLabel">Fill</span>
+                  <div className="boardFrameFillToggle" aria-label="Frame fill">
+                    <button
+                      className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'translucent' ? 'active' : ''}`}
+                      onClick={() => setFrameFillMode(frame.id, 'translucent')}
+                      type="button"
+                      title="Transparent fill"
+                      aria-label="Transparent fill"
+                    >
+                      <FrameIcon size={13} />
+                    </button>
+                    <button
+                      className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'solid' ? 'active' : ''}`}
+                      onClick={() => setFrameFillMode(frame.id, 'solid')}
+                      type="button"
+                      title="Solid fill"
+                      aria-label="Solid fill"
+                    >
+                      <Layers size={13} />
+                    </button>
+                  </div>
+                </div>
+                <div className="boardFrameControl">
+                  <span className="boardFrameRowLabel">Lock</span>
+                  <div className="boardFrameFillToggle" aria-label="Frame lock">
+                    <button
+                      className={`boardFrameFillBtn ${!frame.locked ? 'active' : ''}`}
+                      onClick={() => setFrameLocked(frame.id, false)}
+                      type="button"
+                      title="Unlock — resize the frame freely"
+                      aria-label="Unlock frame"
+                    >
+                      <Unlock size={13} />
+                    </button>
+                    <button
+                      className={`boardFrameFillBtn ${frame.locked ? 'active' : ''}`}
+                      onClick={() => setFrameLocked(frame.id, true)}
+                      type="button"
+                      title="Lock — resize scales the frame and its contents"
+                      aria-label="Lock frame"
+                    >
+                      <Lock size={13} />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           );
