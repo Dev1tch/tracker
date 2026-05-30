@@ -49,31 +49,54 @@ import {
 import TasksDatePicker from './TasksDatePicker';
 import TaskFieldLabel from './TaskFieldLabel';
 
-/* Pasted images live in the description as `![alt](url)` tokens. */
+/* Pasted images live in the stored description as `![image](url)` tokens, kept
+   at the end. The editor shows the prose only (tokens stripped) and renders the
+   images as thumbnails, so the raw markdown is never visible. */
+const DESCRIPTION_IMAGE_TOKEN = /\n?!\[[^\]]*\]\([^)]*\)/g;
+
+function parseDescription(full) {
+  const text = full || '';
+  const urls = Array.from(text.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g), (m) => m[1]);
+  const prose = text.replace(DESCRIPTION_IMAGE_TOKEN, '');
+  return { prose, urls };
+}
+
+function buildDescription(prose, urls) {
+  if (!urls || urls.length === 0) return prose || '';
+  const tokens = urls.map((url) => `![image](${url})`).join('\n');
+  const base = (prose || '').replace(/\n+$/, '');
+  return base ? `${base}\n${tokens}` : tokens;
+}
+
 function getDescriptionPreview(text, maxLength = 110) {
   if (!text) return '';
   // Drop image tokens from the text preview so cards don't show raw markdown.
-  const withoutImages = text.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
-  const compact = withoutImages.replace(/\s+/g, ' ').trim();
+  const compact = parseDescription(text).prose.replace(/\s+/g, ' ').trim();
   if (compact.length <= maxLength) return compact;
   return `${compact.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
-/* Renders the images embedded in a description as thumbnails. Builds React
-   <img> elements from parsed URLs only (no dangerouslySetInnerHTML), so a
-   shared task's description can never inject HTML. */
-function DescriptionImages({ text }) {
-  const urls = useMemo(() => {
-    if (!text) return [];
-    return Array.from(text.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g), (m) => m[1]);
-  }, [text]);
-
-  if (urls.length === 0) return null;
+/* Renders the images embedded in a description as thumbnails with a remove
+   button. Builds React <img> elements from parsed URLs only (no
+   dangerouslySetInnerHTML), so a shared task's description can't inject HTML. */
+function DescriptionImages({ urls, onRemove }) {
+  if (!urls || urls.length === 0) return null;
   return (
     <div className="tasksDescriptionImages">
       {urls.map((url, index) => (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img key={`${index}-${url}`} src={url} alt="" className="tasksDescriptionImage" />
+        <div key={`${index}-${url}`} className="tasksDescriptionImageWrap">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt="" className="tasksDescriptionImage" />
+          <button
+            type="button"
+            className="tasksDescriptionImageRemove"
+            onClick={() => onRemove(index)}
+            title="Remove image"
+            aria-label="Remove image"
+          >
+            <X size={12} />
+          </button>
+        </div>
       ))}
     </div>
   );
@@ -153,16 +176,27 @@ export default function TaskDetailModal({
   const lastSavedFingerprintRef = useRef(payloadFingerprint);
   const autoSaveTimerRef = useRef(null);
   const autoSaveRequestIdRef = useRef(0);
-  const descriptionRef = useRef(null);
-  const subtaskDescriptionRef = useRef(null);
   const [uploadingField, setUploadingField] = useState(null);
 
-  /* Paste an image into a description: upload it to storage and insert a
-     `![image](url)` token at the cursor (rendered as a thumbnail by
-     DescriptionImages). Kept as a token rather than inline HTML so the
-     description stays plain text and safe to show across shared tasks.
-     Shared by the task and subtask descriptions via `applyDescription`. */
-  const pasteImageIntoDescription = async (event, textareaRef, fieldKey, applyDescription) => {
+  /* Edit just the prose part of a description (keeps the image tokens). */
+  const setDescriptionProse = (setField, prose) =>
+    setField((prev) => {
+      const { urls } = parseDescription(prev.description);
+      return { ...prev, description: buildDescription(prose, urls) };
+    });
+
+  /* Remove the image at `index` from a description. */
+  const removeDescriptionImage = (setField, index) =>
+    setField((prev) => {
+      const { prose, urls } = parseDescription(prev.description);
+      return { ...prev, description: buildDescription(prose, urls.filter((_, i) => i !== index)) };
+    });
+
+  /* Paste an image into a description: upload it to storage and append a
+     `![image](url)` token (rendered as a thumbnail by DescriptionImages, never
+     shown as raw text). Kept as a token rather than inline HTML so the
+     description stays plain text and safe to show across shared tasks. */
+  const pasteImageIntoDescription = async (event, fieldKey, setField) => {
     const imageItem = Array.from(event.clipboardData?.items || [])
       .find((item) => item.type && item.type.startsWith('image/'));
     if (!imageItem) return; // not an image — let the normal text paste happen
@@ -170,9 +204,6 @@ export default function TaskDetailModal({
     if (!file) return;
     event.preventDefault();
 
-    const textarea = textareaRef.current;
-    const start = textarea?.selectionStart ?? null;
-    const end = textarea?.selectionEnd ?? null;
     setUploadingField(fieldKey);
     let url = '';
     try {
@@ -185,13 +216,9 @@ export default function TaskDetailModal({
     }
     if (!url) return;
 
-    applyDescription((value) => {
-      const v = value || '';
-      const s = start == null ? v.length : Math.min(start, v.length);
-      const e = end == null ? v.length : Math.min(end, v.length);
-      const lead = s > 0 && !v.slice(0, s).endsWith('\n') ? '\n' : '';
-      const token = `${lead}![image](${url})\n`;
-      return `${v.slice(0, s)}${token}${v.slice(e)}`;
+    setField((prev) => {
+      const { prose, urls } = parseDescription(prev.description);
+      return { ...prev, description: buildDescription(prose, [...urls, url]) };
     });
   };
 
@@ -419,23 +446,19 @@ export default function TaskDetailModal({
                     <TaskFieldLabel icon={AlignLeft}>Description</TaskFieldLabel>
                   </label>
                   <textarea
-                    ref={descriptionRef}
-                    value={form.description}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, description: e.target.value }))
-                    }
-                    onPaste={(e) =>
-                      pasteImageIntoDescription(e, descriptionRef, 'task', (updater) =>
-                        setForm((prev) => ({ ...prev, description: updater(prev.description) }))
-                      )
-                    }
+                    value={parseDescription(form.description).prose}
+                    onChange={(e) => setDescriptionProse(setForm, e.target.value)}
+                    onPaste={(e) => pasteImageIntoDescription(e, 'task', setForm)}
                     rows={8}
                     placeholder="Write a description… paste an image to attach it"
                   />
                   {uploadingField === 'task' ? (
                     <div className="tasksDescriptionUploading">Uploading image…</div>
                   ) : null}
-                  <DescriptionImages text={form.description} />
+                  <DescriptionImages
+                    urls={parseDescription(form.description).urls}
+                    onRemove={(index) => removeDescriptionImage(setForm, index)}
+                  />
                 </div>
 
                 <div className="tasksField">
@@ -603,23 +626,19 @@ export default function TaskDetailModal({
                       <TaskFieldLabel icon={AlignLeft}>Description</TaskFieldLabel>
                     </label>
                     <textarea
-                      ref={subtaskDescriptionRef}
                       rows={3}
-                      value={subtaskForm.description}
-                      onChange={(e) =>
-                        setSubtaskForm((prev) => ({ ...prev, description: e.target.value }))
-                      }
-                      onPaste={(e) =>
-                        pasteImageIntoDescription(e, subtaskDescriptionRef, 'subtask', (updater) =>
-                          setSubtaskForm((prev) => ({ ...prev, description: updater(prev.description) }))
-                        )
-                      }
+                      value={parseDescription(subtaskForm.description).prose}
+                      onChange={(e) => setDescriptionProse(setSubtaskForm, e.target.value)}
+                      onPaste={(e) => pasteImageIntoDescription(e, 'subtask', setSubtaskForm)}
                       placeholder="Write a description… paste an image to attach it"
                     />
                     {uploadingField === 'subtask' ? (
                       <div className="tasksDescriptionUploading">Uploading image…</div>
                     ) : null}
-                    <DescriptionImages text={subtaskForm.description} />
+                    <DescriptionImages
+                      urls={parseDescription(subtaskForm.description).urls}
+                      onRemove={(index) => removeDescriptionImage(setSubtaskForm, index)}
+                    />
                   </div>
                   <div className="tasksField">
                     <label>

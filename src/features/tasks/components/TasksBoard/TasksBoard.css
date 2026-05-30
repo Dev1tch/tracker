@@ -2082,12 +2082,36 @@ body.tasksDragging * {
   gap: 8px;
   margin-top: 8px;
 }
+.tasksDescriptionImageWrap {
+  position: relative;
+  display: inline-flex;
+}
 .tasksDescriptionImage {
   max-width: 140px;
   max-height: 140px;
   border-radius: 8px;
   border: 1px solid var(--border-color-dim);
   object-fit: cover;
+}
+.tasksDescriptionImageRemove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.tasksDescriptionImageWrap:hover .tasksDescriptionImageRemove {
+  opacity: 1;
 }
 .tasksDescriptionUploading {
   margin-top: 6px;
