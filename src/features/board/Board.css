@@ -613,9 +613,11 @@
 }
 
 .boardFrame.selected {
-  /* Lift the selected frame above its peers so its top-bar lock controls are
-     always clickable, not covered by an overlapping frame. */
-  z-index: 4;
+  /* Lift the selected frame above its peer frames (z-index 1) so its outline
+     and label aren't covered by an overlapping frame — but keep it level with
+     the node band (z-index 2), never above it. Frames paint before nodes in
+     the DOM, so contained elements still stack on top of the frame they sit in. */
+  z-index: 2;
   /* Unlocked frames show a dashed selection outline (free resize); locked
      frames show a solid one (resize scales the frame + its contents). */
   outline: calc(2px / var(--board-zoom, 1)) dashed var(--frame-color, #f87171);
