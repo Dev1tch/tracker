@@ -803,6 +803,29 @@
   word-break: break-word;
 }
 
+/* White is the editor's default text swatch, so text authored in the dark
+   theme reads as "uncoloured" yet gets baked into the markup as an explicit
+   white colour. On the light/custom (pale) themes that white turns invisible.
+   Treat it as un-coloured so it follows --text-secondary like genuinely
+   default text does; text the user gave a real colour is matched by neither
+   selector and keeps it. The <font color> attribute is a presentational hint
+   (specificity 0) so a plain rule wins; an inline style="color:…" (pasted
+   content) needs !important to beat the element's own style attribute. The
+   inline selectors anchor on "color:" at the start or after a ";" so they
+   never catch background-color (which would mis-recolour white-filled frames). */
+.notesBodyInput font[color="#ffffff" i],
+.notesBodyInput font[color="#fff" i],
+.notesBodyInput font[color="white" i] {
+  color: var(--text-secondary);
+}
+
+.notesBodyInput [style^="color: rgb(255, 255, 255)"],
+.notesBodyInput [style^="color: #ffffff" i],
+.notesBodyInput [style*=";color: rgb(255, 255, 255)"],
+.notesBodyInput [style*="; color: rgb(255, 255, 255)"] {
+  color: var(--text-secondary) !important;
+}
+
 .notesBodyInput:empty::before {
   content: attr(data-placeholder);
   color: var(--text-muted);
