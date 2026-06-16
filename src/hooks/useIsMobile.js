@@ -23,6 +23,7 @@ export default function useIsMobile(breakpoint = 768) {
         mediaQuery.removeEventListener('change', handleChange);
       };
     }
+    
   }, [breakpoint]);
 
   return isMobile;
