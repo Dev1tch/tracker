@@ -714,7 +714,7 @@ export default function Calendar() {
               <Settings2 size={16} />
             </button>
             {isSettingsOpen && (
-              <div className="calSettingsPopover glass">
+              <div className="calSettingsPopover">
                 <div className="calSettingsGroup">
                   <label>Week Start</label>
                   <CustomSelect
