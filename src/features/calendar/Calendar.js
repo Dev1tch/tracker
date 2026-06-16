@@ -214,6 +214,7 @@ export default function Calendar() {
   const [isCreateCalendarModalOpen, setIsCreateCalendarModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [slotStart, setSlotStart] = useState(null);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [accountToDisconnect, setAccountToDisconnect] = useState(null);
@@ -570,14 +571,16 @@ export default function Calendar() {
     setEnabledCalendarIds(newEnabled);
   };
 
-  const openCreateModal = (prefilledDate) => {
+  const openCreateModal = (prefilledDate, options = {}) => {
     setEditingEvent(null);
+    setSlotStart(options.slotStart || null);
     if (prefilledDate) setSelectedDate(prefilledDate);
     setIsModalOpen(true);
   };
 
   const openEditModal = async (event) => {
     setEditingEvent(event);
+    setSlotStart(null);
     setIsModalOpen(true);
 
     if (!event?.accountEmail || !event?.recurringEventId || event?.recurrence?.length) {
@@ -663,8 +666,7 @@ export default function Calendar() {
   };
 
   const handleSlotClick = (slotDate) => {
-    setSelectedDate(slotDate);
-    openCreateModal(slotDate);
+    openCreateModal(slotDate, { slotStart: slotDate });
   };
 
   return (
@@ -921,6 +923,7 @@ export default function Calendar() {
           onDelete={handleDeleteEvent}
           event={editingEvent}
           selectedDate={selectedDate}
+          defaultStart={slotStart}
           availableCalendars={availableCalendars}
           accounts={accounts}
         />

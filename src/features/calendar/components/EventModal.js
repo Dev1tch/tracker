@@ -62,6 +62,10 @@ function formatDateInputValue(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function formatTimeInputValue(date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
 function parseDateInputValue(value) {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [year, month, day] = value.split('-').map(Number);
@@ -134,7 +138,7 @@ function TimeSelect({ value, onChange, disabled }) {
   );
 }
 
-export default function EventModal({ isOpen, onClose, onSave, onDelete, event, selectedDate, availableCalendars = [], accounts = [] }) {
+export default function EventModal({ isOpen, onClose, onSave, onDelete, event, selectedDate, defaultStart = null, availableCalendars = [], accounts = [] }) {
   const toast = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -202,8 +206,16 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
         setCalendarId('primary');
       }
       setLocation('');
-      setStartTime('09:00');
-      setEndTime('10:00');
+      if (defaultStart) {
+        // Slot click: start where the user clicked, run for exactly one hour.
+        const start = new Date(defaultStart);
+        const end = new Date(start.getTime() + 60 * 60 * 1000);
+        setStartTime(formatTimeInputValue(start));
+        setEndTime(formatTimeInputValue(end));
+      } else {
+        setStartTime('09:00');
+        setEndTime('10:00');
+      }
       setIsAllDay(false);
       setHasGoogleMeet(false);
       setRefreshGoogleMeet(false);
@@ -267,7 +279,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
       }
       setCalendarId(event.accountEmail ? `${event.accountEmail}:${event.calendarId || 'primary'}` : (event.calendarId || 'primary'));
     }
-  }, [event, isOpen, accounts, availableCalendars, selectedDate]);
+  }, [event, isOpen, accounts, availableCalendars, selectedDate, defaultStart]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -358,6 +370,13 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, s
     
     start.setHours(parseInt(startH), parseInt(startM), 0, 0);
     end.setHours(parseInt(endH), parseInt(endM), 0, 0);
+
+    // An end time earlier than the start time means the event runs past
+    // midnight into the next day (e.g. 8:00 PM → 2:00 AM). Without this the
+    // end lands before the start and Google rejects the event.
+    if (!isAllDay && end < start) {
+      end.setDate(end.getDate() + 1);
+    }
 
     const eventData = {
       summary: title,

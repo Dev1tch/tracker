@@ -238,9 +238,16 @@ export default function WeekGrid({
     return (now.getHours() * 60 + now.getMinutes()) / 60 * HOUR_HEIGHT;
   }, []);
 
-  const handleSlotClick = (date, hour) => {
+  const handleSlotClick = (date, hour, event) => {
+    // Derive the minute within the hour from where the user clicked, snapped
+    // to 15-minute increments (matching the time picker), like Google Calendar.
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offsetY = event.clientY - rect.top;
+    const rawMinutes = (offsetY / rect.height) * 60;
+    const minutes = Math.min(Math.max(Math.floor(rawMinutes / 15) * 15, 0), 45);
+
     const slotDate = new Date(date);
-    slotDate.setHours(hour, 0, 0, 0);
+    slotDate.setHours(hour, minutes, 0, 0);
     onSlotClick(slotDate);
   };
 
@@ -379,7 +386,7 @@ export default function WeekGrid({
                       key={h}
                       className="weekGridSlot"
                       style={{ top: h * HOUR_HEIGHT, height: HOUR_HEIGHT }}
-                      onClick={() => handleSlotClick(day, h)}
+                      onClick={(event) => handleSlotClick(day, h, event)}
                     />
                   ))}
 
