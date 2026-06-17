@@ -1,0 +1,33 @@
+{
+  "cli": {
+    "version": ">= 20.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://tracker-backend-mocha.vercel.app/api/v1",
+        "EXPO_PUBLIC_WEB_APP_URL": "https://tracker-six-gules.vercel.app"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://tracker-backend-mocha.vercel.app/api/v1",
+        "EXPO_PUBLIC_WEB_APP_URL": "https://tracker-six-gules.vercel.app"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
