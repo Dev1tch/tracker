@@ -22,13 +22,16 @@ Everything below runs on your Mac, in the `mobile-app/` folder.
 ```bash
 cd mobile-app
 npm install                 # if you haven't already
-npm install -g eas-cli      # already installed on this machine (v20)
 eas login                   # create/sign in to a free Expo account at expo.dev
 eas init                    # links this project to your Expo account
                             # (writes extra.eas.projectId + owner into app.json — commit that)
+eas update:configure        # adds updates.url for your project
+                            # NOTE: keep runtimeVersion as { "policy": "sdkVersion" } —
+                            # that's what lets Expo Go open your published updates.
 ```
 
-`eas.json` and the Android `package` / iOS `bundleIdentifier` are already set up.
+Already set up for you: `eas.json`, Android `package` + iOS `bundleIdentifier`,
+`expo-updates` installed, and `runtimeVersion: sdkVersion` (Expo Go compatible).
 
 ---
 
@@ -54,20 +57,34 @@ The build already points at your hosted backend
 ## iOS — free option (Expo Go)
 
 This app runs fully inside **Expo Go** (no custom native modules), so testers can
-use it today without any Apple account:
+use it today without any Apple account.
+
+**Persistent link (your Mac can be off)** — after the one-time setup above:
 
 ```bash
 cd mobile-app
-eas update --branch preview   # publishes the JS bundle to Expo's servers
-# (or `npx expo start` and share the QR while your Mac/Metro is running)
+eas update --branch preview --message "preview"
 ```
 
-Then share the project link. Testers:
+This publishes the JS bundle to Expo's servers. Open your project at
+**expo.dev → your project → Updates → the `preview` branch**, and there's a QR /
+link to share. Testers:
 1. Install **Expo Go** from the App Store.
-2. Open your link / scan the QR in Expo Go.
+2. Scan that QR (or open the link) in Expo Go.
 
-Caveat: it opens inside Expo Go (not a home-screen app with your icon). It's the
-only no-paid-account way to get it onto someone's iPhone.
+Re-run `eas update --branch preview` anytime to push a new version — testers just
+reopen it, no reinstall.
+
+**Quick alternative (no setup, but your Mac must stay running):**
+
+```bash
+npx expo start --tunnel
+```
+
+Share the QR it prints; testers scan it in Expo Go over the internet.
+
+Caveat for both: it opens inside Expo Go (not a home-screen app with your icon).
+That's the only no-paid-account way to get it onto someone's iPhone.
 
 ---
 

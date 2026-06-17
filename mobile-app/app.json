@@ -3,6 +3,7 @@
     "name": "Life Tracker Mobile",
     "slug": "life-tracker-mobile",
     "version": "1.0.0",
+    "runtimeVersion": { "policy": "sdkVersion" },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tracker-mobile",
