@@ -40,7 +40,13 @@
         }
       ],
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Life Tracker to attach photos to your tasks."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

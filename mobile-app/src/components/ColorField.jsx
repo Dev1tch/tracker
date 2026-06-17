@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import ColorPicker, { HueSlider, Panel1 } from 'reanimated-color-picker';
 import { Pipette } from 'lucide-react-native';
 
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 function sanitizeHexInput(value) {
   const cleaned = String(value || '')
@@ -27,7 +27,10 @@ export default function ColorField({
   value,
   onChange,
   presetColors = [],
+  alwaysOpen = false,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [pickerVisible, setPickerVisible] = useState(false);
   const resolvedColor = useMemo(() => normalizeHexColor(value), [value]);
 
@@ -50,22 +53,24 @@ export default function ColorField({
           ))}
         </View>
 
-        <Pressable
-          onPress={() => setPickerVisible((current) => !current)}
-          style={[
-            styles.customButton,
-            pickerVisible ? styles.customButtonActive : null,
-          ]}
-        >
-          <View style={[styles.customButtonSwatch, { backgroundColor: resolvedColor }]} />
-          <Pipette
-            size={12}
-            color={pickerVisible ? theme.colors.text : theme.colors.secondary}
-          />
-        </Pressable>
+        {alwaysOpen ? null : (
+          <Pressable
+            onPress={() => setPickerVisible((current) => !current)}
+            style={[
+              styles.customButton,
+              pickerVisible ? styles.customButtonActive : null,
+            ]}
+          >
+            <View style={[styles.customButtonSwatch, { backgroundColor: resolvedColor }]} />
+            <Pipette
+              size={12}
+              color={pickerVisible ? theme.colors.text : theme.colors.secondary}
+            />
+          </Pressable>
+        )}
       </View>
 
-      {pickerVisible ? (
+      {(alwaysOpen || pickerVisible) ? (
         <View style={styles.pickerWrap}>
           <ColorPicker
             style={styles.picker}
@@ -98,7 +103,7 @@ export default function ColorField({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   wrapper: {
     gap: 10,
   },

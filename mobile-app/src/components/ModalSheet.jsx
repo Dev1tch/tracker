@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -12,7 +12,7 @@ import {
 import { X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 export default function ModalSheet({
   visible,
@@ -21,8 +21,11 @@ export default function ModalSheet({
   children,
   footer,
   headerActions,
+  stickyContent,
   onClose,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
 
   return (
@@ -51,7 +54,11 @@ export default function ModalSheet({
             </View>
           </View>
 
-          <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView>
+          {stickyContent ? (
+            <View style={styles.stickyContent}>{stickyContent}</View>
+          ) : null}
+
+          <ScrollView style={styles.scrollArea} contentContainerStyle={styles.content}>{children}</ScrollView>
 
           {footer ? <View style={styles.footer}>{footer}</View> : null}
         </View>
@@ -60,7 +67,7 @@ export default function ModalSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -111,9 +118,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 2,
   },
+  scrollArea: {
+    flexShrink: 1,
+  },
   content: {
     gap: 14,
     paddingBottom: 12,
+  },
+  stickyContent: {
+    gap: 12,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderDim,
   },
   footer: {
     paddingTop: 8,

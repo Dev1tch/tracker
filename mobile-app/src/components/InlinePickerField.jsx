@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChevronDown } from 'lucide-react-native';
 
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 export default function InlinePickerField({
   valueLabel,
@@ -11,6 +11,8 @@ export default function InlinePickerField({
   style,
   disabled = false,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const displayValue = valueLabel || placeholder;
   const isPlaceholder = !valueLabel;
 
@@ -26,7 +28,7 @@ export default function InlinePickerField({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   field: {
     minHeight: 34,
     borderBottomWidth: 1,

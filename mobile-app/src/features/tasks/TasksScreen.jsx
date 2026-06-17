@@ -9,16 +9,28 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import {
+  ArrowLeft,
   Calendar,
   Check,
   ChevronRight,
   Clock3,
+  FolderKanban,
+  FolderTree,
+  MoveRight,
+  Pause,
+  Play,
   Plus,
+  Settings2,
   SquareCheck,
   Trash2,
+  UserRound,
+  Users,
   X,
 } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import ActionButton from '../../components/ActionButton';
 import ColorField from '../../components/ColorField';
@@ -39,9 +51,10 @@ import {
   TASK_PRIORITY,
   TASK_STATUS,
 } from '../../constants/tasks';
-import { tasksApi } from '../../shared/api';
-import { theme } from '../../theme';
+import { mediaApi, projectsApi, tasksApi } from '../../shared/api';
+import { useTheme } from '../../theme';
 import { formatShortDate } from '../../utils/date';
+import { useAuth } from '../../providers/AuthProvider';
 import { useToast } from '../../providers/ToastProvider';
 
 const DEFAULT_FILTERS = {
@@ -74,12 +87,127 @@ const COLLAPSED_BY_DEFAULT = new Set([
   TASK_STATUS.ARCHIVED,
 ]);
 
+const DEFAULT_CARD_VIEW = {
+  description: false,
+  task_type: true,
+  priority: true,
+  due_date: true,
+  start_date: false,
+  created_at: false,
+  assignee: true,
+  total_spent_time: true,
+};
+
+const CARD_FIELD_OPTIONS = [
+  { key: 'description', label: 'Description' },
+  { key: 'task_type', label: 'Category' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'due_date', label: 'Due date' },
+  { key: 'start_date', label: 'Start date' },
+  { key: 'created_at', label: 'Created date' },
+  { key: 'assignee', label: 'Assignee', projectsOnly: true },
+  { key: 'total_spent_time', label: 'Spent time' },
+];
+
+const CARD_VIEW_KEY = 'tasks.cardViewSettings';
+const STATUS_CONFIG_KEY = 'tasks.statusConfig';
+
+const STATUS_COLOR_PRESETS = [
+  '#94A3B8',
+  '#60A5FA',
+  '#A78BFA',
+  '#FBBF24',
+  '#34D399',
+  '#F87171',
+  '#2DD4BF',
+  '#F97316',
+];
+
+const DEFAULT_SUBTASK_FORM = {
+  title: '',
+  description: '',
+  status: TASK_STATUS.TO_DO,
+  priority: TASK_PRIORITY.NORMAL,
+  due_date: '',
+};
+
+const DEFAULT_PROJECT_FORM = {
+  name: '',
+  color: '#6ea8fe',
+};
+
+const PROJECT_COLOR_PRESETS = [
+  '#6ea8fe',
+  '#60a5fa',
+  '#34d399',
+  '#fbbf24',
+  '#f87171',
+  '#a78bfa',
+  '#fb7185',
+  '#2dd4bf',
+  '#f97316',
+  '#4ade80',
+  '#e879f9',
+  '#94a3b8',
+];
+
+const PROJECT_OWNER_ROLE = 'OWNER';
+
+// Mirror of the web's getAccountStorageId: read the user id straight from the JWT
+// so owner-only project actions can be gated the same way the web app gates them.
+function decodeJwtUserId(token) {
+  if (!token || typeof token !== 'string') return '';
+  const parts = token.split('.');
+  if (parts.length < 2) return '';
+  try {
+    let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = base64.length % 4;
+    if (pad) base64 += '='.repeat(4 - pad);
+    const json = typeof atob === 'function' ? atob(base64) : '';
+    if (!json) return '';
+    const payload = JSON.parse(json);
+    return payload?.sub || payload?.user_id || payload?.id || payload?.email || '';
+  } catch {
+    return '';
+  }
+}
+
+function getMemberDisplayName(member) {
+  if (!member) return '';
+  const full = [member.first_name, member.last_name].filter(Boolean).join(' ').trim();
+  if (full) return full;
+  if (member.email) return member.email;
+  const id = member.user_id || '';
+  return id ? `${String(id).slice(0, 8)}…` : 'Member';
+}
+
+// Image attachments live in the stored description as `![image](url)` tokens
+// (same format the web app uses), kept at the end. The editor shows prose only and
+// renders the images as thumbnails so the raw markdown is never visible.
+const DESCRIPTION_IMAGE_TOKEN = /\n?!\[[^\]]*\]\([^)]*\)/g;
+
+function parseDescription(full) {
+  const text = full || '';
+  const urls = Array.from(text.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g), (match) => match[1]);
+  const prose = text.replace(DESCRIPTION_IMAGE_TOKEN, '');
+  return { prose, urls };
+}
+
+function buildDescription(prose, urls) {
+  if (!urls || urls.length === 0) return prose || '';
+  const tokens = urls.map((url) => `![image](${url})`).join('\n');
+  const base = (prose || '').replace(/\n+$/, '');
+  return base ? `${base}\n${tokens}` : tokens;
+}
+
 function normalizeTaskForm(task) {
   if (!task) return DEFAULT_TASK_FORM;
 
   return {
     title: task.title || '',
     description: task.description || '',
+    project_id: task.project_id || '',
+    assignee_user_id: task.assignee_user_id || '',
     task_type_id: task.task_type_id || '',
     parent_task_id: task.parent_task_id || '',
     status: task.status || TASK_STATUS.TO_DO,
@@ -94,6 +222,8 @@ function buildTaskPayload(task, overrides) {
   return {
     title: next.title?.trim() || '',
     description: next.description || null,
+    project_id: next.project_id || null,
+    assignee_user_id: next.assignee_user_id || null,
     task_type_id: next.task_type_id || null,
     parent_task_id: next.parent_task_id || null,
     status: next.status || TASK_STATUS.TO_DO,
@@ -150,7 +280,7 @@ function getTaskTypeLabel(taskTypeId, taskTypes) {
   return taskTypes.find((type) => String(type.id) === String(taskTypeId))?.name || '';
 }
 
-function getPriorityBadgeStyle(priority) {
+function getPriorityBadgeStyle(priority, styles) {
   switch (priority) {
     case TASK_PRIORITY.URGENT:
       return styles.priorityBadgeUrgent;
@@ -163,7 +293,7 @@ function getPriorityBadgeStyle(priority) {
   }
 }
 
-function getPriorityBadgeLabelStyle(priority) {
+function getPriorityBadgeLabelStyle(priority, styles) {
   switch (priority) {
     case TASK_PRIORITY.URGENT:
       return styles.priorityBadgeLabelUrgent;
@@ -176,12 +306,15 @@ function getPriorityBadgeLabelStyle(priority) {
   }
 }
 
-function FramelessIconButton({ icon, color = theme.colors.text, onPress, size = 16 }) {
+function FramelessIconButton({ icon, color, onPress, size = 16 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const Icon = icon;
+  const iconColor = color ?? theme.colors.text;
 
   return (
     <Pressable hitSlop={10} onPress={onPress} style={styles.iconButton}>
-      <Icon color={color} size={size} strokeWidth={1.7} />
+      <Icon color={iconColor} size={size} strokeWidth={1.7} />
     </Pressable>
   );
 }
@@ -192,6 +325,8 @@ function InlineSelectMenu({
   selectedValue,
   onSelect,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   if (!visible) return null;
 
   return (
@@ -236,6 +371,10 @@ function TasksMobileList({
   boardByStatus,
   taskTypeById,
   collapsedGroups,
+  showAssignee,
+  membersByProject,
+  cardView,
+  statusConfig,
   onToggleGroup,
   selectionMode,
   selectedTaskIds,
@@ -244,12 +383,16 @@ function TasksMobileList({
   onLongPressTask,
   onOpenCreateForStatus,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <View style={styles.tasksMobileList}>
       {STATUS_ORDER.map((status) => {
+        if (statusConfig[status]?.visible === false) return null;
+
         const items = boardByStatus[status] || [];
         const isExpanded = !collapsedGroups[status];
-        const accentColor = STATUS_META[status]?.color || '#94a3b8';
+        const accentColor = statusConfig[status]?.color || STATUS_META[status]?.color || '#94a3b8';
 
         return (
           <View key={status} style={styles.tasksMobileGroup}>
@@ -276,8 +419,18 @@ function TasksMobileList({
                       : null;
                     const priorityMeta = PRIORITY_META[task.priority] || { label: task.priority };
                     const due = formatShortDate(task.due_date);
+                    const startDate = formatShortDate(task.start_date);
+                    const createdDate = formatShortDate(task.created_at);
                     const spentMinutes = task.total_spent_time_minutes ?? 0;
                     const isSelected = selectedTaskIds.has(task.id);
+                    const descriptionProse = cardView.description
+                      ? parseDescription(task.description).prose.trim()
+                      : '';
+                    const assignee = showAssignee && task.assignee_user_id
+                      ? (membersByProject?.[task.project_id] || []).find(
+                          (member) => member.user_id === task.assignee_user_id
+                        ) || null
+                      : null;
 
                     return (
                       <Pressable
@@ -318,12 +471,19 @@ function TasksMobileList({
                           />
                         )}
 
-                        <Text numberOfLines={1} style={styles.tasksMobileRowTitle}>
-                          {task.title}
-                        </Text>
+                        <View style={styles.tasksMobileRowText}>
+                          <Text numberOfLines={1} style={styles.tasksMobileRowTitle}>
+                            {task.title}
+                          </Text>
+                          {descriptionProse ? (
+                            <Text numberOfLines={1} style={styles.tasksMobileRowDescription}>
+                              {descriptionProse}
+                            </Text>
+                          ) : null}
+                        </View>
 
                         <View style={styles.tasksMobileRowMeta}>
-                          {taskType ? (
+                          {cardView.task_type && taskType ? (
                             <Text
                               numberOfLines={1}
                               style={[styles.taskTypeMeta, { color: taskType.color || theme.colors.info }]}
@@ -331,26 +491,48 @@ function TasksMobileList({
                               {taskType.name}
                             </Text>
                           ) : null}
-                          <View style={[styles.priorityBadge, getPriorityBadgeStyle(task.priority)]}>
-                            <Text
-                              style={[
-                                styles.priorityBadgeLabel,
-                                getPriorityBadgeLabelStyle(task.priority),
-                              ]}
-                            >
-                              {priorityMeta.label}
-                            </Text>
-                          </View>
-                          {due ? (
+                          {cardView.priority ? (
+                            <View style={[styles.priorityBadge, getPriorityBadgeStyle(task.priority, styles)]}>
+                              <Text
+                                style={[
+                                  styles.priorityBadgeLabel,
+                                  getPriorityBadgeLabelStyle(task.priority, styles),
+                                ]}
+                              >
+                                {priorityMeta.label}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {cardView.due_date && due ? (
                             <View style={styles.taskDueDate}>
                               <Calendar color={theme.colors.muted} size={8} strokeWidth={1.8} />
                               <Text style={styles.metaBadgeLabel}>{due}</Text>
                             </View>
                           ) : null}
-                          {task.status === TASK_STATUS.COMPLETED && spentMinutes > 0 ? (
+                          {cardView.start_date && startDate ? (
+                            <View style={styles.taskDueDate}>
+                              <Calendar color={theme.colors.muted} size={8} strokeWidth={1.8} />
+                              <Text style={styles.metaBadgeLabel}>{startDate}</Text>
+                            </View>
+                          ) : null}
+                          {cardView.created_at && createdDate ? (
+                            <View style={styles.taskDueDate}>
+                              <Calendar color={theme.colors.muted} size={8} strokeWidth={1.8} />
+                              <Text style={styles.metaBadgeLabel}>{createdDate}</Text>
+                            </View>
+                          ) : null}
+                          {cardView.total_spent_time && task.status === TASK_STATUS.COMPLETED && spentMinutes > 0 ? (
                             <View style={styles.taskSpentBadge}>
                               <Clock3 color={theme.colors.muted} size={8} strokeWidth={1.8} />
                               <Text style={styles.metaBadgeLabel}>{formatSpentTime(spentMinutes)}</Text>
+                            </View>
+                          ) : null}
+                          {cardView.assignee && assignee ? (
+                            <View style={styles.taskAssigneeBadge}>
+                              <UserRound color={theme.colors.muted} size={8} strokeWidth={1.8} />
+                              <Text style={styles.metaBadgeLabel} numberOfLines={1}>
+                                {getMemberDisplayName(assignee)}
+                              </Text>
                             </View>
                           ) : null}
                         </View>
@@ -389,13 +571,25 @@ function TasksMobileList({
 function TaskModal({
   visible,
   isEditing,
+  isSubtask,
+  parentTask,
   form,
   loading,
   autosaving,
   taskTypes,
+  taskTypeById,
   inlineTypeForm,
   inlineTypeVisible,
   inlineTypeLoading,
+  showAssigneeField,
+  assigneeOptions,
+  projectName,
+  subtasks,
+  subtaskForm,
+  subtaskFormVisible,
+  subtaskCreating,
+  attachingImage,
+  onAttachImage,
   onChange,
   onInlineTypeChange,
   onShowInlineType,
@@ -404,7 +598,17 @@ function TaskModal({
   onClose,
   onCreate,
   onDelete,
+  onStatusAction,
+  onOpenParent,
+  onSubtaskFormChange,
+  onToggleSubtaskForm,
+  onCreateSubtask,
+  onOpenSubtask,
+  onDeleteSubtask,
+  onUpdateSubtaskStatus,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [activePicker, setActivePicker] = useState('');
 
   const statusOptions = useMemo(
@@ -441,16 +645,62 @@ function TaskModal({
     }
   }, [visible]);
 
+  const { prose: descriptionProse, urls: descriptionImages } = parseDescription(form.description);
+
+  const canStart = form.status === TASK_STATUS.TO_DO;
+  const canPause = form.status === TASK_STATUS.IN_PROGRESS || form.status === TASK_STATUS.IN_REVIEW;
+  const canResume = form.status === TASK_STATUS.PAUSED;
+  const canFinish = (
+    form.status === TASK_STATUS.IN_PROGRESS
+    || form.status === TASK_STATUS.IN_REVIEW
+    || form.status === TASK_STATUS.PAUSED
+  );
+  const modalTitle = isEditing
+    ? (isSubtask ? 'Subtask Details' : 'Task Details')
+    : 'Create Task';
+
   return (
     <>
       <ModalSheet
         visible={visible}
-        title={isEditing ? 'Edit Task' : 'Create Task'}
+        title={modalTitle}
         onClose={onClose}
         headerActions={(
           <View style={styles.modalHeaderActions}>
             {autosaving ? (
               <ActivityIndicator color={theme.colors.tertiary} size="small" />
+            ) : null}
+            {isEditing && canStart ? (
+              <FramelessIconButton
+                icon={Play}
+                color={theme.colors.text}
+                size={15}
+                onPress={() => onStatusAction(TASK_STATUS.IN_PROGRESS)}
+              />
+            ) : null}
+            {isEditing && canPause ? (
+              <FramelessIconButton
+                icon={Pause}
+                color={theme.colors.text}
+                size={15}
+                onPress={() => onStatusAction(TASK_STATUS.PAUSED)}
+              />
+            ) : null}
+            {isEditing && canResume ? (
+              <FramelessIconButton
+                icon={MoveRight}
+                color={theme.colors.text}
+                size={15}
+                onPress={() => onStatusAction(TASK_STATUS.IN_PROGRESS)}
+              />
+            ) : null}
+            {isEditing && canFinish ? (
+              <FramelessIconButton
+                icon={Check}
+                color={theme.colors.success}
+                size={15}
+                onPress={() => onStatusAction(TASK_STATUS.COMPLETED, { close: true })}
+              />
             ) : null}
             {isEditing && onDelete ? (
               <FramelessIconButton
@@ -472,19 +722,53 @@ function TaskModal({
           </View>
         ) : null}
       >
+        {isSubtask && parentTask ? (
+          <Pressable onPress={onOpenParent} style={styles.subtaskBackButton}>
+            <ArrowLeft size={13} color={theme.colors.tertiary} strokeWidth={1.7} />
+            <Text style={styles.subtaskBackLabel} numberOfLines={1}>
+              {parentTask.title}
+            </Text>
+          </Pressable>
+        ) : null}
+
         <TextField
           label="Title"
           placeholder="Task title"
           value={form.title}
           onChangeText={(value) => onChange('title', value)}
         />
-        <TextField
-          label="Description"
-          placeholder="Task description"
-          value={form.description}
-          onChangeText={(value) => onChange('description', value)}
-          multiline
-        />
+        <View style={styles.fieldGroup}>
+          <View style={styles.formSectionHeader}>
+            <Text style={styles.formSectionLabel}>Description</Text>
+            <Pressable onPress={onAttachImage} disabled={attachingImage} style={styles.linkButton}>
+              <Text style={styles.linkButtonText}>{attachingImage ? 'Uploading…' : '+ Image'}</Text>
+            </Pressable>
+          </View>
+          <TextField
+            placeholder="Task description"
+            value={descriptionProse}
+            onChangeText={(value) => onChange('description', buildDescription(value, descriptionImages))}
+            multiline
+          />
+          {descriptionImages.length > 0 ? (
+            <View style={styles.descImageRow}>
+              {descriptionImages.map((url, index) => (
+                <View key={`${index}-${url}`} style={styles.descImageWrap}>
+                  <Image source={{ uri: url }} style={styles.descImage} contentFit="cover" />
+                  <Pressable
+                    style={styles.descImageRemove}
+                    onPress={() => onChange(
+                      'description',
+                      buildDescription(descriptionProse, descriptionImages.filter((_, i) => i !== index))
+                    )}
+                  >
+                    <X size={11} color={theme.colors.text} strokeWidth={2} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
 
         <View style={styles.fieldGroup}>
           <Text style={styles.formSectionLabel}>Status</Text>
@@ -521,6 +805,37 @@ function TaskModal({
             }}
           />
         </View>
+
+        {showAssigneeField ? (
+          <>
+            {projectName ? (
+              <View style={styles.fieldGroup}>
+                <Text style={styles.formSectionLabel}>Project</Text>
+                <View style={styles.readonlyField}>
+                  <FolderKanban size={13} color={theme.colors.tertiary} strokeWidth={1.7} />
+                  <Text style={styles.readonlyFieldValue} numberOfLines={1}>{projectName}</Text>
+                </View>
+              </View>
+            ) : null}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.formSectionLabel}>Assignee</Text>
+              <InlinePickerField
+                placeholder="Select assignee"
+                valueLabel={assigneeOptions.find((option) => option.value === form.assignee_user_id)?.label || ''}
+                onPress={() => setActivePicker((current) => (current === 'assignee' ? '' : 'assignee'))}
+              />
+              <InlineSelectMenu
+                visible={activePicker === 'assignee'}
+                options={assigneeOptions}
+                selectedValue={form.assignee_user_id || ''}
+                onSelect={(value) => {
+                  onChange('assignee_user_id', value);
+                  setActivePicker('');
+                }}
+              />
+            </View>
+          </>
+        ) : null}
 
         <View style={styles.fieldGroup}>
           <View style={styles.formSectionHeader}>
@@ -582,6 +897,163 @@ function TaskModal({
           onChange={(value) => onChange('due_date', value)}
           placeholder="Select due date"
         />
+
+        {isEditing && !isSubtask ? (
+          <View style={styles.subtasksPanel}>
+            <View style={styles.subtasksHeader}>
+              <View style={styles.subtasksHeaderTitle}>
+                <FolderTree size={13} color={theme.colors.secondary} strokeWidth={1.7} />
+                <Text style={styles.subtasksHeaderLabel}>Subtasks ({subtasks.length})</Text>
+              </View>
+              <Pressable onPress={onToggleSubtaskForm} style={styles.linkButton}>
+                <Text style={styles.linkButtonText}>
+                  {subtaskFormVisible ? 'Hide' : '+ Add Subtask'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {subtaskFormVisible ? (
+              <View style={styles.subtaskComposer}>
+                <TextField
+                  label="Title"
+                  placeholder="Subtask title"
+                  value={subtaskForm.title}
+                  onChangeText={(value) => onSubtaskFormChange('title', value)}
+                />
+                <TextField
+                  label="Description"
+                  placeholder="Optional"
+                  value={subtaskForm.description}
+                  onChangeText={(value) => onSubtaskFormChange('description', value)}
+                  multiline
+                />
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.formSectionLabel}>Status</Text>
+                  <InlinePickerField
+                    placeholder="Select status"
+                    valueLabel={STATUS_META[subtaskForm.status]?.label || ''}
+                    onPress={() => setActivePicker((current) => (current === 'subtask-status' ? '' : 'subtask-status'))}
+                  />
+                  <InlineSelectMenu
+                    visible={activePicker === 'subtask-status'}
+                    options={statusOptions}
+                    selectedValue={subtaskForm.status}
+                    onSelect={(value) => {
+                      onSubtaskFormChange('status', value);
+                      setActivePicker('');
+                    }}
+                  />
+                </View>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.formSectionLabel}>Priority</Text>
+                  <InlinePickerField
+                    placeholder="Select priority"
+                    valueLabel={PRIORITY_META[subtaskForm.priority]?.label || ''}
+                    onPress={() => setActivePicker((current) => (current === 'subtask-priority' ? '' : 'subtask-priority'))}
+                  />
+                  <InlineSelectMenu
+                    visible={activePicker === 'subtask-priority'}
+                    options={priorityOptions}
+                    selectedValue={subtaskForm.priority}
+                    onSelect={(value) => {
+                      onSubtaskFormChange('priority', value);
+                      setActivePicker('');
+                    }}
+                  />
+                </View>
+                <DateTimeField
+                  label="Due Date"
+                  value={subtaskForm.due_date}
+                  onChange={(value) => onSubtaskFormChange('due_date', value)}
+                  placeholder="Select due date"
+                />
+                <View style={styles.modalFooterEnd}>
+                  <ActionButton
+                    label={subtaskCreating ? 'Adding...' : 'Add Subtask'}
+                    icon="add"
+                    onPress={onCreateSubtask}
+                    disabled={subtaskCreating || !subtaskForm.title.trim()}
+                  />
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.subtaskList}>
+              {subtasks.length === 0 ? (
+                <Text style={styles.subtaskEmpty}>No subtasks</Text>
+              ) : (
+                subtasks.map((subtask) => {
+                  const subtaskType = subtask.task_type_id != null
+                    ? taskTypeById.get(String(subtask.task_type_id)) || null
+                    : null;
+                  const subtaskPriorityMeta = PRIORITY_META[subtask.priority] || { label: subtask.priority };
+                  const subtaskDue = formatShortDate(subtask.due_date);
+                  const subtaskStatusColor = STATUS_META[subtask.status]?.color || '#94a3b8';
+                  const pickerKey = `subtask:${subtask.id}`;
+
+                  return (
+                    <View key={subtask.id} style={styles.subtaskItem}>
+                      <View style={styles.subtaskItemTop}>
+                        <Pressable
+                          style={styles.subtaskItemMain}
+                          onPress={() => onOpenSubtask(subtask)}
+                        >
+                          <View style={[styles.subtaskStatusDot, { backgroundColor: subtaskStatusColor }]} />
+                          <Text numberOfLines={1} style={styles.subtaskItemTitle}>{subtask.title}</Text>
+                        </Pressable>
+                        <FramelessIconButton
+                          icon={Trash2}
+                          color={theme.colors.danger}
+                          size={13}
+                          onPress={() => onDeleteSubtask(subtask)}
+                        />
+                      </View>
+
+                      <View style={styles.subtaskItemMeta}>
+                        {subtaskType ? (
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.taskTypeMeta, { color: subtaskType.color || theme.colors.info }]}
+                          >
+                            {subtaskType.name}
+                          </Text>
+                        ) : null}
+                        <View style={[styles.priorityBadge, getPriorityBadgeStyle(subtask.priority, styles)]}>
+                          <Text style={[styles.priorityBadgeLabel, getPriorityBadgeLabelStyle(subtask.priority, styles)]}>
+                            {subtaskPriorityMeta.label}
+                          </Text>
+                        </View>
+                        {subtaskDue ? (
+                          <View style={styles.taskDueDate}>
+                            <Calendar color={theme.colors.muted} size={8} strokeWidth={1.8} />
+                            <Text style={styles.metaBadgeLabel}>{subtaskDue}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      <View style={styles.subtaskStatusRow}>
+                        <InlinePickerField
+                          placeholder="Status"
+                          valueLabel={STATUS_META[subtask.status]?.label || ''}
+                          onPress={() => setActivePicker((current) => (current === pickerKey ? '' : pickerKey))}
+                        />
+                        <InlineSelectMenu
+                          visible={activePicker === pickerKey}
+                          options={statusOptions}
+                          selectedValue={subtask.status}
+                          onSelect={(value) => {
+                            onUpdateSubtaskStatus(subtask, value);
+                            setActivePicker('');
+                          }}
+                        />
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          </View>
+        ) : null}
       </ModalSheet>
     </>
   );
@@ -597,6 +1069,8 @@ function TaskTypeManagerModal({
   onCreate,
   onDelete,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <ModalSheet
       visible={visible}
@@ -658,7 +1132,84 @@ function TaskTypeManagerModal({
   );
 }
 
+function SettingsToggleRow({ label, checked, onToggle }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
+  return (
+    <Pressable onPress={onToggle} style={styles.settingsToggleRow}>
+      <Text style={styles.settingsToggleLabel}>{label}</Text>
+      <View style={[styles.settingsCheckbox, checked ? styles.settingsCheckboxChecked : null]}>
+        {checked ? <Check color={theme.colors.text} size={11} strokeWidth={2.2} /> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function SettingsModal({
+  visible,
+  mode,
+  cardView,
+  statusConfig,
+  onToggleCardField,
+  onToggleStatusVisible,
+  onChangeStatusColor,
+  onClose,
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const cardFields = CARD_FIELD_OPTIONS.filter(
+    (option) => !option.projectsOnly || mode === 'projects'
+  );
+
+  return (
+    <ModalSheet visible={visible} title="Task view settings" onClose={onClose}>
+      <View style={styles.settingsSection}>
+        <Text style={styles.formSectionLabel}>Card fields</Text>
+        <View style={styles.settingsToggleList}>
+          {cardFields.map((option) => (
+            <SettingsToggleRow
+              key={option.key}
+              label={option.label}
+              checked={Boolean(cardView[option.key])}
+              onToggle={() => onToggleCardField(option.key)}
+            />
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.settingsSection}>
+        <Text style={styles.formSectionLabel}>Statuses</Text>
+        <View style={styles.settingsStatusList}>
+          {STATUS_ORDER.map((status) => {
+            const visible_ = statusConfig[status]?.visible !== false;
+            const color = statusConfig[status]?.color || STATUS_META[status]?.color || '#94A3B8';
+
+            return (
+              <View key={status} style={styles.settingsStatusItem}>
+                <SettingsToggleRow
+                  label={STATUS_META[status]?.label || status}
+                  checked={visible_}
+                  onToggle={() => onToggleStatusVisible(status)}
+                />
+                <ColorField
+                  label="Color"
+                  value={color}
+                  onChange={(value) => onChangeStatusColor(status, value)}
+                  presetColors={STATUS_COLOR_PRESETS}
+                />
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    </ModalSheet>
+  );
+}
+
 function DateRangeModal({ visible, dueFrom, dueTo, onChange, onClose, onClear }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <ModalSheet
       visible={visible}
@@ -686,10 +1237,174 @@ function DateRangeModal({ visible, dueFrom, dueTo, onChange, onClose, onClear })
   );
 }
 
+function ProjectsManagerModal({
+  visible,
+  projects,
+  activeProjectId,
+  membersByProject,
+  currentUserId,
+  projectForm,
+  creatingProject,
+  inviteEmail,
+  inviting,
+  onClose,
+  onProjectFormChange,
+  onCreateProject,
+  onSelectProject,
+  onDeleteProject,
+  onInviteEmailChange,
+  onInviteMember,
+  onRemoveMember,
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const activeProject = projects.find((project) => project.id === activeProjectId) || null;
+  const activeMembers = activeProject ? (membersByProject[activeProject.id] || []) : [];
+  const isOwner = Boolean(activeProject && currentUserId && activeProject.owner_id === currentUserId);
+
+  return (
+    <ModalSheet
+      visible={visible}
+      title="Projects"
+      onClose={onClose}
+      footer={(
+        <View style={styles.modalFooterEnd}>
+          <ActionButton
+            label={creatingProject ? 'Creating...' : 'Create Project'}
+            icon="add"
+            onPress={onCreateProject}
+            disabled={creatingProject || !projectForm.name.trim()}
+          />
+        </View>
+      )}
+    >
+      <TextField
+        label="New Project"
+        placeholder="Marketing site"
+        value={projectForm.name}
+        onChangeText={(value) => onProjectFormChange('name', value)}
+      />
+      <ColorField
+        label="Project Color"
+        value={projectForm.color}
+        onChange={(value) => onProjectFormChange('color', value)}
+        presetColors={PROJECT_COLOR_PRESETS}
+      />
+
+      <View style={styles.projectList}>
+        {projects.length === 0 ? (
+          <Text style={styles.emptyTypes}>No projects yet.</Text>
+        ) : (
+          projects.map((project) => {
+            const isActive = project.id === activeProjectId;
+            const owner = Boolean(currentUserId && project.owner_id === currentUserId);
+            const memberCount = (membersByProject[project.id] || []).length;
+
+            return (
+              <Pressable
+                key={project.id}
+                onPress={() => onSelectProject(project.id)}
+                style={[styles.projectRow, isActive ? styles.projectRowActive : null]}
+              >
+                <View style={styles.projectRowMain}>
+                  <View style={[styles.projectRowDot, { backgroundColor: project.color || theme.colors.info }]} />
+                  <View style={styles.projectRowTextWrap}>
+                    <Text style={styles.projectRowTitle} numberOfLines={1}>{project.name}</Text>
+                    <Text style={styles.projectRowSubtitle}>
+                      {memberCount} member{memberCount === 1 ? '' : 's'}{owner ? ' · Owner' : ''}
+                    </Text>
+                  </View>
+                </View>
+                {isActive ? <Check color={theme.colors.text} size={13} strokeWidth={2} /> : null}
+                {owner ? (
+                  <FramelessIconButton
+                    icon={Trash2}
+                    color={theme.colors.danger}
+                    size={14}
+                    onPress={() => onDeleteProject(project)}
+                  />
+                ) : null}
+              </Pressable>
+            );
+          })
+        )}
+      </View>
+
+      {activeProject ? (
+        <View style={styles.membersSection}>
+          <Text style={styles.formSectionLabel}>
+            {activeProject.name} · Members ({activeMembers.length})
+          </Text>
+          <View style={styles.memberList}>
+            {activeMembers.length === 0 ? (
+              <Text style={styles.emptyTypes}>No members yet.</Text>
+            ) : (
+              activeMembers.map((member) => {
+                const memberIsOwner = member.role === PROJECT_OWNER_ROLE;
+                return (
+                  <View key={member.id} style={styles.memberRow}>
+                    <UserRound size={13} color={theme.colors.tertiary} strokeWidth={1.7} />
+                    <View style={styles.memberTextWrap}>
+                      <Text style={styles.memberName} numberOfLines={1}>{getMemberDisplayName(member)}</Text>
+                      <Text style={styles.memberRole}>{memberIsOwner ? 'Owner' : 'Member'}</Text>
+                    </View>
+                    {isOwner && !memberIsOwner ? (
+                      <FramelessIconButton
+                        icon={X}
+                        color={theme.colors.danger}
+                        size={13}
+                        onPress={() => onRemoveMember(member)}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          {isOwner ? (
+            <View style={styles.inviteRow}>
+              <TextInput
+                placeholder="Invite by email"
+                placeholderTextColor={theme.colors.muted}
+                style={styles.inviteInput}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                value={inviteEmail}
+                onChangeText={onInviteEmailChange}
+              />
+              <ActionButton
+                label={inviting ? 'Inviting...' : 'Invite'}
+                variant="ghost"
+                compact
+                onPress={onInviteMember}
+                disabled={inviting || !inviteEmail.trim()}
+              />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </ModalSheet>
+  );
+}
+
 export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = '' } = {}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const addToast = useToast();
+  const { token } = useAuth();
+  const currentUserId = useMemo(() => decodeJwtUserId(token), [token]);
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
+  const [mode, setMode] = useState('personal');
+  const [projects, setProjects] = useState([]);
+  const [membersByProject, setMembersByProject] = useState({});
+  const [activeProjectId, setActiveProjectId] = useState('');
+  const [projectForm, setProjectForm] = useState(DEFAULT_PROJECT_FORM);
+  const [projectsModalVisible, setProjectsModalVisible] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [invitingMember, setInvitingMember] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -709,10 +1424,18 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
   const [typeForm, setTypeForm] = useState(DEFAULT_TASK_TYPE_FORM);
   const [inlineTypeForm, setInlineTypeForm] = useState(DEFAULT_TASK_TYPE_FORM);
   const [inlineTypeVisible, setInlineTypeVisible] = useState(false);
+  const [subtaskForm, setSubtaskForm] = useState(DEFAULT_SUBTASK_FORM);
+  const [subtaskFormVisible, setSubtaskFormVisible] = useState(false);
+  const [creatingSubtask, setCreatingSubtask] = useState(false);
+  const [attachingImage, setAttachingImage] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
   const [bulkTargetStatus, setBulkTargetStatus] = useState(TASK_STATUS.IN_PROGRESS);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [cardView, setCardView] = useState(DEFAULT_CARD_VIEW);
+  const [statusConfig, setStatusConfig] = useState({});
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsLoadedRef = useRef(false);
   const autosaveTimerRef = useRef(null);
   const lastSavedFingerprintRef = useRef('');
   const handledRouteOpenRef = useRef('');
@@ -731,12 +1454,29 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     }
 
     try {
-      const [fetchedTasks, fetchedTypes] = await Promise.all([
+      const [fetchedTasks, fetchedTypes, fetchedProjects] = await Promise.all([
         tasksApi.getTasks(),
         tasksApi.getTaskTypes(),
+        projectsApi.getProjects(),
       ]);
       setTasks(fetchedTasks);
       setTaskTypes(fetchedTypes);
+      setProjects(fetchedProjects);
+
+      if (fetchedProjects.length > 0) {
+        const memberLists = await Promise.all(
+          fetchedProjects.map((project) => (
+            projectsApi.getProjectMembers(project.id).catch(() => [])
+          ))
+        );
+        const memberMap = {};
+        fetchedProjects.forEach((project, index) => {
+          memberMap[project.id] = memberLists[index] || [];
+        });
+        setMembersByProject(memberMap);
+      } else {
+        setMembersByProject({});
+      }
     } catch (error) {
       console.error('Failed to load tasks', error);
       addToast(error?.message || 'Failed to load tasks.', 'error');
@@ -750,10 +1490,73 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [storedCardView, storedStatusConfig] = await Promise.all([
+          AsyncStorage.getItem(CARD_VIEW_KEY),
+          AsyncStorage.getItem(STATUS_CONFIG_KEY),
+        ]);
+        if (cancelled) return;
+        if (storedCardView) {
+          setCardView({ ...DEFAULT_CARD_VIEW, ...JSON.parse(storedCardView) });
+        }
+        if (storedStatusConfig) {
+          setStatusConfig(JSON.parse(storedStatusConfig) || {});
+        }
+      } catch (error) {
+        console.error('Failed to load task view settings', error);
+      } finally {
+        if (!cancelled) settingsLoadedRef.current = true;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!settingsLoadedRef.current) return;
+    AsyncStorage.setItem(CARD_VIEW_KEY, JSON.stringify(cardView)).catch((error) => {
+      console.error('Failed to save card view settings', error);
+    });
+  }, [cardView]);
+
+  useEffect(() => {
+    if (!settingsLoadedRef.current) return;
+    AsyncStorage.setItem(STATUS_CONFIG_KEY, JSON.stringify(statusConfig)).catch((error) => {
+      console.error('Failed to save status config', error);
+    });
+  }, [statusConfig]);
+
+  useEffect(() => {
+    setActiveProjectId((current) => {
+      if (current && projects.some((project) => project.id === current)) return current;
+      return projects[0]?.id || '';
+    });
+  }, [projects]);
+
   const filteredTasks = useMemo(() => {
     const needle = filters.search.trim().toLowerCase();
 
     return tasks.filter((task) => {
+      // Parity with web: subtasks live inside the detail modal and soft-deleted rows
+      // are hidden in both modes.
+      if (task.parent_task_id) return false;
+      if (task.is_deleted) return false;
+
+      if (mode === 'projects') {
+        // Projects mode shows only the active project's tasks.
+        if (!activeProjectId) return false;
+        if (task.project_id !== activeProjectId) return false;
+      } else if (task.project_id) {
+        // Personal mode hides any task that belongs to a project.
+        return false;
+      }
+
       const matchesSearch = !needle
         || task.title.toLowerCase().includes(needle)
         || (task.description || '').toLowerCase().includes(needle);
@@ -772,7 +1575,7 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
 
       return matchesSearch && matchesStatus && matchesPriority && matchesType && matchesDueFrom && matchesDueTo;
     });
-  }, [filters, tasks]);
+  }, [activeProjectId, filters, mode, tasks]);
 
   const boardByStatus = useMemo(() => (
     STATUS_ORDER.reduce((groups, status) => {
@@ -868,18 +1671,25 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
       clearTimeout(autosaveTimerRef.current);
     }
     setEditingTask(null);
-    setTaskForm(
-      getTaskFormFromFilters(
-        filters,
-        status ? { status } : {}
-      )
-    );
+    const overrides = status ? { status } : {};
+    if (mode === 'projects' && activeProjectId) {
+      const members = membersByProject[activeProjectId] || [];
+      overrides.project_id = activeProjectId;
+      overrides.assignee_user_id = (
+        members.find((member) => member.user_id === currentUserId)?.user_id
+        || members[0]?.user_id
+        || ''
+      );
+    }
+    setTaskForm(getTaskFormFromFilters(filters, overrides));
     setInlineTypeForm(DEFAULT_TASK_TYPE_FORM);
     setInlineTypeVisible(false);
+    setSubtaskForm(DEFAULT_SUBTASK_FORM);
+    setSubtaskFormVisible(false);
     setAutosavingTask(false);
     lastSavedFingerprintRef.current = '';
     setTaskModalVisible(true);
-  }, [filters]);
+  }, [activeProjectId, currentUserId, filters, membersByProject, mode]);
 
   const openTask = useCallback((task) => {
     if (autosaveTimerRef.current) {
@@ -891,6 +1701,8 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     setTaskForm(normalizedForm);
     setInlineTypeForm(DEFAULT_TASK_TYPE_FORM);
     setInlineTypeVisible(false);
+    setSubtaskForm(DEFAULT_SUBTASK_FORM);
+    setSubtaskFormVisible(false);
     setAutosavingTask(false);
     lastSavedFingerprintRef.current = JSON.stringify(buildTaskPayload(task, normalizedForm));
     setTaskModalVisible(true);
@@ -917,6 +1729,8 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     setEditingTask(null);
     setInlineTypeVisible(false);
     setInlineTypeForm(DEFAULT_TASK_TYPE_FORM);
+    setSubtaskForm(DEFAULT_SUBTASK_FORM);
+    setSubtaskFormVisible(false);
     setAutosavingTask(false);
     lastSavedFingerprintRef.current = '';
   }, []);
@@ -979,9 +1793,12 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     setCreatingTask(true);
 
     try {
+      const isProjectsMode = mode === 'projects';
       const createdTask = await tasksApi.createTask({
         title: taskForm.title.trim(),
         description: taskForm.description || null,
+        project_id: isProjectsMode ? (activeProjectId || null) : null,
+        assignee_user_id: isProjectsMode ? (taskForm.assignee_user_id || null) : null,
         task_type_id: taskForm.task_type_id || null,
         parent_task_id: null,
         status: taskForm.status,
@@ -999,7 +1816,7 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     } finally {
       setCreatingTask(false);
     }
-  }, [addToast, closeTaskModal, creatingTask, taskForm]);
+  }, [activeProjectId, addToast, closeTaskModal, creatingTask, mode, taskForm]);
 
   const handleDeleteTask = useCallback(() => {
     if (!editingTask) return;
@@ -1027,6 +1844,231 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
       ]
     );
   }, [addToast, closeTaskModal, editingTask]);
+
+  const collectCascadeDeleteIds = useCallback((taskIds) => {
+    const ids = new Set(taskIds);
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      tasks.forEach((task) => {
+        if (task.parent_task_id && ids.has(task.parent_task_id) && !ids.has(task.id)) {
+          ids.add(task.id);
+          expanded = true;
+        }
+      });
+    }
+    return Array.from(ids);
+  }, [tasks]);
+
+  const checkAndCompleteParents = useCallback(async (updatedTaskIds, newStatus) => {
+    if (newStatus !== TASK_STATUS.COMPLETED) return;
+
+    const parentIds = Array.from(new Set(
+      updatedTaskIds
+        .map((id) => tasks.find((task) => task.id === id)?.parent_task_id)
+        .filter(Boolean)
+    ));
+    if (parentIds.length === 0) return;
+
+    const completedParents = [];
+    parentIds.forEach((parentId) => {
+      const siblings = tasks.filter((task) => task.parent_task_id === parentId);
+      if (siblings.length === 0) return;
+      const allCompleted = siblings.every(
+        (sub) => sub.status === TASK_STATUS.COMPLETED || updatedTaskIds.includes(sub.id)
+      );
+      if (allCompleted) completedParents.push(parentId);
+    });
+
+    if (completedParents.length === 0) return;
+
+    await tasksApi.updateTasksBulkStatus({
+      task_ids: completedParents,
+      status: TASK_STATUS.COMPLETED,
+    });
+    setTasks((current) => current.map((task) => (
+      completedParents.includes(task.id)
+        ? { ...task, status: TASK_STATUS.COMPLETED, completed_at: task.completed_at || new Date().toISOString() }
+        : task
+    )));
+  }, [tasks]);
+
+  const applyStatusUpdate = useCallback(async (taskId, status) => {
+    const target = tasks.find((task) => task.id === taskId);
+    if (!target) return;
+
+    const nowIso = new Date().toISOString();
+    const optimistic = {
+      ...target,
+      status,
+      completed_at: status === TASK_STATUS.COMPLETED
+        ? (target.completed_at || nowIso)
+        : target.completed_at,
+      pause_start_date: status === TASK_STATUS.PAUSED
+        ? (target.pause_start_date || nowIso)
+        : target.pause_start_date,
+    };
+
+    setTasks((current) => current.map((task) => (task.id === taskId ? optimistic : task)));
+
+    if (editingTask?.id === taskId) {
+      setEditingTask(optimistic);
+      setTaskForm((current) => ({ ...current, status }));
+      // Keep the autosave fingerprint in sync so the bulk-status call (which the
+      // server uses to compute spent time) is not duplicated by a redundant PATCH.
+      lastSavedFingerprintRef.current = JSON.stringify(
+        buildTaskPayload(optimistic, { ...taskForm, status })
+      );
+    }
+
+    try {
+      await tasksApi.updateTasksBulkStatus({ task_ids: [taskId], status });
+      await checkAndCompleteParents([taskId], status);
+      loadData({ silent: true });
+    } catch (error) {
+      console.error('Failed to update status', error);
+      addToast(error?.message || 'Failed to update status.', 'error');
+      loadData({ silent: true });
+    }
+  }, [addToast, checkAndCompleteParents, editingTask, loadData, taskForm, tasks]);
+
+  const handleStatusAction = useCallback((status, { close = false } = {}) => {
+    if (!editingTask) return;
+    applyStatusUpdate(editingTask.id, status);
+    if (close) {
+      // Close after the optimistic update so closeTaskModal's cleanup (timer +
+      // editingTask reset) is the final state, cancelling any redundant autosave.
+      closeTaskModal();
+    }
+  }, [applyStatusUpdate, closeTaskModal, editingTask]);
+
+  const handleSubtaskFormChange = useCallback((field, value) => {
+    setSubtaskForm((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  const toggleSubtaskForm = useCallback(() => {
+    setSubtaskForm(DEFAULT_SUBTASK_FORM);
+    setSubtaskFormVisible((current) => !current);
+  }, []);
+
+  const handleCreateSubtask = useCallback(async () => {
+    if (creatingSubtask || !editingTask) return;
+    const title = subtaskForm.title.trim();
+    if (!title) return;
+
+    setCreatingSubtask(true);
+    try {
+      const created = await tasksApi.createTask({
+        title,
+        description: subtaskForm.description || null,
+        project_id: editingTask.project_id || null,
+        assignee_user_id: editingTask.assignee_user_id || null,
+        parent_task_id: editingTask.id,
+        task_type_id: editingTask.task_type_id || null,
+        status: subtaskForm.status,
+        priority: subtaskForm.priority,
+        due_date: subtaskForm.due_date || null,
+      });
+      setTasks((current) => [created, ...current]);
+      setSubtaskForm(DEFAULT_SUBTASK_FORM);
+      setSubtaskFormVisible(false);
+      addToast('Subtask created.');
+    } catch (error) {
+      console.error('Failed to create subtask', error);
+      addToast(error?.message || 'Failed to create subtask.', 'error');
+    } finally {
+      setCreatingSubtask(false);
+    }
+  }, [addToast, creatingSubtask, editingTask, subtaskForm]);
+
+  const handleDeleteSubtask = useCallback((subtask) => {
+    Alert.alert(
+      'Delete subtask?',
+      `This will remove "${subtask.title}".`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const ids = collectCascadeDeleteIds([subtask.id]);
+            try {
+              await tasksApi.deleteTasksBulk({ task_ids: ids });
+              setTasks((current) => current.filter((task) => !ids.includes(task.id)));
+              addToast('Subtask deleted.');
+            } catch (error) {
+              console.error('Failed to delete subtask', error);
+              addToast(error?.message || 'Failed to delete subtask.', 'error');
+            }
+          },
+        },
+      ]
+    );
+  }, [addToast, collectCascadeDeleteIds]);
+
+  const handleUpdateSubtaskStatus = useCallback((subtask, status) => {
+    applyStatusUpdate(subtask.id, status);
+  }, [applyStatusUpdate]);
+
+  const handleAttachImage = useCallback(async () => {
+    if (attachingImage) return;
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        addToast('Photo permission is required to attach images.', 'error');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.7,
+      });
+      if (result.canceled || !result.assets?.length) return;
+
+      setAttachingImage(true);
+      const asset = result.assets[0];
+      const name = asset.fileName || asset.uri.split('/').pop() || 'upload.jpg';
+      const type = asset.mimeType || 'image/jpeg';
+      const uploaded = await mediaApi.upload({
+        file: { uri: asset.uri, name, type },
+        kind: 'board',
+      });
+      const url = uploaded?.url || '';
+      if (!url) {
+        addToast('Image upload failed.', 'error');
+        return;
+      }
+
+      setTaskForm((current) => {
+        const { prose, urls } = parseDescription(current.description);
+        return { ...current, description: buildDescription(prose, [...urls, url]) };
+      });
+    } catch (error) {
+      console.error('Failed to attach image', error);
+      addToast(error?.message || 'Failed to attach image.', 'error');
+    } finally {
+      setAttachingImage(false);
+    }
+  }, [addToast, attachingImage]);
+
+  const openParentTask = useCallback(() => {
+    if (!editingTask?.parent_task_id) return;
+    const parent = tasks.find((task) => task.id === editingTask.parent_task_id);
+    if (parent) openTask(parent);
+  }, [editingTask, openTask, tasks]);
+
+  const editingIsSubtask = Boolean(editingTask?.parent_task_id);
+  const subtasksOfEditing = useMemo(
+    () => (editingTask ? tasks.filter((task) => task.parent_task_id === editingTask.id && !task.is_deleted) : []),
+    [editingTask, tasks]
+  );
+  const editingParentTask = useMemo(
+    () => (editingTask?.parent_task_id
+      ? tasks.find((task) => task.id === editingTask.parent_task_id) || null
+      : null),
+    [editingTask, tasks]
+  );
 
   const openTypeManager = useCallback(() => {
     setTypeForm(DEFAULT_TASK_TYPE_FORM);
@@ -1141,6 +2183,25 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     setCollapsedGroups((current) => ({ ...current, [status]: !current[status] }));
   }, [boardByStatus]);
 
+  const toggleCardField = useCallback((key) => {
+    setCardView((current) => ({ ...current, [key]: !current[key] }));
+  }, []);
+
+  const toggleStatusVisible = useCallback((status) => {
+    setStatusConfig((current) => {
+      const entry = current[status] || {};
+      const nextVisible = entry.visible === false;
+      return { ...current, [status]: { ...entry, visible: nextVisible } };
+    });
+  }, []);
+
+  const changeStatusColor = useCallback((status, color) => {
+    setStatusConfig((current) => ({
+      ...current,
+      [status]: { ...(current[status] || {}), color },
+    }));
+  }, []);
+
   const toggleSelectTask = useCallback((taskId) => {
     setSelectedTaskIds((current) => (
       current.includes(taskId)
@@ -1218,11 +2279,165 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     selectedTaskIds,
   ]);
 
+  const activeProject = useMemo(
+    () => projects.find((project) => project.id === activeProjectId) || null,
+    [projects, activeProjectId]
+  );
+
+  const openProjectsManager = useCallback(() => {
+    setProjectForm(DEFAULT_PROJECT_FORM);
+    setInviteEmail('');
+    setProjectsModalVisible(true);
+  }, []);
+
+  const handleProjectFormChange = useCallback((field, value) => {
+    setProjectForm((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  const handleCreateProject = useCallback(async () => {
+    if (creatingProject) return;
+    const name = projectForm.name.trim();
+    if (!name) return;
+
+    setCreatingProject(true);
+    try {
+      const created = await projectsApi.createProject({ name, color: projectForm.color });
+      setProjects((current) => [created, ...current]);
+      setActiveProjectId(created.id);
+      const members = await projectsApi.getProjectMembers(created.id).catch(() => []);
+      setMembersByProject((current) => ({ ...current, [created.id]: members }));
+      setProjectForm(DEFAULT_PROJECT_FORM);
+      addToast('Project created.');
+    } catch (error) {
+      console.error('Failed to create project', error);
+      addToast(error?.message || 'Failed to create project.', 'error');
+    } finally {
+      setCreatingProject(false);
+    }
+  }, [addToast, creatingProject, projectForm]);
+
+  const handleDeleteProject = useCallback((project) => {
+    Alert.alert(
+      'Delete project?',
+      `This deletes "${project.name}" and every task in it.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await projectsApi.deleteProject(project.id);
+              setProjects((current) => current.filter((item) => item.id !== project.id));
+              setTasks((current) => current.filter((task) => task.project_id !== project.id));
+              setMembersByProject((current) => {
+                const next = { ...current };
+                delete next[project.id];
+                return next;
+              });
+              addToast('Project deleted.');
+            } catch (error) {
+              console.error('Failed to delete project', error);
+              addToast(error?.message || 'Failed to delete project.', 'error');
+            }
+          },
+        },
+      ]
+    );
+  }, [addToast]);
+
+  const handleSelectProject = useCallback((projectId) => {
+    setActiveProjectId(projectId);
+  }, []);
+
+  const handleInviteMember = useCallback(async () => {
+    if (invitingMember || !activeProjectId) return;
+    const email = inviteEmail.trim();
+    if (!email) return;
+
+    setInvitingMember(true);
+    try {
+      const response = await projectsApi.inviteProjectMember(activeProjectId, email);
+      if (response?.member) {
+        setMembersByProject((current) => ({
+          ...current,
+          [activeProjectId]: [...(current[activeProjectId] || []), response.member],
+        }));
+        addToast('Member added.');
+      } else {
+        addToast('Invitation sent.');
+      }
+      setInviteEmail('');
+    } catch (error) {
+      console.error('Failed to invite member', error);
+      addToast(error?.message || 'Failed to invite member.', 'error');
+    } finally {
+      setInvitingMember(false);
+    }
+  }, [activeProjectId, addToast, inviteEmail, invitingMember]);
+
+  const handleRemoveMember = useCallback((member) => {
+    if (!activeProjectId) return;
+    Alert.alert(
+      'Remove member?',
+      `Remove ${getMemberDisplayName(member)} from this project?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await projectsApi.removeProjectMember(activeProjectId, member.id);
+              setMembersByProject((current) => ({
+                ...current,
+                [activeProjectId]: (current[activeProjectId] || []).filter((item) => item.id !== member.id),
+              }));
+              addToast('Member removed.');
+            } catch (error) {
+              console.error('Failed to remove member', error);
+              addToast(error?.message || 'Failed to remove member.', 'error');
+            }
+          },
+        },
+      ]
+    );
+  }, [activeProjectId, addToast]);
+
+
+  const modalProjectId = taskForm.project_id || '';
+  const modalAssigneeOptions = useMemo(() => {
+    const members = modalProjectId ? (membersByProject[modalProjectId] || []) : [];
+    return [
+      { value: '', label: 'Unassigned' },
+      ...members.map((member) => ({ value: member.user_id, label: getMemberDisplayName(member) })),
+    ];
+  }, [modalProjectId, membersByProject]);
+  const modalProjectName = useMemo(
+    () => projects.find((project) => project.id === modalProjectId)?.name || '',
+    [modalProjectId, projects]
+  );
+
   return (
     <>
       <ScreenShell
         title="Tasks"
         showPageHeader={false}
+        sectionNav={(
+          <View style={styles.headerNav}>
+            <Pressable hitSlop={8} onPress={() => setMode('personal')}>
+              <Text style={[styles.headerNavLink, mode === 'personal' ? styles.headerNavLinkActive : null]}>
+                tasks
+              </Text>
+            </Pressable>
+            <Text style={styles.headerNavSlash}>/</Text>
+            <Pressable hitSlop={8} onPress={() => setMode('projects')}>
+              <Text style={[styles.headerNavLink, mode === 'projects' ? styles.headerNavLinkActive : null]}>
+                projects
+              </Text>
+            </Pressable>
+          </View>
+        )}
         refreshControl={(
           <RefreshControl
             tintColor={theme.colors.text}
@@ -1263,12 +2478,39 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
             </View>
           ) : (
             <View style={styles.headerActions}>
-              <ActionButton label="New Task" onPress={() => openCreateTask()} />
-              <ActionButton
-                label="Categories"
-                variant="ghost"
-                onPress={openTypeManager}
-              />
+              {mode === 'projects' && activeProject ? (
+                <View style={styles.projectHeading}>
+                  <View style={[styles.projectHeadingDot, { backgroundColor: activeProject.color || theme.colors.info }]} />
+                  <Text style={styles.projectHeadingName} numberOfLines={1}>{activeProject.name}</Text>
+                  <Text style={styles.projectHeadingMeta}>
+                    {(membersByProject[activeProject.id] || []).length} member{(membersByProject[activeProject.id] || []).length === 1 ? '' : 's'}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.headerSpacer} />
+              )}
+              <View style={styles.headerButtons}>
+                <FramelessIconButton
+                  icon={Settings2}
+                  color={theme.colors.tertiary}
+                  onPress={() => setIsSettingsOpen(true)}
+                />
+                {mode === 'projects' ? (
+                  <FramelessIconButton icon={Users} color={theme.colors.tertiary} onPress={openProjectsManager} />
+                ) : null}
+                {mode === 'personal' ? (
+                  <ActionButton
+                    label="Categories"
+                    variant="ghost"
+                    onPress={openTypeManager}
+                  />
+                ) : null}
+                <ActionButton
+                  label="New Task"
+                  onPress={() => openCreateTask()}
+                  disabled={mode === 'projects' && !activeProjectId}
+                />
+              </View>
             </View>
           )}
         </View>
@@ -1327,14 +2569,28 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
           <View style={styles.loadingWrap}>
             <Text style={styles.loadingText}>Loading tasks…</Text>
           </View>
+        ) : (mode === 'projects' && projects.length === 0) ? (
+          <View style={styles.projectsEmpty}>
+            <Text style={styles.projectsEmptyTitle}>No projects yet</Text>
+            <Text style={styles.projectsEmptyBody}>
+              Create a project to assign tasks and collaborate with members.
+            </Text>
+            <View style={styles.projectsEmptyAction}>
+              <ActionButton label="Create Project" icon="add" onPress={openProjectsManager} />
+            </View>
+          </View>
         ) : (
           <TasksMobileList
             boardByStatus={boardByStatus}
             taskTypeById={taskTypeById}
             collapsedGroups={collapsedGroups}
-            onToggleGroup={toggleGroup}
             selectionMode={selectionMode}
             selectedTaskIds={selectedTaskIdSet}
+            showAssignee={mode === 'projects'}
+            membersByProject={membersByProject}
+            cardView={cardView}
+            statusConfig={statusConfig}
+            onToggleGroup={toggleGroup}
             onToggleSelect={toggleSelectTask}
             onOpenTask={openTask}
             onLongPressTask={handleLongPressTask}
@@ -1346,13 +2602,25 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
       <TaskModal
         visible={taskModalVisible}
         isEditing={Boolean(editingTask)}
+        isSubtask={editingIsSubtask}
+        parentTask={editingParentTask}
         form={taskForm}
         loading={creatingTask}
         autosaving={autosavingTask}
         taskTypes={taskTypes}
+        taskTypeById={taskTypeById}
         inlineTypeForm={inlineTypeForm}
         inlineTypeVisible={inlineTypeVisible}
         inlineTypeLoading={creatingInlineType}
+        showAssigneeField={Boolean(modalProjectId)}
+        assigneeOptions={modalAssigneeOptions}
+        projectName={modalProjectName}
+        subtasks={subtasksOfEditing}
+        subtaskForm={subtaskForm}
+        subtaskFormVisible={subtaskFormVisible}
+        subtaskCreating={creatingSubtask}
+        attachingImage={attachingImage}
+        onAttachImage={handleAttachImage}
         onChange={handleTaskFormChange}
         onInlineTypeChange={handleInlineTypeChange}
         onShowInlineType={() => {
@@ -1367,6 +2635,14 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
         onClose={closeTaskModal}
         onCreate={handleCreateTask}
         onDelete={editingTask ? handleDeleteTask : null}
+        onStatusAction={handleStatusAction}
+        onOpenParent={openParentTask}
+        onSubtaskFormChange={handleSubtaskFormChange}
+        onToggleSubtaskForm={toggleSubtaskForm}
+        onCreateSubtask={handleCreateSubtask}
+        onOpenSubtask={openTask}
+        onDeleteSubtask={handleDeleteSubtask}
+        onUpdateSubtaskStatus={handleUpdateSubtaskStatus}
       />
 
       <TaskTypeManagerModal
@@ -1378,6 +2654,17 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
         onClose={closeTypeManager}
         onCreate={handleCreateType}
         onDelete={handleDeleteType}
+      />
+
+      <SettingsModal
+        visible={isSettingsOpen}
+        mode={mode}
+        cardView={cardView}
+        statusConfig={statusConfig}
+        onToggleCardField={toggleCardField}
+        onToggleStatusVisible={toggleStatusVisible}
+        onChangeStatusColor={changeStatusColor}
+        onClose={() => setIsSettingsOpen(false)}
       />
 
       <OptionPickerSheet
@@ -1451,20 +2738,48 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
         onClose={() => setDateRangeVisible(false)}
         onClear={() => setFilters((current) => ({ ...current, dueFrom: '', dueTo: '' }))}
       />
+
+      <ProjectsManagerModal
+        visible={projectsModalVisible}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        membersByProject={membersByProject}
+        currentUserId={currentUserId}
+        projectForm={projectForm}
+        creatingProject={creatingProject}
+        inviteEmail={inviteEmail}
+        inviting={invitingMember}
+        onClose={() => setProjectsModalVisible(false)}
+        onProjectFormChange={handleProjectFormChange}
+        onCreateProject={handleCreateProject}
+        onSelectProject={handleSelectProject}
+        onDeleteProject={handleDeleteProject}
+        onInviteEmailChange={setInviteEmail}
+        onInviteMember={handleInviteMember}
+        onRemoveMember={handleRemoveMember}
+      />
     </>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   topActions: {
     marginBottom: 12,
   },
   headerActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerButtons: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flexWrap: 'wrap',
+    flexShrink: 0,
+  },
+  headerSpacer: {
+    flex: 1,
   },
   selectionBar: {
     flexDirection: 'row',
@@ -1665,13 +2980,21 @@ const styles = StyleSheet.create({
   tasksMobileRowCheckChecked: {
     opacity: 1,
   },
-  tasksMobileRowTitle: {
+  tasksMobileRowText: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
+  },
+  tasksMobileRowTitle: {
     color: theme.colors.text,
     fontSize: 12,
     fontWeight: '400',
     letterSpacing: 0.1,
+  },
+  tasksMobileRowDescription: {
+    color: theme.colors.muted,
+    fontSize: 10,
+    letterSpacing: 0.2,
   },
   tasksMobileRowMeta: {
     flexDirection: 'row',
@@ -1736,6 +3059,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    borderRadius: 999,
+  },
+  taskAssigneeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    maxWidth: 110,
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderWidth: 1,
@@ -1832,6 +3166,127 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
+  descImageRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  descImageWrap: {
+    width: 72,
+    height: 72,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    overflow: 'hidden',
+  },
+  descImage: {
+    width: '100%',
+    height: '100%',
+  },
+  descImageRemove: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 9,
+  },
+  subtaskBackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+  },
+  subtaskBackLabel: {
+    color: theme.colors.tertiary,
+    fontSize: 11,
+    letterSpacing: 0.3,
+    maxWidth: 220,
+  },
+  subtasksPanel: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderDim,
+    gap: 12,
+  },
+  subtasksHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  subtasksHeaderTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  subtasksHeaderLabel: {
+    color: theme.colors.secondary,
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  subtaskComposer: {
+    paddingTop: 4,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderDim,
+    gap: 12,
+  },
+  subtaskList: {
+    gap: 10,
+  },
+  subtaskEmpty: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    letterSpacing: 0.3,
+  },
+  subtaskItem: {
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    padding: 10,
+    gap: 8,
+  },
+  subtaskItemTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subtaskItemMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subtaskStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  subtaskItemTitle: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  subtaskItemMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  subtaskStatusRow: {
+    gap: 6,
+  },
   typeList: {
     marginTop: 10,
     gap: 8,
@@ -1875,5 +3330,214 @@ const styles = StyleSheet.create({
     color: theme.colors.muted,
     fontSize: 10,
     letterSpacing: 0.4,
+  },
+  settingsSection: {
+    gap: 10,
+  },
+  settingsToggleList: {
+    gap: 4,
+  },
+  settingsToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  settingsToggleLabel: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  settingsCheckbox: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    borderRadius: 4,
+  },
+  settingsCheckboxChecked: {
+    borderColor: theme.colors.text,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  settingsStatusList: {
+    gap: 14,
+  },
+  settingsStatusItem: {
+    gap: 10,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderDim,
+  },
+  headerNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerNavLink: {
+    color: theme.colors.muted,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1,
+    textTransform: 'lowercase',
+  },
+  headerNavLinkActive: {
+    color: theme.colors.text,
+  },
+  headerNavSlash: {
+    color: theme.colors.muted,
+    fontSize: 10,
+  },
+  projectHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    flexShrink: 1,
+  },
+  projectHeadingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  projectHeadingName: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+    flexShrink: 1,
+  },
+  projectHeadingMeta: {
+    color: theme.colors.muted,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  readonlyField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderDim,
+    paddingVertical: 12,
+  },
+  readonlyFieldValue: {
+    flex: 1,
+    color: theme.colors.secondary,
+    fontSize: 14,
+    letterSpacing: 0.3,
+  },
+  projectsEmpty: {
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  projectsEmptyTitle: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  projectsEmptyBody: {
+    color: theme.colors.tertiary,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    maxWidth: 280,
+  },
+  projectsEmptyAction: {
+    marginTop: 8,
+  },
+  projectList: {
+    marginTop: 6,
+    gap: 8,
+  },
+  projectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  projectRowActive: {
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  projectRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  projectRowDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  projectRowTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  projectRowTitle: {
+    color: theme.colors.text,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  projectRowSubtitle: {
+    color: theme.colors.muted,
+    fontSize: 10,
+    letterSpacing: 0.4,
+  },
+  membersSection: {
+    marginTop: 6,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderDim,
+    gap: 10,
+  },
+  memberList: {
+    gap: 8,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  memberName: {
+    color: theme.colors.text,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  memberRole: {
+    color: theme.colors.muted,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  inviteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingBottom: 8,
+  },
+  inviteInput: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 14,
+    paddingVertical: 4,
+    letterSpacing: 0.3,
   },
 });

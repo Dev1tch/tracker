@@ -39,6 +39,8 @@ export const PRIORITY_META = {
 export const DEFAULT_TASK_FORM = {
   title: '',
   description: '',
+  project_id: '',
+  assignee_user_id: '',
   task_type_id: '',
   parent_task_id: '',
   status: TASK_STATUS.TO_DO,

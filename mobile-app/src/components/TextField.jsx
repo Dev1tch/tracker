@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 export default function TextField({ label, multiline = false, style, ...props }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
@@ -21,7 +23,7 @@ export default function TextField({ label, multiline = false, style, ...props })
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   wrapper: {
     gap: 6,
   },

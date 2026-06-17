@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -11,9 +11,11 @@ import { useRouter } from 'expo-router';
 
 import ParticleNetworkBackground from '../../components/ParticleNetworkBackground';
 import Wordmark from '../../components/Wordmark';
-import { theme } from '../../theme';
+import { useTheme } from '../../theme';
 
 export default function LegalScreen({ title, updatedAt, switchHref, switchLabel, children }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const router = useRouter();
   const [interactionPoint, setInteractionPoint] = useState(null);
 
@@ -63,6 +65,9 @@ export default function LegalScreen({ title, updatedAt, switchHref, switchLabel,
 }
 
 export function LegalSection({ title, children }) {
+  const theme = useTheme();
+  const sectionStyles = useMemo(() => makeSectionStyles(theme), [theme]);
+
   return (
     <View style={sectionStyles.section}>
       <Text style={sectionStyles.heading}>{title}</Text>
@@ -72,10 +77,16 @@ export function LegalSection({ title, children }) {
 }
 
 export function LegalParagraph({ children }) {
+  const theme = useTheme();
+  const sectionStyles = useMemo(() => makeSectionStyles(theme), [theme]);
+
   return <Text style={sectionStyles.paragraph}>{children}</Text>;
 }
 
 export function LegalList({ items }) {
+  const theme = useTheme();
+  const sectionStyles = useMemo(() => makeSectionStyles(theme), [theme]);
+
   return (
     <View style={sectionStyles.list}>
       {items.map((item) => (
@@ -89,6 +100,9 @@ export function LegalList({ items }) {
 }
 
 export function LegalHighlight({ children }) {
+  const theme = useTheme();
+  const sectionStyles = useMemo(() => makeSectionStyles(theme), [theme]);
+
   return (
     <View style={sectionStyles.highlight}>
       <Text style={sectionStyles.paragraph}>{children}</Text>
@@ -97,6 +111,9 @@ export function LegalHighlight({ children }) {
 }
 
 export function LegalScopeTable({ rows }) {
+  const theme = useTheme();
+  const sectionStyles = useMemo(() => makeSectionStyles(theme), [theme]);
+
   return (
     <View style={sectionStyles.scopeTable}>
       {rows.map((row, index) => (
@@ -113,6 +130,9 @@ export function LegalScopeTable({ rows }) {
 }
 
 export function LegalLink({ children, onPress }) {
+  const theme = useTheme();
+  const sectionStyles = useMemo(() => makeSectionStyles(theme), [theme]);
+
   return (
     <Text onPress={onPress} style={sectionStyles.link}>
       {children}
@@ -120,7 +140,7 @@ export function LegalLink({ children, onPress }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -176,7 +196,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const sectionStyles = StyleSheet.create({
+const makeSectionStyles = (theme) => StyleSheet.create({
   section: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderDim,

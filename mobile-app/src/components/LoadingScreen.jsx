@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 export default function LoadingScreen({ message = 'Loading…' }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <LinearGradient colors={theme.gradients.app} style={styles.root}>
       <View style={styles.card}>
@@ -15,7 +17,7 @@ export default function LoadingScreen({ message = 'Loading…' }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   root: {
     flex: 1,
     alignItems: 'center',

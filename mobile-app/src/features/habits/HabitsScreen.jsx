@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -8,7 +9,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import {
+  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -25,7 +28,7 @@ import ScreenShell from '../../components/ScreenShell';
 import SectionCard from '../../components/SectionCard';
 import TextField from '../../components/TextField';
 import { categoriesApi, habitsApi, logsApi } from '../../shared/api';
-import { theme } from '../../theme';
+import { useTheme } from '../../theme';
 import { addDays, formatFullDate, formatWeekday, toLocalDateKey } from '../../utils/date';
 import { useToast } from '../../providers/ToastProvider';
 
@@ -107,6 +110,8 @@ function buildLogsIndex(items = []) {
 }
 
 function HabitStatusPill({ label, active, color, onPress }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <Pressable
       onPress={onPress}
@@ -134,6 +139,8 @@ function InlineSelectMenu({
   selectedValue,
   onSelect,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   if (!visible) return null;
 
   return (
@@ -192,6 +199,8 @@ function HabitFormModal({
   onShowCreateCategory,
   onDelete,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [activePicker, setActivePicker] = useState('');
   const priorityOptions = useMemo(
     () => PRIORITY_OPTIONS.map((priority) => ({
@@ -203,7 +212,7 @@ function HabitFormModal({
           ? theme.colors.warning
           : theme.colors.text,
     })),
-    []
+    [theme]
   );
   const categoryOptions = useMemo(
     () => [
@@ -355,6 +364,8 @@ function CategoryManagerModal({
   onSave,
   onDelete,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <ModalSheet
       visible={visible}
@@ -419,6 +430,8 @@ function LogModal({
   onClose,
   onSave,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <ModalSheet
       visible={visible}
@@ -465,6 +478,8 @@ function LogModal({
 }
 
 export default function HabitsScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const addToast = useToast();
   const [habits, setHabits] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -492,9 +507,14 @@ export default function HabitsScreen() {
   const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [isInlineCategoryVisible, setIsInlineCategoryVisible] = useState(false);
+  const [isDateJumpOpen, setIsDateJumpOpen] = useState(false);
 
   const displayDates = useMemo(() => getDisplayDates(currentDisplayDate), [currentDisplayDate]);
   const rangeLabel = useMemo(() => getHeaderLabel(displayDates), [displayDates]);
+  const isViewingTodayWindow = useMemo(() => {
+    const todayKey = toLocalDateKey(new Date());
+    return displayDates.some((date) => toLocalDateKey(date) === todayKey);
+  }, [displayDates]);
 
   const filteredHabits = useMemo(() => {
     return habits
@@ -684,7 +704,9 @@ export default function HabitsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await habitsApi.deleteHabit(habit.id);
+              // Soft-archive (matches web): keeps the habit + its history recoverable
+              // instead of permanently deleting. getTimeframeLogs only returns active habits.
+              await habitsApi.updateHabit(habit.id, { is_active: false });
               addToast('Habit deleted.');
               setHabitFormVisible(false);
               fetchData({ silent: true });
@@ -768,6 +790,11 @@ export default function HabitsScreen() {
     setCategoryManagerVisible(true);
   }, []);
 
+  const openCategoryManager = useCallback(() => {
+    setCategoryForm(EMPTY_CATEGORY_FORM);
+    setCategoryManagerVisible(true);
+  }, []);
+
   const handleDeleteCategory = (category) => {
     Alert.alert(
       'Delete category?',
@@ -846,66 +873,110 @@ export default function HabitsScreen() {
             onRefresh={() => fetchData({ silent: true })}
           />
         )}
+        stickyHeader={(
+          <View style={styles.habitStickyHeader}>
+            <View style={styles.headerActionRow}>
+              <ActionButton
+                label="Categories"
+                variant="ghost"
+                compact
+                onPress={openCategoryManager}
+                style={styles.newHabitButton}
+              />
+              <ActionButton
+                label="New Habit"
+                compact
+                onPress={openCreateHabit}
+              />
+            </View>
+
+            <View style={styles.toolbar}>
+              <View style={styles.searchRow}>
+                <TextInput
+                  placeholder="Search habits..."
+                  placeholderTextColor={theme.colors.muted}
+                  style={styles.searchInput}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+
+              <View style={styles.filterRow}>
+                <InlinePickerField
+                  placeholder="All Categories"
+                  valueLabel={selectedCategoryLabel}
+                  onPress={() => setIsCategoryFilterOpen(true)}
+                  style={styles.filterField}
+                />
+                <InlinePickerField
+                  placeholder="Sort Options"
+                  valueLabel={selectedSortLabel}
+                  onPress={() => setIsSortOpen(true)}
+                  style={styles.filterField}
+                />
+              </View>
+            </View>
+
+            <View style={styles.periodBar}>
+              <Pressable style={styles.mobileNavBtn} onPress={() => setCurrentDisplayDate((date) => addDays(date, -7))}>
+                <ChevronLeft size={16} color={theme.colors.secondary} strokeWidth={1.5} />
+              </Pressable>
+              <Pressable style={styles.mobileNavTitleWrap} onPress={() => setIsDateJumpOpen(true)}>
+                <CalendarDays size={13} color={theme.colors.tertiary} strokeWidth={1.5} />
+                <Text style={styles.mobileNavTitle}>{rangeLabel}</Text>
+              </Pressable>
+              <Pressable style={styles.mobileNavBtn} onPress={() => setCurrentDisplayDate((date) => addDays(date, 7))}>
+                <ChevronRight size={16} color={theme.colors.secondary} strokeWidth={1.5} />
+              </Pressable>
+            </View>
+
+            {!isViewingTodayWindow ? (
+              <View style={styles.todayRow}>
+                <Pressable style={styles.todayButton} onPress={() => setCurrentDisplayDate(new Date())}>
+                  <Text style={styles.todayButtonLabel}>Jump to today</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {isDateJumpOpen ? (
+              <DateTimePicker
+                value={currentDisplayDate}
+                mode="date"
+                display={Platform.select({ ios: 'inline', android: 'default' })}
+                accentColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
+                textColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
+                themeVariant={Platform.OS === 'ios' ? 'dark' : undefined}
+                onChange={(_, nextValue) => {
+                  setIsDateJumpOpen(false);
+                  if (nextValue) {
+                    setCurrentDisplayDate(new Date(nextValue));
+                  }
+                }}
+              />
+            ) : null}
+          </View>
+        )}
       >
-        <View style={styles.habitStickyHeader}>
-          <View style={styles.headerActionRow}>
-            <ActionButton
-              label="New Habit"
-              variant="ghost"
-              onPress={openCreateHabit}
-              style={styles.newHabitButton}
-            />
-          </View>
-
-          <View style={styles.toolbar}>
-            <View style={styles.searchRow}>
-              <TextInput
-                placeholder="Search habits..."
-                placeholderTextColor={theme.colors.muted}
-                style={styles.searchInput}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
-
-            <View style={styles.filterRow}>
-              <InlinePickerField
-                placeholder="All Categories"
-                valueLabel={selectedCategoryLabel}
-                onPress={() => setIsCategoryFilterOpen(true)}
-                style={styles.filterField}
-              />
-              <InlinePickerField
-                placeholder="Sort Options"
-                valueLabel={selectedSortLabel}
-                onPress={() => setIsSortOpen(true)}
-                style={styles.filterField}
-              />
-            </View>
-          </View>
-
-          <View style={styles.periodBar}>
-            <Pressable style={styles.mobileNavBtn} onPress={() => setCurrentDisplayDate((date) => addDays(date, -7))}>
-              <ChevronLeft size={16} color={theme.colors.secondary} strokeWidth={1.5} />
-            </Pressable>
-            <Text style={styles.mobileNavTitle}>{rangeLabel}</Text>
-            <Pressable style={styles.mobileNavBtn} onPress={() => setCurrentDisplayDate((date) => addDays(date, 7))}>
-              <ChevronRight size={16} color={theme.colors.secondary} strokeWidth={1.5} />
-            </Pressable>
-          </View>
-        </View>
-
         {loading ? (
           <SectionCard>
             <Text style={styles.loadingText}>Loading habits…</Text>
           </SectionCard>
         ) : null}
 
-        {!loading && filteredHabits.length === 0 ? (
+        {!loading && habits.length === 0 ? (
           <SectionCard>
-            <Text style={styles.emptyTitle}>No habits found</Text>
+            <Text style={styles.emptyTitle}>No habits yet</Text>
             <Text style={styles.emptyBody}>
-              Start by creating your first habit or widen the current filters.
+              Create your first habit to start tracking your seven-day streaks.
+            </Text>
+          </SectionCard>
+        ) : null}
+
+        {!loading && habits.length > 0 && filteredHabits.length === 0 ? (
+          <SectionCard>
+            <Text style={styles.emptyTitle}>No matches</Text>
+            <Text style={styles.emptyBody}>
+              No habits match your search or filters. Try widening them.
             </Text>
           </SectionCard>
         ) : null}
@@ -1102,9 +1173,9 @@ export default function HabitsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   habitStickyHeader: {
-    marginBottom: 15,
+    marginBottom: 0,
   },
   headerActionRow: {
     flexDirection: 'row',
@@ -1146,7 +1217,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    marginBottom: 15,
+    marginBottom: 0,
   },
   mobileNavBtn: {
     width: 28,
@@ -1154,14 +1225,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  mobileNavTitleWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
   mobileNavTitle: {
     color: theme.colors.text,
     fontSize: 11,
     fontWeight: '500',
     letterSpacing: 1.1,
     textTransform: 'uppercase',
-    flex: 1,
     textAlign: 'center',
+  },
+  todayRow: {
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  todayButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+  },
+  todayButtonLabel: {
+    color: theme.colors.tertiary,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
   },
   loadingText: {
     color: theme.colors.tertiary,

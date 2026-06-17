@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogOut } from 'lucide-react-native';
 
 import BrandMark from './BrandMark';
+import ThemeSwitcher from './ThemeSwitcher';
 import { useAuth } from '../providers/AuthProvider';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 export default function ScreenShell({
   title,
@@ -17,7 +18,11 @@ export default function ScreenShell({
   scrollEventThrottle,
   scrollViewRef,
   contentContainerStyle,
+  stickyHeader,
+  sectionNav,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const { logout } = useAuth();
   const activeLabel = title ? title.toLowerCase() : '';
 
@@ -28,15 +33,27 @@ export default function ScreenShell({
           <View style={styles.brandRow}>
             <BrandMark size={14} />
             <Text style={styles.brand}>Life tracker</Text>
-            {activeLabel ? (
+            {sectionNav ? (
+              <>
+                <Text style={styles.brandSlash}>/</Text>
+                {sectionNav}
+              </>
+            ) : activeLabel ? (
               <>
                 <Text style={styles.brandSlash}>/</Text>
                 <Text style={styles.brandActive}>{activeLabel}</Text>
               </>
             ) : null}
           </View>
-          <PressableLogout onPress={logout} />
+          <View style={styles.headerActions}>
+            <ThemeSwitcher />
+            <PressableLogout onPress={logout} />
+          </View>
         </View>
+
+        {stickyHeader ? (
+          <View style={styles.stickyHeader}>{stickyHeader}</View>
+        ) : null}
 
         <ScrollView
           ref={scrollViewRef}
@@ -61,6 +78,8 @@ export default function ScreenShell({
 }
 
 function PressableLogout({ onPress }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <Pressable
       onPress={onPress}
@@ -74,7 +93,7 @@ function PressableLogout({ onPress }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -98,6 +117,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flexShrink: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   brand: {
     color: theme.colors.secondary,
@@ -126,6 +150,14 @@ const styles = StyleSheet.create({
   },
   logoutButtonPressed: {
     opacity: 0.7,
+  },
+  stickyHeader: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    backgroundColor: theme.colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderDim,
   },
   content: {
     paddingHorizontal: 14,

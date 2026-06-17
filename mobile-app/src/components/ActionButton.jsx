@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 export default function ActionButton({
   label,
@@ -14,6 +14,8 @@ export default function ActionButton({
   style,
   textStyle,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const isGhost = variant === 'ghost';
   const isDanger = variant === 'danger';
   const isSolid = variant === 'solid';
@@ -69,7 +71,7 @@ export default function ActionButton({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   button: {
     borderRadius: 0,
     borderWidth: 1,
@@ -82,8 +84,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   buttonPrimary: {
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderColor: 'rgba(255, 255, 255, 0.72)',
+    backgroundColor: theme.colors.surfaceSoft,
+    borderColor: theme.colors.secondary,
   },
   buttonGhost: {
     backgroundColor: 'transparent',

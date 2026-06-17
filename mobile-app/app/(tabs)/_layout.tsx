@@ -3,15 +3,18 @@ import React from 'react';
 import {
   CalendarDays,
   CheckCircle2,
+  FileText,
+  LayoutDashboard,
   LineChart,
   ListTodo,
 } from 'lucide-react-native';
 
 import { useAuth } from '../../src/providers/AuthProvider';
-import { theme } from '../../src/theme';
+import { useTheme } from '../../src/theme';
 
 export default function TabLayout() {
   const { isAuthenticated, isReady } = useAuth();
+  const theme = useTheme();
 
   if (!isReady) {
     return null;
@@ -28,7 +31,7 @@ export default function TabLayout() {
         tabBarInactiveTintColor: theme.colors.tertiary,
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: 'rgba(0, 0, 0, 0.98)',
+          backgroundColor: theme.colors.background,
           borderTopColor: theme.colors.borderDim,
           height: 72,
           paddingBottom: 8,
@@ -96,6 +99,32 @@ export default function TabLayout() {
           title: 'Finance',
           tabBarIcon: ({ color }) => (
             <LineChart
+              size={24}
+              color={color}
+              strokeWidth={1.5}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="notes"
+        options={{
+          title: 'Notes',
+          tabBarIcon: ({ color }) => (
+            <FileText
+              size={24}
+              color={color}
+              strokeWidth={1.5}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="board"
+        options={{
+          title: 'Board',
+          tabBarIcon: ({ color }) => (
+            <LayoutDashboard
               size={24}
               color={color}
               strokeWidth={1.5}

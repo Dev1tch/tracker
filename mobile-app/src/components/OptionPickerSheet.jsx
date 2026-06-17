@@ -1,12 +1,15 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Check } from 'lucide-react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Check, Search } from 'lucide-react-native';
 
 import ModalSheet from './ModalSheet';
 import ActionButton from './ActionButton';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 function OptionRow({ option, selected, multiple, onPress }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <Pressable onPress={onPress} style={[styles.optionRow, selected ? styles.optionRowSelected : null]}>
       <View style={styles.optionMain}>
@@ -29,16 +32,42 @@ export default function OptionPickerSheet({
   selectedValue,
   selectedValues,
   multiple = false,
+  searchable = false,
+  searchPlaceholder = 'Search…',
   onSelect,
   onToggle,
   onClose,
   onClear,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!searchable || !query.trim()) return options;
+    const q = query.trim().toLowerCase();
+    return options.filter((o) => String(o.label).toLowerCase().includes(q) || String(o.value).toLowerCase().includes(q));
+  }, [options, query, searchable]);
+
   return (
     <ModalSheet
       visible={visible}
       title={title}
       onClose={onClose}
+      stickyContent={searchable ? (
+        <View style={styles.searchBar}>
+          <Search size={14} color={theme.colors.muted} strokeWidth={1.8} />
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder={searchPlaceholder}
+            placeholderTextColor={theme.colors.muted}
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+        </View>
+      ) : null}
       footer={onClear ? (
         <View style={styles.footer}>
           <ActionButton label="Clear" variant="ghost" onPress={onClear} />
@@ -46,7 +75,7 @@ export default function OptionPickerSheet({
       ) : null}
     >
       <View style={styles.list}>
-        {options.map((option) => {
+        {filtered.map((option) => {
           const selected = multiple
             ? selectedValues?.includes(option.value)
             : selectedValue === option.value;
@@ -73,7 +102,23 @@ export default function OptionPickerSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 38,
+  },
+  searchInput: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 13,
+    padding: 0,
+  },
   list: {
     gap: 8,
   },

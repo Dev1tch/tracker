@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,7 +17,7 @@ import zxcvbn from 'zxcvbn';
 import ParticleNetworkBackground from '../../components/ParticleNetworkBackground';
 import Wordmark from '../../components/Wordmark';
 import { useAuth } from '../../providers/AuthProvider';
-import { theme } from '../../theme';
+import { useTheme } from '../../theme';
 import { EMAIL_REGEX } from '../../utils/validation';
 
 function AuthField({
@@ -31,6 +31,8 @@ function AuthField({
   keyboardType,
   textContentType,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [isFocused, setIsFocused] = useState(false);
 
   return (
@@ -56,6 +58,9 @@ function AuthField({
 }
 
 function LegalLinks({ onPrivacyPress, onTermsPress }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.legalLinks}>
       <Pressable onPress={onPrivacyPress}>
@@ -70,6 +75,8 @@ function LegalLinks({ onPrivacyPress, onTermsPress }) {
 }
 
 export default function AuthScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const router = useRouter();
   const { login, signup } = useAuth();
   const [mode, setMode] = useState('login');
@@ -287,7 +294,7 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.colors.background,

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 import { formatDateTime, formatFullDate, formatTime } from '../utils/date';
 
 function normaliseDateValue(value) {
@@ -21,6 +21,8 @@ export default function DateTimeField({
   disabled = false,
   formatter,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [isVisible, setIsVisible] = useState(false);
   const selectedDate = useMemo(() => normaliseDateValue(value), [value]);
   const displayValue = useMemo(() => {
@@ -80,7 +82,7 @@ export default function DateTimeField({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   wrapper: {
     gap: 6,
   },

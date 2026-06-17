@@ -26,8 +26,20 @@ export class MediaApi {
     }
     const form = new FormData();
     form.append('kind', kind);
-    const name = filename || (file instanceof File ? file.name : 'upload.bin');
-    form.append('file', file, name);
+
+    if (typeof file === 'object' && typeof file.uri === 'string') {
+      // React Native asset shape: FormData accepts a { uri, name, type } object
+      // directly (no Blob/File available on native).
+      form.append('file', {
+        uri: file.uri,
+        name: filename || file.name || 'upload.jpg',
+        type: file.type || 'image/jpeg',
+      });
+    } else {
+      const isBrowserFile = typeof File !== 'undefined' && file instanceof File;
+      const name = filename || (isBrowserFile ? file.name : 'upload.bin');
+      form.append('file', file, name);
+    }
 
     /* Don't set Content-Type explicitly — the browser must add the multipart
        boundary. The api client only auto-applies JSON when body isn't FormData. */

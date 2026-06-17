@@ -20,7 +20,10 @@ function getDefaultApiBaseUrl() {
     return envValue;
   }
 
-  if (typeof window !== 'undefined') {
+  // Use the Next.js proxy path only in a real browser (which has `document`).
+  // React Native defines `window` but not `document`, so checking `document`
+  // keeps native from falling back to a relative URL it can't resolve.
+  if (typeof document !== 'undefined') {
     return WEB_PROXY_API_BASE_URL;
   }
 

@@ -23,8 +23,8 @@ import {
   LogOut,
   MapPin,
   Menu,
-  Palette,
   Plus,
+  RefreshCw,
   Settings2,
   Trash2,
   User,
@@ -46,7 +46,7 @@ import {
   SCOPES,
   tasksApi,
 } from '../../shared/api';
-import { theme } from '../../theme';
+import { useTheme } from '../../theme';
 import {
   toLocalDateKey,
   combineDateAndTime,
@@ -377,12 +377,14 @@ function getRecurringSeriesId(event) {
   return event?.recurringEventId || ((event?.recurrence || []).length ? event?.id : '');
 }
 
-function FramelessIconButton({ icon, color = theme.colors.text, onPress, size = 16 }) {
+function FramelessIconButton({ icon, color, onPress, size = 16 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const Icon = icon;
 
   return (
     <Pressable hitSlop={10} onPress={onPress} style={styles.iconButton}>
-      <Icon color={color} size={size} strokeWidth={1.7} />
+      <Icon color={color ?? theme.colors.text} size={size} strokeWidth={1.7} />
     </Pressable>
   );
 }
@@ -393,6 +395,8 @@ function InlineSelectMenu({
   selectedValue,
   onSelect,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   if (!visible) return null;
 
   return (
@@ -435,6 +439,8 @@ function InlineSelectMenu({
 }
 
 function CalendarHeaderButton({ label, icon, onPress, disabled = false, primary = false }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const Icon = icon;
 
   return (
@@ -455,6 +461,8 @@ function CalendarHeaderButton({ label, icon, onPress, disabled = false, primary 
 }
 
 function AccountAvatar({ account, size = 22 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   if (account?.picture) {
     return (
       <Image
@@ -485,6 +493,8 @@ function AccountSwitcherPanel({
   onToggleAccount,
   onDisconnect,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   if (accounts.length === 0) {
     return (
       <Pressable onPress={onConnect} style={({ pressed }) => [
@@ -591,6 +601,8 @@ function MiniCalendarPanel({
   enabledCalendarIds,
   weekStartDay = 0,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [viewDate, setViewDate] = useState(new Date(selectedDate || new Date()));
 
   useEffect(() => {
@@ -729,6 +741,8 @@ function CalendarToggleSection({
   showAddButton = false,
   onOpenCreateCalendar,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <View style={styles.calendarToggleSection}>
       <Pressable onPress={onToggleOpen} style={styles.calendarToggleHeader}>
@@ -803,6 +817,8 @@ function CalendarTogglesPanel({
   onToggleOtherCalendars,
   onOpenCreateCalendar,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const ownedCalendars = availableCalendars.filter(
     (calendar) => calendar.accessRole === 'owner' || calendar.accessRole === 'writer'
   );
@@ -877,11 +893,19 @@ function SidebarModal({
 function CalendarSettingsModal({
   visible,
   settings,
+  calendarView,
+  onChangeView,
   onChange,
   onClose,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [activePicker, setActivePicker] = useState('');
 
+  const viewOptions = useMemo(() => [
+    { value: 'agenda', label: 'Agenda' },
+    { value: 'day', label: 'Day' },
+  ], []);
   const weekStartOptions = useMemo(() => [
     { value: 0, label: 'Sunday' },
     { value: 1, label: 'Monday' },
@@ -900,6 +924,24 @@ function CalendarSettingsModal({
 
   return (
     <ModalSheet visible={visible} title="Calendar Settings" onClose={onClose}>
+      <View style={styles.formFieldGroup}>
+        <Text style={styles.formSectionLabel}>View</Text>
+        <InlinePickerField
+          placeholder="Select view"
+          valueLabel={viewOptions.find((option) => option.value === calendarView)?.label || ''}
+          onPress={() => setActivePicker((current) => (current === 'view' ? '' : 'view'))}
+        />
+        <InlineSelectMenu
+          visible={activePicker === 'view'}
+          options={viewOptions}
+          selectedValue={calendarView}
+          onSelect={(value) => {
+            onChangeView(value);
+            setActivePicker('');
+          }}
+        />
+      </View>
+
       <View style={styles.formFieldGroup}>
         <Text style={styles.formSectionLabel}>Week Start</Text>
         <InlinePickerField
@@ -978,8 +1020,9 @@ function EventEditorModal({
   onDelete,
   onOpenMeet,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [activePicker, setActivePicker] = useState('');
-  const [showCustomColor, setShowCustomColor] = useState(false);
 
   const calendarOptions = useMemo(
     () => availableCalendars.map((calendar) => ({
@@ -1001,13 +1044,7 @@ function EventEditorModal({
   useEffect(() => {
     if (!visible) {
       setActivePicker('');
-      setShowCustomColor(false);
     }
-  }, [visible]);
-
-  useEffect(() => {
-    if (!visible) return;
-    setShowCustomColor(Boolean(form.colorId && String(form.colorId).startsWith('#')) || !isEditing);
   }, [visible]);
 
   const handleTimeChange = useCallback((field, value) => {
@@ -1056,7 +1093,7 @@ function EventEditorModal({
             label={loading ? 'Saving...' : 'Save event'}
             icon="checkmark"
             onPress={onSave}
-            disabled={loading || !form.title.trim() || !form.calendarKey}
+            disabled={loading}
           />
         </View>
       )}
@@ -1276,67 +1313,12 @@ function EventEditorModal({
 
       <View style={styles.formFieldGroup}>
         <Text style={styles.formSectionLabel}>Event Color</Text>
-        <View style={styles.colorSwatchRow}>
-          <Pressable
-            onPress={() => {
-              onChange('colorId', '');
-              setShowCustomColor(false);
-            }}
-            style={[
-              styles.colorSwatchButton,
-              styles.colorSwatchDefault,
-              !form.colorId ? styles.colorSwatchButtonActive : null,
-            ]}
-          >
-            <View style={styles.colorSwatchDefaultFill} />
-          </Pressable>
-          {GOOGLE_EVENT_COLORS.map((color) => (
-            <Pressable
-              key={color.id}
-              onPress={() => {
-                onChange('colorId', color.id);
-                setShowCustomColor(false);
-              }}
-              style={[
-                styles.colorSwatchButton,
-                String(form.colorId) === color.id ? styles.colorSwatchButtonActive : null,
-              ]}
-            >
-              <View style={[styles.colorSwatchFill, { backgroundColor: color.hex }]} />
-            </Pressable>
-          ))}
-          <Pressable
-            onPress={() => {
-              setShowCustomColor((current) => !current);
-              if (!String(form.colorId || '').startsWith('#')) {
-                onChange('colorId', currentColorHex);
-              }
-            }}
-            style={[
-              styles.colorSwatchButton,
-              styles.colorSwatchCustom,
-              showCustomColor || String(form.colorId || '').startsWith('#')
-                ? styles.colorSwatchButtonActive
-                : null,
-            ]}
-          >
-            {String(form.colorId || '').startsWith('#') ? (
-              <View style={[styles.colorSwatchFill, { backgroundColor: form.colorId }]} />
-            ) : (
-              <Palette
-                size={13}
-                color={showCustomColor ? theme.colors.text : theme.colors.secondary}
-              />
-            )}
-          </Pressable>
-        </View>
-        {showCustomColor || String(form.colorId || '').startsWith('#') ? (
-          <ColorField
-            label=""
-            value={String(form.colorId || '').startsWith('#') ? form.colorId : currentColorHex}
-            onChange={(value) => onChange('colorId', value)}
-          />
-        ) : null}
+        <ColorField
+          label=""
+          presetColors={EVENT_COLOR_PRESETS}
+          value={String(form.colorId || '').startsWith('#') ? form.colorId : currentColorHex}
+          onChange={(value) => onChange('colorId', value)}
+        />
       </View>
 
       <TextField
@@ -1427,6 +1409,8 @@ function ChoiceModal({
   loading = false,
   primaryVariant = 'solid',
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <ModalSheet
       visible={visible}
@@ -1465,6 +1449,8 @@ function CreateCalendarModal({
   onClose,
   onSave,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <ModalSheet
       visible={visible}
@@ -1657,6 +1643,8 @@ function buildGoogleEventPayload(form, event = null) {
 }
 
 function MobileAgendaCard({ item, eventCardStyle, onOpen, onOpenMeet }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const isTask = item.eventType === 'task';
   const eventColor = isTask ? '#EF4444' : getCalendarEventColor(item);
   const calendarColor = item.calendarColor || eventColor;
@@ -1749,6 +1737,8 @@ function MobileAgendaDay({
   onTaskClick,
   onCreateForDate,
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const isToday = isSameCalendarDay(day, new Date());
   const dayTitle = formatAgendaDayTitle(day);
 
@@ -1797,7 +1787,262 @@ function MobileAgendaDay({
   );
 }
 
+const HOUR_HEIGHT = 48;
+const DAY_GRID_GUTTER = 50;
+const DAY_GRID_HOURS = Array.from({ length: 24 }, (_, index) => index);
+
+function formatGridHour(hour) {
+  if (hour === 0) return '12A';
+  if (hour < 12) return `${hour}A`;
+  if (hour === 12) return '12P';
+  return `${hour - 12}P`;
+}
+
+// Ported from web WeekGrid.getEventPosition — vertical placement for one day.
+function getEventDayPosition(event, dayDate) {
+  if (event.allDay && event.eventType !== 'outOfOffice') return null;
+
+  const start = parseCalendarDate(event.start);
+  const end = parseCalendarDate(event.end);
+  if (!start || !end) return null;
+
+  const dayStart = startOfDay(dayDate);
+  const dayEnd = endOfDay(dayDate);
+
+  if (event.allDay) {
+    return { top: 0, height: 24 * HOUR_HEIGHT };
+  }
+
+  const effectiveStart = start < dayStart ? dayStart : start;
+  const effectiveEnd = end > dayEnd ? dayEnd : end;
+  const startMinutes = effectiveStart.getHours() * 60 + effectiveStart.getMinutes();
+  const endMinutes = (effectiveEnd - dayStart) / (1000 * 60);
+  const duration = Math.max(endMinutes - startMinutes, 15);
+
+  return {
+    top: (startMinutes / 60) * HOUR_HEIGHT,
+    height: (duration / 60) * HOUR_HEIGHT,
+  };
+}
+
+// Ported from web WeekGrid.layoutEventsForDay — cluster overlapping events into columns.
+function layoutDayEvents(dayDate, dayEvents) {
+  if (dayEvents.length === 0) return [];
+
+  const positioned = dayEvents
+    .map((event) => ({ event, pos: getEventDayPosition(event, dayDate) }))
+    .filter((entry) => entry.pos !== null);
+
+  positioned.sort((a, b) => a.pos.top - b.pos.top);
+
+  const clusters = [];
+  positioned.forEach((item) => {
+    let added = false;
+    for (let i = 0; i < clusters.length; i += 1) {
+      const cluster = clusters[i];
+      const clusterEnd = Math.max(...cluster.map((entry) => entry.pos.top + entry.pos.height));
+      if (item.pos.top < clusterEnd) {
+        cluster.push(item);
+        added = true;
+        break;
+      }
+    }
+    if (!added) clusters.push([item]);
+  });
+
+  const result = [];
+  clusters.forEach((cluster) => {
+    const columns = [];
+    cluster.sort((a, b) => a.pos.top - b.pos.top);
+    cluster.forEach((item) => {
+      let placed = false;
+      for (let col = 0; col < columns.length; col += 1) {
+        const lastInCol = columns[col][columns[col].length - 1];
+        if (item.pos.top >= lastInCol.pos.top + lastInCol.pos.height) {
+          columns[col].push(item);
+          item.column = col;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        item.column = columns.length;
+        columns.push([item]);
+      }
+    });
+    cluster.forEach((item) => {
+      item.totalColumns = columns.length;
+      result.push(item);
+    });
+  });
+
+  return result;
+}
+
+function DayGridEventBlock({ entry, eventCardStyle, onEventPress, onTaskPress }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { event, pos, column = 0, totalColumns = 1 } = entry;
+  const isTask = event.eventType === 'task';
+  const isOOO = event.eventType === 'outOfOffice';
+  const eventColor = isTask ? '#EF4444' : getCalendarEventColor(event);
+
+  const offsetPct = totalColumns > 1 ? 12 : 0;
+  const leftPct = column * offsetPct;
+  const widthPct = isOOO ? 98 : 100 - leftPct - 2;
+  const blockHeight = isTask ? 24 : Math.max(pos.height, 18);
+  const showTime = !isTask && pos.height >= 38;
+
+  const blockStyle = isTask
+    ? { borderColor: 'rgba(239, 68, 68, 0.5)', backgroundColor: 'rgba(22, 10, 12, 0.96)' }
+    : isOOO
+      ? { borderColor: withOpacity(eventColor, 0.6), backgroundColor: withOpacity(eventColor, 0.12), borderStyle: 'dashed' }
+      : eventCardStyle === 'filled'
+        ? { borderColor: withOpacity(eventColor, 0.3), backgroundColor: withOpacity(eventColor, 0.22) }
+        : { borderColor: withOpacity(eventColor, 0.85), backgroundColor: 'rgba(18, 18, 18, 0.96)' };
+
+  return (
+    <View
+      style={[
+        styles.dayEventBlock,
+        blockStyle,
+        {
+          top: pos.top,
+          height: blockHeight,
+          left: isOOO ? '1%' : `${leftPct}%`,
+          width: `${widthPct}%`,
+          zIndex: isOOO ? 5 : 10 + column,
+        },
+      ]}
+    >
+      <Pressable
+        style={styles.dayEventPress}
+        onPress={() => (isTask ? onTaskPress(event.originalTask) : onEventPress(event))}
+      >
+        <View style={styles.dayEventRow}>
+          {!isTask && !isOOO ? (
+            <View style={[styles.dayEventDot, { backgroundColor: event.calendarColor || eventColor }]} />
+          ) : null}
+          <Text numberOfLines={1} style={styles.dayEventTitle}>
+            {isOOO ? `🚫 ${event.title}` : event.title}
+          </Text>
+        </View>
+        {showTime ? (
+          <Text numberOfLines={1} style={styles.dayEventTime}>
+            {formatCalendarTimeRange(event.start, event.end)}
+          </Text>
+        ) : null}
+      </Pressable>
+      {!isTask && event.googleMeetLink ? (
+        <Pressable style={styles.dayEventMeet} onPress={() => Linking.openURL(event.googleMeetLink)}>
+          <Video color={theme.colors.secondary} size={12} strokeWidth={1.8} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function DayTimeGrid({
+  date,
+  timedEvents,
+  taskEvents,
+  allDayEvents,
+  eventCardStyle,
+  nowMinutes,
+  onLayoutTop,
+  onEventPress,
+  onTaskPress,
+  onSlotPress,
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const dayTimed = timedEvents.filter((event) => isCalendarEventOnDay(event, date));
+  const dayTasks = taskEvents.filter((event) => isCalendarEventOnDay(event, date));
+  const dayAllDay = allDayEvents.filter((event) => isCalendarEventOnDay(event, date));
+
+  const standard = dayTimed.filter((event) => event.eventType !== 'outOfOffice');
+  const ooo = dayTimed.filter((event) => event.eventType === 'outOfOffice');
+
+  const layout = [
+    ...ooo.map((event) => ({ event, pos: getEventDayPosition(event, date), column: 0, totalColumns: 1 })),
+    ...layoutDayEvents(date, standard),
+    ...dayTasks.map((event) => ({ event, pos: getEventDayPosition(event, date), column: 0, totalColumns: 1 })),
+  ].filter((entry) => entry.pos !== null);
+
+  const nowTop = nowMinutes != null ? (nowMinutes / 60) * HOUR_HEIGHT : null;
+
+  return (
+    <View
+      style={styles.dayGridWrap}
+      onLayout={(layoutEvent) => onLayoutTop?.(layoutEvent.nativeEvent.layout.y)}
+    >
+      {dayAllDay.length > 0 ? (
+        <View style={styles.dayAllDayRow}>
+          <Text style={styles.dayAllDayLabel}>ALL DAY</Text>
+          <View style={styles.dayAllDayItems}>
+            {dayAllDay.map((event) => {
+              const color = getCalendarEventColor(event);
+              return (
+                <Pressable
+                  key={getEventKey(event)}
+                  onPress={() => onEventPress(event)}
+                  style={[styles.dayAllDayPill, { borderColor: withOpacity(color, 0.7) }]}
+                >
+                  <View style={[styles.dayEventDot, { backgroundColor: event.calendarColor || color }]} />
+                  <Text numberOfLines={1} style={styles.dayAllDayPillText}>{event.title}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      <View style={[styles.dayGridBody, { height: 24 * HOUR_HEIGHT }]}>
+        {DAY_GRID_HOURS.map((hour) => (
+          <View key={`line-${hour}`} pointerEvents="none" style={[styles.dayHourRow, { top: hour * HOUR_HEIGHT }]}>
+            <Text style={styles.dayHourLabel}>{formatGridHour(hour)}</Text>
+            <View style={styles.dayHourLine} />
+          </View>
+        ))}
+
+        <View style={styles.dayColumn}>
+          {DAY_GRID_HOURS.map((hour) => (
+            <Pressable
+              key={`slot-${hour}`}
+              style={[styles.daySlot, { top: hour * HOUR_HEIGHT, height: HOUR_HEIGHT }]}
+              onPress={(pressEvent) => {
+                const offsetY = pressEvent.nativeEvent.locationY;
+                const minute = Math.min(Math.max(Math.floor((offsetY / HOUR_HEIGHT) * 60 / 15) * 15, 0), 45);
+                onSlotPress(date, hour * 60 + minute);
+              }}
+            />
+          ))}
+
+          {layout.map((entry) => (
+            <DayGridEventBlock
+              key={entry.event.eventType === 'task' ? `task-${entry.event.id}` : getEventKey(entry.event)}
+              entry={entry}
+              eventCardStyle={eventCardStyle}
+              onEventPress={onEventPress}
+              onTaskPress={onTaskPress}
+            />
+          ))}
+
+          {nowTop != null ? (
+            <View pointerEvents="none" style={[styles.dayNowLine, { top: nowTop }]}>
+              <View style={styles.dayNowDot} />
+              <View style={styles.dayNowRule} />
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function CalendarScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const router = useRouter();
   const { webAppUrl } = useAuth();
   const addToast = useToast();
@@ -1816,6 +2061,7 @@ export default function CalendarScreen() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [calendarView, setCalendarView] = useState('agenda');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -2087,14 +2333,60 @@ export default function CalendarScreen() {
       .filter((section) => section.items.length > 0);
   }, [agendaDays, visibleCalendarEvents, visibleTaskEvents]);
 
+  const dayTimedEvents = useMemo(
+    () => visibleCalendarEvents.filter((event) => !event.allDay || event.eventType === 'outOfOffice'),
+    [visibleCalendarEvents]
+  );
+  const dayAllDayEvents = useMemo(
+    () => visibleCalendarEvents.filter((event) => event.allDay && event.eventType !== 'outOfOffice'),
+    [visibleCalendarEvents]
+  );
+  const dayNowMinutes = useMemo(() => {
+    const now = new Date();
+    return isSameCalendarDay(selectedDate, now) ? now.getHours() * 60 + now.getMinutes() : null;
+  }, [selectedDate]);
+
+  const dayGridTopRef = useRef(0);
+  const handleDayGridLayout = useCallback((y) => {
+    dayGridTopRef.current = y;
+  }, []);
+
+  useEffect(() => {
+    if (calendarView !== 'day') return undefined;
+    const timeout = setTimeout(() => {
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(dayGridTopRef.current + 7 * HOUR_HEIGHT - 8, 0),
+        animated: false,
+      });
+    }, 90);
+    return () => clearTimeout(timeout);
+  }, [calendarView, selectedDate]);
+
   const handleAgendaScroll = useCallback((event) => {
+    if (calendarView !== 'agenda') return;
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const remaining = contentSize.height - (contentOffset.y + layoutMeasurement.height);
 
     if (remaining < 420) {
       loadMoreAgenda();
     }
-  }, [loadMoreAgenda]);
+  }, [calendarView, loadMoreAgenda]);
+
+  const goToPrevDay = useCallback(() => {
+    const nextDate = addDays(selectedDate, -1);
+    setSelectedDate(nextDate);
+    if (nextDate < mobileAgendaStart || nextDate > mobileAgendaEnd) {
+      resetAgendaWindow(nextDate);
+    }
+  }, [mobileAgendaEnd, mobileAgendaStart, resetAgendaWindow, selectedDate]);
+
+  const goToNextDay = useCallback(() => {
+    const nextDate = addDays(selectedDate, 1);
+    setSelectedDate(nextDate);
+    if (nextDate < mobileAgendaStart || nextDate > mobileAgendaEnd) {
+      resetAgendaWindow(nextDate);
+    }
+  }, [mobileAgendaEnd, mobileAgendaStart, resetAgendaWindow, selectedDate]);
 
   const goToPrevWeek = useCallback(() => {
     setSelectedDate((current) => {
@@ -2152,6 +2444,27 @@ export default function CalendarScreen() {
     setPendingEventPayload(null);
     setEventModalVisible(true);
   }, [availableCalendars, selectedDate]);
+
+  // Tap-to-create at a precise time (day grid): snap to 15 min, default 1-hour duration.
+  const openNewEventAt = useCallback((date, startMinutes) => {
+    const snapped = Math.min(Math.max(Math.floor(startMinutes / 15) * 15, 0), 24 * 60 - 15);
+    const endTotal = Math.min(snapped + 60, 24 * 60 - 1);
+    const pad = (value) => String(value).padStart(2, '0');
+    const toLabel = (mins) => `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
+
+    setEditingEvent(null);
+    setSelectedDate(date);
+    setEventForm({
+      ...buildEventForm(null, availableCalendars, date),
+      startTime: toLabel(snapped),
+      endTime: toLabel(endTotal),
+    });
+    setDeleteConfirmVisible(false);
+    setRecurringSaveVisible(false);
+    setRecurringDeleteVisible(false);
+    setPendingEventPayload(null);
+    setEventModalVisible(true);
+  }, [availableCalendars]);
 
   const openEditEvent = useCallback(async (event) => {
     setEditingEvent(event);
@@ -2315,6 +2628,14 @@ export default function CalendarScreen() {
   }, [accounts, addToast, editingEvent, eventForm.calendarKey, handleCloseEventModal, refreshCalendarData]);
 
   const handleSaveEvent = useCallback(async () => {
+    if (!eventForm.title.trim()) {
+      addToast('Add a title for the event.', 'error');
+      return;
+    }
+    if (!eventForm.calendarKey) {
+      addToast('Pick a calendar to save the event to.', 'error');
+      return;
+    }
     const payload = buildGoogleEventPayload(eventForm, editingEvent);
 
     if (canShowRecurringSavePrompt) {
@@ -2482,7 +2803,11 @@ export default function CalendarScreen() {
       >
         <View style={styles.calendarHeader}>
           <View style={styles.calendarHeaderLeft}>
-            <Text style={styles.calendarTitle}>{formatWeekRange(weekStart)}</Text>
+            <Text style={styles.calendarTitle}>
+              {calendarView === 'day'
+                ? selectedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                : formatWeekRange(weekStart)}
+            </Text>
           </View>
 
           <View style={styles.calendarHeaderRight}>
@@ -2498,8 +2823,23 @@ export default function CalendarScreen() {
               />
             ) : null}
             <CalendarHeaderButton label="Today" onPress={goToToday} />
-            <FramelessIconButton icon={ChevronLeft} color={theme.colors.tertiary} onPress={goToPrevWeek} />
-            <FramelessIconButton icon={ChevronRight} color={theme.colors.tertiary} onPress={goToNextWeek} />
+            {accounts.length > 0 ? (
+              <FramelessIconButton
+                icon={RefreshCw}
+                color={theme.colors.tertiary}
+                onPress={() => refreshCalendarData({ silent: true })}
+              />
+            ) : null}
+            <FramelessIconButton
+              icon={ChevronLeft}
+              color={theme.colors.tertiary}
+              onPress={calendarView === 'day' ? goToPrevDay : goToPrevWeek}
+            />
+            <FramelessIconButton
+              icon={ChevronRight}
+              color={theme.colors.tertiary}
+              onPress={calendarView === 'day' ? goToNextDay : goToNextWeek}
+            />
             <FramelessIconButton icon={Settings2} color={theme.colors.tertiary} onPress={() => setSettingsVisible(true)} />
           </View>
         </View>
@@ -2527,6 +2867,23 @@ export default function CalendarScreen() {
               Connect your Google Calendar to synchronize your schedule, track meetings, and visualize your time in one place.
             </Text>
           </View>
+        ) : calendarView === 'day' ? (
+          loading ? (
+            <Text style={styles.loadMoreLabel}>Loading calendar...</Text>
+          ) : (
+            <DayTimeGrid
+              date={selectedDate}
+              timedEvents={dayTimedEvents}
+              taskEvents={visibleTaskEvents}
+              allDayEvents={dayAllDayEvents}
+              eventCardStyle={settings.eventCardStyle}
+              nowMinutes={dayNowMinutes}
+              onLayoutTop={handleDayGridLayout}
+              onEventPress={openEditEvent}
+              onTaskPress={handleTaskPress}
+              onSlotPress={openNewEventAt}
+            />
+          )
         ) : (
           <View style={styles.mobileAgenda}>
             {loading ? (
@@ -2601,6 +2958,8 @@ export default function CalendarScreen() {
       <CalendarSettingsModal
         visible={settingsVisible}
         settings={settings}
+        calendarView={calendarView}
+        onChangeView={setCalendarView}
         onChange={(field, value) => setSettings((current) => ({ ...current, [field]: value }))}
         onClose={() => setSettingsVisible(false)}
       />
@@ -2676,7 +3035,7 @@ export default function CalendarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   calendarHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2705,18 +3064,184 @@ const styles = StyleSheet.create({
     letterSpacing: 2.2,
     textTransform: 'uppercase',
   },
+  calendarViewToggle: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: theme.colors.borderDim,
+  },
+  calendarViewTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarViewTabActive: {
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  calendarViewTabLabel: {
+    color: theme.colors.tertiary,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+  },
+  calendarViewTabLabelActive: {
+    color: theme.colors.text,
+  },
+  dayGridWrap: {
+    gap: 10,
+  },
+  dayAllDayRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderDim,
+  },
+  dayAllDayLabel: {
+    width: DAY_GRID_GUTTER - 8,
+    color: theme.colors.muted,
+    fontSize: 8,
+    fontWeight: '500',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    paddingTop: 4,
+  },
+  dayAllDayItems: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  dayAllDayPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    maxWidth: '100%',
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderRadius: 4,
+    backgroundColor: 'rgba(18, 18, 18, 0.96)',
+  },
+  dayAllDayPillText: {
+    color: theme.colors.text,
+    fontSize: 11,
+    letterSpacing: 0.2,
+    flexShrink: 1,
+  },
+  dayGridBody: {
+    position: 'relative',
+  },
+  dayHourRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dayHourLabel: {
+    width: DAY_GRID_GUTTER - 8,
+    textAlign: 'right',
+    color: theme.colors.muted,
+    fontSize: 9,
+    letterSpacing: 0.4,
+    marginTop: -6,
+  },
+  dayHourLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.borderDim,
+  },
+  dayColumn: {
+    position: 'absolute',
+    left: DAY_GRID_GUTTER,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  daySlot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  dayEventBlock: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderRadius: 5,
+    overflow: 'hidden',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  dayEventPress: {
+    flex: 1,
+  },
+  dayEventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  dayEventDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  dayEventTitle: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  dayEventTime: {
+    color: theme.colors.tertiary,
+    fontSize: 9,
+    letterSpacing: 0.3,
+    marginTop: 1,
+  },
+  dayEventMeet: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayNowLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 50,
+  },
+  dayNowDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.colors.danger,
+    marginLeft: -4,
+  },
+  dayNowRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.danger,
+  },
   headerButton: {
     height: 34,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: theme.colors.surfaceSoft,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
   },
   headerButtonPrimary: {
-    borderColor: 'rgba(255, 255, 255, 0.72)',
+    borderColor: theme.colors.secondary,
   },
   headerButtonPressed: {
     opacity: 0.82,
@@ -2743,8 +3268,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.72)',
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderColor: theme.colors.secondary,
+    backgroundColor: theme.colors.surfaceSoft,
     paddingHorizontal: 18,
     paddingVertical: 10,
   },
