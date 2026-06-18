@@ -9,6 +9,7 @@ import {
   ListTodo,
 } from 'lucide-react-native';
 
+import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/providers/AuthProvider';
@@ -27,8 +28,9 @@ export default function TabLayout() {
     return <Redirect href="/auth" />;
   }
 
-  // Lift the bar above the Android system navigation bar / iOS home indicator.
-  const bottomInset = insets.bottom;
+  // Only Android needs to clear the system navigation bar; iOS keeps the
+  // original sizing (it was already fine).
+  const bottomInset = Platform.OS === 'android' ? insets.bottom : 0;
 
   return (
     <Tabs
@@ -39,7 +41,7 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: theme.colors.background,
           borderTopColor: theme.colors.borderDim,
-          height: 64 + bottomInset,
+          height: 72 + bottomInset,
           paddingBottom: 8 + bottomInset,
           paddingTop: 8,
         },
