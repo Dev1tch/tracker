@@ -28,9 +28,9 @@ export default function TabLayout() {
     return <Redirect href="/auth" />;
   }
 
-  // Only Android needs to clear the system navigation bar; iOS keeps the
-  // original sizing (it was already fine).
-  const bottomInset = Platform.OS === 'android' ? insets.bottom : 0;
+  // Only Android needs to clear the system navigation bar.
+  const isAndroid = Platform.OS === 'android';
+  const bottomInset = isAndroid ? insets.bottom : 0;
 
   return (
     <Tabs
@@ -41,9 +41,9 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: theme.colors.background,
           borderTopColor: theme.colors.borderDim,
-          height: 72 + bottomInset,
+          height: (isAndroid ? 72 : 58) + bottomInset,
           paddingBottom: 8 + bottomInset,
-          paddingTop: 8,
+          paddingTop: isAndroid ? 8 : 2,
         },
         tabBarLabelStyle: {
           fontSize: 8,
