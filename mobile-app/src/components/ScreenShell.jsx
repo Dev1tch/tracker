@@ -28,7 +28,7 @@ export default function ScreenShell({
 
   return (
     <View style={styles.root}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.topHeader}>
           <View style={styles.brandRow}>
             <BrandMark size={14} />
