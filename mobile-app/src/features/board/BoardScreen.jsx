@@ -66,7 +66,6 @@ const IMAGE_NODE = { w: 240, h: 180 };
 const MIN_NODE_SIZE = 40;
 const MIN_FRAME_SIZE = 80;
 const GRID = 40;
-const WORLD = 4000;
 const HISTORY_LIMIT = 60;
 
 const FONT_SIZES = [12, 14, 16, 18, 22, 28, 36, 48];
@@ -293,15 +292,19 @@ function eraseFromStroke(node, wx, wy, radius) {
   return keptRuns.map((run, i) => buildStrokeNode(node, run, i === 0 ? node.id : makeId('draw')));
 }
 
-function GridLayer() {
+// Static dot backdrop sized to the visible canvas. Kept small (viewport-sized,
+// not a giant world-sized SVG) so it never exceeds Android's max GPU texture
+// size — a huge SVG was crashing the board on Android.
+function GridLayer({ width, height, color }) {
+  if (!width || !height) return null;
   return (
-    <Svg pointerEvents="none" style={{ position: 'absolute', left: -WORLD, top: -WORLD }} width={WORLD * 2} height={WORLD * 2}>
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={width} height={height}>
       <Defs>
         <Pattern id="boardDots" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
-          <Circle cx={1} cy={1} r={1} fill="rgba(255,255,255,0.10)" />
+          <Circle cx={1} cy={1} r={1} fill={color} />
         </Pattern>
       </Defs>
-      <Rect x={0} y={0} width={WORLD * 2} height={WORLD * 2} fill="url(#boardDots)" />
+      <Rect x={0} y={0} width={width} height={height} fill="url(#boardDots)" />
     </Svg>
   );
 }
@@ -1393,10 +1396,10 @@ export default function BoardScreen() {
       </SafeAreaView>
 
       <View ref={canvasRef} collapsable={false} style={styles.canvasContainer} onLayout={(event) => { setContainerSize(event.nativeEvent.layout); measureCanvas(); }}>
+        <GridLayer width={containerSize.width} height={containerSize.height} color={theme.colors.borderDim} />
         <GestureDetector gesture={canvasGesture}>
           <Animated.View style={styles.canvasFill}>
             <Animated.View style={[styles.surface, surfaceStyle]}>
-              <GridLayer />
               {renderFrames.map((f0) => {
                 const frame = frameForRender(f0);
                 return (

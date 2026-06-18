@@ -1277,7 +1277,7 @@ const makeStyles = (theme) => StyleSheet.create({
     lineHeight: 18,
   },
   habitCard: {
-    backgroundColor: 'rgba(10, 10, 10, 0.9)',
+    backgroundColor: theme.colors.card,
     borderWidth: 1,
     borderColor: theme.colors.borderDim,
     borderLeftWidth: 4,
@@ -1392,7 +1392,7 @@ const makeStyles = (theme) => StyleSheet.create({
     justifyContent: 'center',
   },
   statusIndicatorSuccess: {
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    backgroundColor: theme.colors.accent,
   },
   statusIndicatorFailed: {
     borderWidth: 1,

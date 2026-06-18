@@ -9,12 +9,15 @@ import {
   ListTodo,
 } from 'lucide-react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { useAuth } from '../../src/providers/AuthProvider';
 import { useTheme } from '../../src/theme';
 
 export default function TabLayout() {
   const { isAuthenticated, isReady } = useAuth();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
   if (!isReady) {
     return null;
@@ -23,6 +26,9 @@ export default function TabLayout() {
   if (!isAuthenticated) {
     return <Redirect href="/auth" />;
   }
+
+  // Lift the bar above the Android system navigation bar / iOS home indicator.
+  const bottomInset = insets.bottom;
 
   return (
     <Tabs
@@ -33,8 +39,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: theme.colors.background,
           borderTopColor: theme.colors.borderDim,
-          height: 72,
-          paddingBottom: 8,
+          height: 64 + bottomInset,
+          paddingBottom: 8 + bottomInset,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
