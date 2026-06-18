@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -43,6 +42,7 @@ import {
 } from '../../../../src/features/finance/lib/format';
 import { useTheme } from '../../theme';
 import { useToast } from '../../providers/ToastProvider';
+import { useDialog } from '../../providers/DialogProvider';
 
 const COLOR_PRESETS = [
   '#94a3b8', '#60a5fa', '#34d399', '#fbbf24', '#f87171',
@@ -94,6 +94,7 @@ function Segmented({ options, value, onChange }) {
 function GateForm({ mode, error, onSubmit }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { alert } = useDialog();
   const [passphrase, setPassphrase] = useState('');
   const [confirm, setConfirm] = useState('');
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
@@ -112,7 +113,7 @@ function GateForm({ mode, error, onSubmit }) {
   const submit = async () => {
     if (busy) return;
     if (mode === 'create' && passphrase !== confirm) {
-      Alert.alert('Passphrases do not match.');
+      alert({ message: 'Passphrases do not match.' });
       return;
     }
     setBusy(true);
@@ -211,6 +212,7 @@ function GateForm({ mode, error, onSubmit }) {
 function TransactionModal({ visible, initial, accounts, categories, onClose, onSave, onDelete }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { alert } = useDialog();
   const [form, setForm] = useState(null);
   const [picker, setPicker] = useState('');
 
@@ -232,13 +234,13 @@ function TransactionModal({ visible, initial, accounts, categories, onClose, onS
 
   const handleSave = () => {
     const amount = Number(form.amount);
-    if (!amount || amount <= 0) { Alert.alert('Enter a valid amount.'); return; }
-    if (!form.accountId) { Alert.alert('Select an account.'); return; }
+    if (!amount || amount <= 0) { alert({ message: 'Enter a valid amount.' }); return; }
+    if (!form.accountId) { alert({ message: 'Select an account.' }); return; }
     if (isTransfer) {
-      if (!form.toAccountId) { Alert.alert('Select a destination account.'); return; }
-      if (form.toAccountId === form.accountId) { Alert.alert('Choose two different accounts.'); return; }
+      if (!form.toAccountId) { alert({ message: 'Select a destination account.' }); return; }
+      if (form.toAccountId === form.accountId) { alert({ message: 'Choose two different accounts.' }); return; }
     } else if (!form.categoryId) {
-      Alert.alert('Select a category.'); return;
+      alert({ message: 'Select a category.' }); return;
     }
     onSave({
       ...form,
@@ -327,6 +329,7 @@ export default function FinanceScreen() {
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const vault = useVaultContext();
   const addToast = useToast();
+  const { confirm } = useDialog();
   const [monthDate, setMonthDate] = useState(() => new Date());
   const [txModal, setTxModal] = useState(null);
   const [manager, setManager] = useState('');
@@ -445,22 +448,20 @@ export default function FinanceScreen() {
     setTxModal(null);
   }, [persist]);
 
-  const handleDeleteTransaction = useCallback((tx) => {
-    Alert.alert('Delete transaction?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          persist((vaultData) => ({
-            ...vaultData,
-            transactions: (vaultData.transactions || []).filter((item) => item.id !== tx.id),
-          }));
-          setTxModal(null);
-        },
-      },
-    ]);
-  }, [persist]);
+  const handleDeleteTransaction = useCallback(async (tx) => {
+    const ok = await confirm({
+      title: 'Delete transaction?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    persist((vaultData) => ({
+      ...vaultData,
+      transactions: (vaultData.transactions || []).filter((item) => item.id !== tx.id),
+    }));
+    setTxModal(null);
+  }, [confirm, persist]);
 
   if (!vault || status === 'initializing') {
     return <LoadingScreen message="Opening vault…" />;
@@ -646,14 +647,16 @@ export default function FinanceScreen() {
             </View>
             <Pressable
               hitSlop={8}
-              onPress={() => Alert.alert('Archive account?', `"${account.name}" will be hidden.`, [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Archive',
-                  style: 'destructive',
-                  onPress: () => persist((v) => ({ ...v, accounts: v.accounts.map((a) => (a.id === account.id ? { ...a, archived: true } : a)) })),
-                },
-              ])}
+              onPress={async () => {
+                const ok = await confirm({
+                  title: 'Archive account?',
+                  message: `"${account.name}" will be hidden.`,
+                  confirmLabel: 'Archive',
+                  destructive: true,
+                });
+                if (!ok) return;
+                persist((v) => ({ ...v, accounts: v.accounts.map((a) => (a.id === account.id ? { ...a, archived: true } : a)) }));
+              }}
             >
               <Trash2 color={theme.colors.danger} size={15} strokeWidth={1.6} />
             </Pressable>
@@ -802,14 +805,17 @@ export default function FinanceScreen() {
         </Pressable>
         <Pressable
           style={styles.settingsRow}
-          onPress={() => Alert.alert(
-            'Delete vault?',
-            'This permanently erases all finance data on this device. There is no recovery.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete', style: 'destructive', onPress: () => { setManager(''); actions.destroyVault(); } },
-            ]
-          )}
+          onPress={async () => {
+            const ok = await confirm({
+              title: 'Delete vault?',
+              message: 'This permanently erases all finance data on this device. There is no recovery.',
+              confirmLabel: 'Delete',
+              destructive: true,
+            });
+            if (!ok) return;
+            setManager('');
+            actions.destroyVault();
+          }}
         >
           <View style={styles.settingsIconLabel}>
             <Trash2 color={theme.colors.danger} size={15} strokeWidth={1.7} />

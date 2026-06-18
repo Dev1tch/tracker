@@ -1,6 +1,5 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -57,6 +56,7 @@ import { boardApi, mediaApi } from '../../shared/api';
 import { useTheme } from '../../theme';
 import { useAuth } from '../../providers/AuthProvider';
 import { useToast } from '../../providers/ToastProvider';
+import { useDialog } from '../../providers/DialogProvider';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
@@ -701,6 +701,7 @@ export default function BoardScreen() {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const addToast = useToast();
+  const { confirm } = useDialog();
   const { logout } = useAuth();
   const [document, setDocument] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1253,20 +1254,22 @@ export default function BoardScreen() {
     scheduleSave();
   }, [applyViewport, clearSelection, document, scheduleSave]);
 
-  const deleteBoard = useCallback((boardId) => {
-    Alert.alert('Delete board?', 'This removes the board and everything on it.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => {
-        setDocument((current) => {
-          const remaining = current.boards.filter((b) => b.id !== boardId);
-          const boards = remaining.length ? remaining : [{ id: 'board-1', label: '1', nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT }];
-          const activeBoardId = boards.some((b) => b.id === current.activeBoardId) ? current.activeBoardId : boards[0].id;
-          return { boards, activeBoardId };
-        });
-        scheduleSave();
-      } },
-    ]);
-  }, [scheduleSave]);
+  const deleteBoard = useCallback(async (boardId) => {
+    const ok = await confirm({
+      title: 'Delete board?',
+      message: 'This removes the board and everything on it.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    setDocument((current) => {
+      const remaining = current.boards.filter((b) => b.id !== boardId);
+      const boards = remaining.length ? remaining : [{ id: 'board-1', label: '1', nodes: [], edges: [], frames: [], viewport: DEFAULT_VIEWPORT }];
+      const activeBoardId = boards.some((b) => b.id === current.activeBoardId) ? current.activeBoardId : boards[0].id;
+      return { boards, activeBoardId };
+    });
+    scheduleSave();
+  }, [confirm, scheduleSave]);
 
   const setDrawConfig = useCallback((variant, patch) => setDrawSettings((cur) => ({ ...cur, [variant]: { ...cur[variant], ...patch } })), []);
 

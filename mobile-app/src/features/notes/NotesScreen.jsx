@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -34,6 +33,7 @@ import {
 import { notesApi } from '../../shared/api';
 import { useTheme } from '../../theme';
 import { useToast } from '../../providers/ToastProvider';
+import { useDialog } from '../../providers/DialogProvider';
 
 const DEFAULT_ICON_COLOR = 'currentColor';
 const DEFAULT_FOLDER_ICON = { kind: 'icon', name: 'folder', color: DEFAULT_ICON_COLOR };
@@ -225,6 +225,7 @@ export default function NotesScreen() {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const addToast = useToast();
+  const { confirm } = useDialog();
   const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -385,24 +386,22 @@ export default function NotesScreen() {
     setTree((current) => reorderWithinParent(current, moveTarget.id, dir));
   }, [moveTarget]);
 
-  const confirmDelete = useCallback((node) => {
+  const confirmDelete = useCallback(async (node) => {
     const message = node.type === 'folder'
       ? `"${node.name}" and everything inside it will be removed.`
       : `"${node.name}" will be removed.`;
-    Alert.alert('Delete ' + (node.type === 'folder' ? 'folder' : 'file') + '?', message, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          setTree((current) => deleteNode(current, node.id));
-          if (editorFileId === node.id) {
-            setEditorFileId(null);
-          }
-        },
-      },
-    ]);
-  }, [editorFileId]);
+    const ok = await confirm({
+      title: 'Delete ' + (node.type === 'folder' ? 'folder' : 'file') + '?',
+      message,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    setTree((current) => deleteNode(current, node.id));
+    if (editorFileId === node.id) {
+      setEditorFileId(null);
+    }
+  }, [confirm, editorFileId]);
 
   const openFile = useCallback((node) => {
     setSelectedId(node.id);

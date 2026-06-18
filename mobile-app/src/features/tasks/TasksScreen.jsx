@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -56,6 +55,7 @@ import { useTheme } from '../../theme';
 import { formatShortDate } from '../../utils/date';
 import { useAuth } from '../../providers/AuthProvider';
 import { useToast } from '../../providers/ToastProvider';
+import { useDialog } from '../../providers/DialogProvider';
 
 const DEFAULT_FILTERS = {
   search: '',
@@ -1392,6 +1392,7 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const addToast = useToast();
+  const { confirm } = useDialog();
   const { token } = useAuth();
   const currentUserId = useMemo(() => decodeJwtUserId(token), [token]);
   const [tasks, setTasks] = useState([]);
@@ -1818,32 +1819,26 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     }
   }, [activeProjectId, addToast, closeTaskModal, creatingTask, mode, taskForm]);
 
-  const handleDeleteTask = useCallback(() => {
+  const handleDeleteTask = useCallback(async () => {
     if (!editingTask) return;
 
-    Alert.alert(
-      'Delete task?',
-      `This will remove "${editingTask.title}".`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await tasksApi.deleteTasksBulk({ task_ids: [editingTask.id] });
-              setTasks((current) => current.filter((task) => task.id !== editingTask.id));
-              addToast('Task deleted.');
-              closeTaskModal();
-            } catch (error) {
-              console.error('Failed to delete task', error);
-              addToast(error?.message || 'Failed to delete task.', 'error');
-            }
-          },
-        },
-      ]
-    );
-  }, [addToast, closeTaskModal, editingTask]);
+    const ok = await confirm({
+      title: 'Delete task?',
+      message: `This will remove "${editingTask.title}".`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await tasksApi.deleteTasksBulk({ task_ids: [editingTask.id] });
+      setTasks((current) => current.filter((task) => task.id !== editingTask.id));
+      addToast('Task deleted.');
+      closeTaskModal();
+    } catch (error) {
+      console.error('Failed to delete task', error);
+      addToast(error?.message || 'Failed to delete task.', 'error');
+    }
+  }, [addToast, closeTaskModal, confirm, editingTask]);
 
   const collectCascadeDeleteIds = useCallback((taskIds) => {
     const ids = new Set(taskIds);
@@ -1981,30 +1976,24 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     }
   }, [addToast, creatingSubtask, editingTask, subtaskForm]);
 
-  const handleDeleteSubtask = useCallback((subtask) => {
-    Alert.alert(
-      'Delete subtask?',
-      `This will remove "${subtask.title}".`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const ids = collectCascadeDeleteIds([subtask.id]);
-            try {
-              await tasksApi.deleteTasksBulk({ task_ids: ids });
-              setTasks((current) => current.filter((task) => !ids.includes(task.id)));
-              addToast('Subtask deleted.');
-            } catch (error) {
-              console.error('Failed to delete subtask', error);
-              addToast(error?.message || 'Failed to delete subtask.', 'error');
-            }
-          },
-        },
-      ]
-    );
-  }, [addToast, collectCascadeDeleteIds]);
+  const handleDeleteSubtask = useCallback(async (subtask) => {
+    const ok = await confirm({
+      title: 'Delete subtask?',
+      message: `This will remove "${subtask.title}".`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    const ids = collectCascadeDeleteIds([subtask.id]);
+    try {
+      await tasksApi.deleteTasksBulk({ task_ids: ids });
+      setTasks((current) => current.filter((task) => !ids.includes(task.id)));
+      addToast('Subtask deleted.');
+    } catch (error) {
+      console.error('Failed to delete subtask', error);
+      addToast(error?.message || 'Failed to delete subtask.', 'error');
+    }
+  }, [addToast, collectCascadeDeleteIds, confirm]);
 
   const handleUpdateSubtaskStatus = useCallback((subtask, status) => {
     applyStatusUpdate(subtask.id, status);
@@ -2110,41 +2099,35 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     }
   }, [addToast, creatingType, typeForm]);
 
-  const handleDeleteType = useCallback((type) => {
-    Alert.alert(
-      'Delete task category?',
-      `This will remove "${type.name}".`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await tasksApi.deleteTaskType(type.id);
-              setTaskTypes((current) => current.filter((item) => item.id !== type.id));
-              setTasks((current) =>
-                current.map((task) => (
-                  task.task_type_id === type.id ? { ...task, task_type_id: null } : task
-                ))
-              );
-              setFilters((current) => ({
-                ...current,
-                taskTypeIds: current.taskTypeIds.filter((value) => value !== String(type.id)),
-              }));
-              if (taskForm.task_type_id === type.id) {
-                setTaskForm((current) => ({ ...current, task_type_id: '' }));
-              }
-              addToast('Task category deleted.');
-            } catch (error) {
-              console.error('Failed to delete task category', error);
-              addToast(error?.message || 'Failed to delete task category.', 'error');
-            }
-          },
-        },
-      ]
-    );
-  }, [addToast, taskForm.task_type_id]);
+  const handleDeleteType = useCallback(async (type) => {
+    const ok = await confirm({
+      title: 'Delete task category?',
+      message: `This will remove "${type.name}".`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await tasksApi.deleteTaskType(type.id);
+      setTaskTypes((current) => current.filter((item) => item.id !== type.id));
+      setTasks((current) =>
+        current.map((task) => (
+          task.task_type_id === type.id ? { ...task, task_type_id: null } : task
+        ))
+      );
+      setFilters((current) => ({
+        ...current,
+        taskTypeIds: current.taskTypeIds.filter((value) => value !== String(type.id)),
+      }));
+      if (taskForm.task_type_id === type.id) {
+        setTaskForm((current) => ({ ...current, task_type_id: '' }));
+      }
+      addToast('Task category deleted.');
+    } catch (error) {
+      console.error('Failed to delete task category', error);
+      addToast(error?.message || 'Failed to delete task category.', 'error');
+    }
+  }, [addToast, confirm, taskForm.task_type_id]);
 
   const handleCreateInlineType = useCallback(async () => {
     if (creatingInlineType) return;
@@ -2222,32 +2205,26 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     setSelectedTaskIds([]);
   }, []);
 
-  const handleBulkDelete = useCallback(() => {
+  const handleBulkDelete = useCallback(async () => {
     if (selectedTaskIds.length === 0) return;
 
-    Alert.alert(
-      'Delete selected tasks?',
-      `This will remove ${selectedTaskIds.length} tasks.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await tasksApi.deleteTasksBulk({ task_ids: selectedTaskIds });
-              setTasks((current) => current.filter((task) => !selectedTaskIdSet.has(task.id)));
-              addToast('Tasks deleted.');
-              exitSelectionMode();
-            } catch (error) {
-              console.error('Failed to delete tasks', error);
-              addToast(error?.message || 'Failed to delete tasks.', 'error');
-            }
-          },
-        },
-      ]
-    );
-  }, [addToast, exitSelectionMode, selectedTaskIdSet, selectedTaskIds]);
+    const ok = await confirm({
+      title: 'Delete selected tasks?',
+      message: `This will remove ${selectedTaskIds.length} tasks.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await tasksApi.deleteTasksBulk({ task_ids: selectedTaskIds });
+      setTasks((current) => current.filter((task) => !selectedTaskIdSet.has(task.id)));
+      addToast('Tasks deleted.');
+      exitSelectionMode();
+    } catch (error) {
+      console.error('Failed to delete tasks', error);
+      addToast(error?.message || 'Failed to delete tasks.', 'error');
+    }
+  }, [addToast, confirm, exitSelectionMode, selectedTaskIdSet, selectedTaskIds]);
 
   const handleBulkUpdateStatus = useCallback(async () => {
     if (selectedTaskIds.length === 0) return;
@@ -2316,35 +2293,29 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     }
   }, [addToast, creatingProject, projectForm]);
 
-  const handleDeleteProject = useCallback((project) => {
-    Alert.alert(
-      'Delete project?',
-      `This deletes "${project.name}" and every task in it.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await projectsApi.deleteProject(project.id);
-              setProjects((current) => current.filter((item) => item.id !== project.id));
-              setTasks((current) => current.filter((task) => task.project_id !== project.id));
-              setMembersByProject((current) => {
-                const next = { ...current };
-                delete next[project.id];
-                return next;
-              });
-              addToast('Project deleted.');
-            } catch (error) {
-              console.error('Failed to delete project', error);
-              addToast(error?.message || 'Failed to delete project.', 'error');
-            }
-          },
-        },
-      ]
-    );
-  }, [addToast]);
+  const handleDeleteProject = useCallback(async (project) => {
+    const ok = await confirm({
+      title: 'Delete project?',
+      message: `This deletes "${project.name}" and every task in it.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await projectsApi.deleteProject(project.id);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      setTasks((current) => current.filter((task) => task.project_id !== project.id));
+      setMembersByProject((current) => {
+        const next = { ...current };
+        delete next[project.id];
+        return next;
+      });
+      addToast('Project deleted.');
+    } catch (error) {
+      console.error('Failed to delete project', error);
+      addToast(error?.message || 'Failed to delete project.', 'error');
+    }
+  }, [addToast, confirm]);
 
   const handleSelectProject = useCallback((projectId) => {
     setActiveProjectId(projectId);
@@ -2376,33 +2347,27 @@ export default function TasksScreen({ routeOpenTaskId = '', routeOpenTaskAt = ''
     }
   }, [activeProjectId, addToast, inviteEmail, invitingMember]);
 
-  const handleRemoveMember = useCallback((member) => {
+  const handleRemoveMember = useCallback(async (member) => {
     if (!activeProjectId) return;
-    Alert.alert(
-      'Remove member?',
-      `Remove ${getMemberDisplayName(member)} from this project?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await projectsApi.removeProjectMember(activeProjectId, member.id);
-              setMembersByProject((current) => ({
-                ...current,
-                [activeProjectId]: (current[activeProjectId] || []).filter((item) => item.id !== member.id),
-              }));
-              addToast('Member removed.');
-            } catch (error) {
-              console.error('Failed to remove member', error);
-              addToast(error?.message || 'Failed to remove member.', 'error');
-            }
-          },
-        },
-      ]
-    );
-  }, [activeProjectId, addToast]);
+    const ok = await confirm({
+      title: 'Remove member?',
+      message: `Remove ${getMemberDisplayName(member)} from this project?`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await projectsApi.removeProjectMember(activeProjectId, member.id);
+      setMembersByProject((current) => ({
+        ...current,
+        [activeProjectId]: (current[activeProjectId] || []).filter((item) => item.id !== member.id),
+      }));
+      addToast('Member removed.');
+    } catch (error) {
+      console.error('Failed to remove member', error);
+      addToast(error?.message || 'Failed to remove member.', 'error');
+    }
+  }, [activeProjectId, addToast, confirm]);
 
 
   const modalProjectId = taskForm.project_id || '';

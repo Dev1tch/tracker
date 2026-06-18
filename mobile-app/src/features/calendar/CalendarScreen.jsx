@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -41,6 +40,7 @@ import ScreenShell from '../../components/ScreenShell';
 import TextField from '../../components/TextField';
 import { useAuth } from '../../providers/AuthProvider';
 import { useToast } from '../../providers/ToastProvider';
+import { useDialog } from '../../providers/DialogProvider';
 import {
   calendarApi,
   SCOPES,
@@ -2046,6 +2046,7 @@ export default function CalendarScreen() {
   const router = useRouter();
   const { webAppUrl } = useAuth();
   const addToast = useToast();
+  const { confirm } = useDialog();
   const scrollViewRef = useRef(null);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -2573,24 +2574,18 @@ export default function CalendarScreen() {
     refreshCalendarData({ silent: true });
   };
 
-  const handleDisconnectAccount = (email) => {
-    Alert.alert(
-      'Disconnect account?',
-      email,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Disconnect',
-          style: 'destructive',
-          onPress: () => {
-            calendarApi.removeAccount(email);
-            setAccounts(calendarApi.getAccounts());
-            addToast('Google account disconnected.');
-            refreshCalendarData({ silent: true });
-          },
-        },
-      ]
-    );
+  const handleDisconnectAccount = async (email) => {
+    const ok = await confirm({
+      title: 'Disconnect account?',
+      message: email,
+      confirmLabel: 'Disconnect',
+      destructive: true,
+    });
+    if (!ok) return;
+    calendarApi.removeAccount(email);
+    setAccounts(calendarApi.getAccounts());
+    addToast('Google account disconnected.');
+    refreshCalendarData({ silent: true });
   };
 
   const persistEvent = useCallback(async (payload, options = {}) => {

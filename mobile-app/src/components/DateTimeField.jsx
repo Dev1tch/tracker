@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import DateTimePickerSheet from './DateTimePickerSheet';
 import { useTheme } from '../theme';
 import { formatDateTime, formatFullDate, formatTime } from '../utils/date';
 
@@ -55,29 +55,19 @@ export default function DateTimeField({
         </Text>
       </Pressable>
 
-      {isVisible && !disabled ? (
-        <DateTimePicker
-          value={selectedDate || new Date()}
-          mode={mode}
-          display={Platform.select({
-            ios: mode === 'date' ? 'inline' : 'default',
-            android: 'default',
-          })}
-          accentColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
-          textColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
-          themeVariant={Platform.OS === 'ios' ? 'dark' : undefined}
-          positiveButton={Platform.OS === 'android' ? { label: 'Done', textColor: theme.colors.text } : undefined}
-          negativeButton={Platform.OS === 'android' ? { label: 'Cancel', textColor: theme.colors.text } : undefined}
-          onChange={(_, nextValue) => {
-            if (Platform.OS !== 'ios') {
-              setIsVisible(false);
-            }
-            if (nextValue) {
-              onChange(nextValue.toISOString());
-            }
-          }}
-        />
-      ) : null}
+      <DateTimePickerSheet
+        visible={isVisible && !disabled}
+        value={selectedDate || new Date()}
+        mode={mode}
+        title={label}
+        onConfirm={(nextValue) => {
+          setIsVisible(false);
+          if (nextValue) {
+            onChange(nextValue.toISOString());
+          }
+        }}
+        onClose={() => setIsVisible(false)}
+      />
     </View>
   );
 }

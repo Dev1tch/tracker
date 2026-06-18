@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -13,6 +13,7 @@ import { X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../theme';
+import { useDialogHost, DialogBody } from '../providers/DialogProvider';
 
 export default function ModalSheet({
   visible,
@@ -27,6 +28,15 @@ export default function ModalSheet({
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
+  const { registerSheet, unregisterSheet, dialog, settle } = useDialogHost();
+
+  // Track open sheets so the dialog provider knows to render confirm/alert
+  // dialogs inside the topmost sheet rather than from the (blocked) root modal.
+  useEffect(() => {
+    if (!visible) return undefined;
+    registerSheet();
+    return () => unregisterSheet();
+  }, [visible, registerSheet, unregisterSheet]);
 
   return (
     <Modal
@@ -62,6 +72,14 @@ export default function ModalSheet({
 
           {footer ? <View style={styles.footer}>{footer}</View> : null}
         </View>
+
+        {dialog ? (
+          <DialogBody
+            dialog={dialog}
+            onConfirm={() => settle(true)}
+            onCancel={() => settle(false)}
+          />
+        ) : null}
       </KeyboardAvoidingView>
     </Modal>
   );

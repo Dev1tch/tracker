@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -9,7 +7,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   CalendarDays,
   Check,
@@ -21,6 +18,7 @@ import {
 
 import ActionButton from '../../components/ActionButton';
 import ColorField from '../../components/ColorField';
+import DateTimePickerSheet from '../../components/DateTimePickerSheet';
 import InlinePickerField from '../../components/InlinePickerField';
 import ModalSheet from '../../components/ModalSheet';
 import OptionPickerSheet from '../../components/OptionPickerSheet';
@@ -31,6 +29,7 @@ import { categoriesApi, habitsApi, logsApi } from '../../shared/api';
 import { useTheme } from '../../theme';
 import { addDays, formatFullDate, formatWeekday, toLocalDateKey } from '../../utils/date';
 import { useToast } from '../../providers/ToastProvider';
+import { useDialog } from '../../providers/DialogProvider';
 
 const PRIORITY_OPTIONS = ['Normal', 'Medium', 'High'];
 const SORT_OPTIONS = [
@@ -481,6 +480,7 @@ export default function HabitsScreen() {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const addToast = useToast();
+  const { confirm } = useDialog();
   const [habits, setHabits] = useState([]);
   const [categories, setCategories] = useState([]);
   const [logs, setLogs] = useState({});
@@ -693,32 +693,26 @@ export default function HabitsScreen() {
     }
   };
 
-  const confirmDeleteHabit = useCallback((habit) => {
-    Alert.alert(
-      'Delete habit?',
-      `This will remove "${habit.name}".`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Soft-archive (matches web): keeps the habit + its history recoverable
-              // instead of permanently deleting. getTimeframeLogs only returns active habits.
-              await habitsApi.updateHabit(habit.id, { is_active: false });
-              addToast('Habit deleted.');
-              setHabitFormVisible(false);
-              fetchData({ silent: true });
-            } catch (error) {
-              console.error('Failed to delete habit', error);
-              addToast(error?.message || 'Failed to delete habit.', 'error');
-            }
-          },
-        },
-      ]
-    );
-  }, [addToast, fetchData]);
+  const confirmDeleteHabit = useCallback(async (habit) => {
+    const ok = await confirm({
+      title: 'Delete habit?',
+      message: `This will remove "${habit.name}".`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      // Soft-archive (matches web): keeps the habit + its history recoverable
+      // instead of permanently deleting. getTimeframeLogs only returns active habits.
+      await habitsApi.updateHabit(habit.id, { is_active: false });
+      addToast('Habit deleted.');
+      setHabitFormVisible(false);
+      fetchData({ silent: true });
+    } catch (error) {
+      console.error('Failed to delete habit', error);
+      addToast(error?.message || 'Failed to delete habit.', 'error');
+    }
+  }, [addToast, confirm, fetchData]);
 
   const handleDeleteHabit = () => {
     if (!editingHabit) return;
@@ -795,31 +789,25 @@ export default function HabitsScreen() {
     setCategoryManagerVisible(true);
   }, []);
 
-  const handleDeleteCategory = (category) => {
-    Alert.alert(
-      'Delete category?',
-      `This will remove "${category.name}".`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await categoriesApi.deleteCategory(category.id);
-              if (categoryForm.id === category.id) {
-                setCategoryForm(EMPTY_CATEGORY_FORM);
-              }
-              addToast('Category deleted.');
-              fetchData({ silent: true });
-            } catch (error) {
-              console.error('Failed to delete category', error);
-              addToast(error?.message || 'Failed to delete category.', 'error');
-            }
-          },
-        },
-      ]
-    );
+  const handleDeleteCategory = async (category) => {
+    const ok = await confirm({
+      title: 'Delete category?',
+      message: `This will remove "${category.name}".`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await categoriesApi.deleteCategory(category.id);
+      if (categoryForm.id === category.id) {
+        setCategoryForm(EMPTY_CATEGORY_FORM);
+      }
+      addToast('Category deleted.');
+      fetchData({ silent: true });
+    } catch (error) {
+      console.error('Failed to delete category', error);
+      addToast(error?.message || 'Failed to delete category.', 'error');
+    }
   };
 
   const handleSaveLog = async () => {
@@ -938,22 +926,19 @@ export default function HabitsScreen() {
               </View>
             ) : null}
 
-            {isDateJumpOpen ? (
-              <DateTimePicker
-                value={currentDisplayDate}
-                mode="date"
-                display={Platform.select({ ios: 'inline', android: 'default' })}
-                accentColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
-                textColor={Platform.OS === 'ios' ? theme.colors.text : undefined}
-                themeVariant={Platform.OS === 'ios' ? 'dark' : undefined}
-                onChange={(_, nextValue) => {
-                  setIsDateJumpOpen(false);
-                  if (nextValue) {
-                    setCurrentDisplayDate(new Date(nextValue));
-                  }
-                }}
-              />
-            ) : null}
+            <DateTimePickerSheet
+              visible={isDateJumpOpen}
+              value={currentDisplayDate}
+              mode="date"
+              title="Jump to date"
+              onConfirm={(nextValue) => {
+                setIsDateJumpOpen(false);
+                if (nextValue) {
+                  setCurrentDisplayDate(new Date(nextValue));
+                }
+              }}
+              onClose={() => setIsDateJumpOpen(false)}
+            />
           </View>
         )}
       >
