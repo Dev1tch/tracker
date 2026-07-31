@@ -260,6 +260,20 @@ const NOTES_EDITOR_WIDTH_MIN = 520;
    container's measured width so the ruler adapts to the screen. */
 const NOTES_EDITOR_WIDTH_MAX = 6000;
 const NOTES_EDITOR_WIDTH_DEFAULT = 820;
+/* A checklist item is an ordinary <li> flagged with data-notes-check="true";
+   ticked ones also carry data-checked="true". The box is painted by CSS
+   pseudo-elements rather than a real <input>, so the caret can never land
+   inside it and Enter / Backspace / Tab keep behaving exactly as in a bullet
+   list. The flag lives on the item rather than the list because the browser
+   merges a new item into an adjacent list — flagging the list would silently
+   convert that neighbour's items too, and a list with both bullets and
+   checkboxes in it stays perfectly well-formed this way. */
+const NOTES_CHECK_ITEM_SELECTOR = 'li[data-notes-check="true"]';
+/* Click target for the CSS-drawn checkbox, as multiples of the item's font
+   size measured from its top-left corner: the width of the item's padding
+   (1.7em, the gutter the box is painted into) by one line (line-height 1.8).
+   Mirrors the ::before geometry in Notes.css. */
+const NOTES_CHECKBOX_HIT_EMS = { width: 1.7, height: 1.8 };
 const NOTE_FONT_OPTIONS = [
   { label: 'System', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
   { label: 'Inter', value: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -288,6 +302,17 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/* Flip a list item between bullet and checkbox. Turning the checkbox off also
+   drops the tick so the markup doesn't carry dead state around. */
+function setCheckItem(item, enabled) {
+  if (enabled) {
+    item.setAttribute('data-notes-check', 'true');
+    return;
+  }
+  item.removeAttribute('data-notes-check');
+  item.removeAttribute('data-checked');
 }
 
 function getEditorHtml(content) {
@@ -1180,6 +1205,24 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
     selection.addRange(range);
   }, []);
 
+  /* Nearest ancestor of the live caret that matches `predicate`, stopping at
+     the editor root. Walking the tree (instead of closest()) keeps it working
+     whether the caret sits on an element, a text node or a <br>. */
+  const findAncestorFromCaret = useCallback((predicate) => {
+    const editor = editorRef.current;
+    if (!editor || typeof window === 'undefined') return null;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+
+    let node = selection.getRangeAt(0).startContainer;
+    if (!editor.contains(node)) return null;
+    while (node && node !== editor) {
+      if (node.nodeType === Node.ELEMENT_NODE && predicate(node)) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }, []);
+
   const detectCurrentStyle = useCallback(() => {
     const editor = editorRef.current;
     if (!editor || typeof window === 'undefined') return;
@@ -1393,12 +1436,44 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
     insertImageFromUpload(file);
   }, [insertImageFromUpload, onUploadImage, saveSelection]);
 
-  /* Click in the body: select the clicked <img> (so the alignment toolbar
-     appears) or clear the selection. For under-text images (z-index:-1)
-     clicks pass through to the text above, so we fall back to
+  /* Tick / untick a checklist item. The box has no DOM node of its own (it is
+     the <li>'s ::before), so we hit-test the rect it is painted into at the
+     item's top-left corner. Offsets are divided by the visual scale so the box
+     stays clickable inside transformed parents (the board view's embedded
+     note), matching how the image handles do it. */
+  const toggleChecklistItem = useCallback((event) => {
+    const editor = editorRef.current;
+    const item = event.target?.closest?.(NOTES_CHECK_ITEM_SELECTOR);
+    if (!editor || !item || !editor.contains(item)) return false;
+
+    const rect = item.getBoundingClientRect();
+    const scale = item.offsetWidth > 0 ? rect.width / item.offsetWidth || 1 : 1;
+    const offsetX = (event.clientX - rect.left) / scale;
+    const offsetY = (event.clientY - rect.top) / scale;
+    const em = parseFloat(window.getComputedStyle(item).fontSize) || 15;
+    if (offsetX < 0 || offsetX > em * NOTES_CHECKBOX_HIT_EMS.width) return false;
+    if (offsetY < 0 || offsetY > em * NOTES_CHECKBOX_HIT_EMS.height) return false;
+
+    const before = editor.innerHTML;
+    if (item.dataset.checked === 'true') {
+      item.removeAttribute('data-checked');
+    } else {
+      item.setAttribute('data-checked', 'true');
+    }
+    pushHistory(before, editor.innerHTML);
+    return true;
+  }, [pushHistory]);
+
+  /* Click in the body: toggle a checkbox, select the clicked <img> (so the
+     alignment toolbar appears) or clear the selection. For under-text images
+     (z-index:-1) clicks pass through to the text above, so we fall back to
      elementsFromPoint to find any image at the click location. */
   const handleEditorClick = useCallback((event) => {
     const target = event.target;
+    if (toggleChecklistItem(event)) {
+      if (selectedImage) setSelectedImage(null);
+      return;
+    }
     if (target && target.tagName === 'IMG') {
       setSelectedImage(target);
       setImageMenuTick((tick) => tick + 1);
@@ -1420,7 +1495,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
       }
     }
     if (selectedImage) setSelectedImage(null);
-  }, [selectedImage]);
+  }, [selectedImage, toggleChecklistItem]);
 
   /* Apply a layout mode to the selected image:
        - inline       : default in-flow inline image
@@ -2063,10 +2138,72 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
     applyFrameColor(color, frameStyle);
   }, [applyFrameColor, applyTextColor, colorTarget, frameStyle]);
 
+  const getListItemsInSelection = useCallback(() => {
+    const editor = editorRef.current;
+    const range = getCurrentRange();
+    if (!editor || !range) return [];
+
+    const items = Array.from(editor.querySelectorAll('li')).filter((item) => {
+      try {
+        return range.intersectsNode(item);
+      } catch {
+        return false;
+      }
+    });
+
+    // A collapsed caret doesn't "intersect" its own <li> in every browser, so
+    // make sure the item it sits in is always included.
+    const caretItem = findAncestorFromCaret((node) => node.tagName === 'LI');
+    return caretItem && !items.includes(caretItem) ? [caretItem, ...items] : items;
+  }, [findAncestorFromCaret, getCurrentRange]);
+
+  /* Run a list command and return the <li>s it created. The caret is not a
+     reliable handle for that: in an empty block the browser leaves it on the
+     editor root, so the item it just made is invisible to both the range and
+     the caret walk (which is how an empty note used to end up with a plain
+     bullet instead of a checkbox). Diffing the item set is exact, and it also
+     excludes the neighbours of a list the new item was merged into. */
+  const insertListItems = useCallback((command) => {
+    const editor = editorRef.current;
+    if (!editor || typeof document === 'undefined') return [];
+    const existing = new Set(editor.querySelectorAll('li'));
+    document.execCommand(command);
+    return Array.from(editor.querySelectorAll('li')).filter((item) => !existing.has(item));
+  }, []);
+
+  /* Bullet list and checklist are the same <ul> — only the per-item checkbox
+     flag differs. So on an existing list we flip the flag on the selected items
+     (which is also how a bullet list becomes a checklist and back); on
+     anything else we let the browser build the list first. Picking the flavour
+     the items already have removes the list, matching how the bullet entry has
+     always toggled. */
+  const applyListKind = useCallback((kind) => {
+    const editor = editorRef.current;
+    if (!editor || typeof document === 'undefined') return;
+    editor.focus();
+    restoreSelection();
+
+    const before = editor.innerHTML;
+    const wantsCheck = kind === 'checklist';
+    let items = getListItemsInSelection();
+
+    if (items.length === 0) {
+      items = insertListItems('insertUnorderedList');
+    } else if (items.every((item) => (item.dataset.notesCheck === 'true') === wantsCheck)) {
+      document.execCommand('insertUnorderedList');
+      items = [];
+    }
+    items.forEach((item) => setCheckItem(item, wantsCheck));
+
+    pushHistory(before, editor.innerHTML);
+    saveSelection();
+  }, [getListItemsInSelection, insertListItems, pushHistory, restoreSelection, saveSelection]);
+
   /* Auto-start a list when the user types a list prefix at the start of a
      block, then space:
        - "N." (any digits) → ordered list, starting at N
        - "-" or "*"        → bullet list
+       - "[]", "[ ]", "[x]" → checklist (unticked, or ticked for "[x]")
      The typed prefix is removed via execCommand('delete') rather than a
      manual Range deletion — that keeps the browser's editing state
      consistent, which is what lets Enter keep continuing the list. */
@@ -2098,7 +2235,8 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
     const text = probe.toString();
     const ordered = text.match(/^(\d+)\.$/);
     const unordered = /^[-*]$/.test(text);
-    if (!ordered && !unordered) return false;
+    const checklist = text.match(/^\[([ xX]?)\]$/);
+    if (!ordered && !unordered && !checklist) return false;
 
     event.preventDefault();
     const before = editor.innerHTML;
@@ -2137,17 +2275,44 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
         if (ol) ol.setAttribute('start', String(number));
       }
     } else {
-      document.execCommand('insertUnorderedList');
+      const [item] = insertListItems('insertUnorderedList');
+      if (checklist && item) {
+        setCheckItem(item, true);
+        if (checklist[1].toLowerCase() === 'x') {
+          item.setAttribute('data-checked', 'true');
+        }
+      }
     }
 
     const after = editor.innerHTML;
     if (before !== after) pushHistory(before, after);
     saveSelection();
     return true;
-  }, [pushHistory, saveSelection]);
+  }, [insertListItems, pushHistory, saveSelection]);
+
+  /* Enter inside a ticked item: browsers clone the <li> — attributes included
+     — when they split it, so the item the caret lands in would come out
+     pre-ticked. Untick it once the split has landed. The pre-fix HTML was
+     already recorded by the input event, so we amend that entry instead of
+     pushing a new one (undoing into a ticked empty item is just noise). */
+  const dropInheritedCheck = useCallback((event) => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    const item = findAncestorFromCaret((node) => node.tagName === 'LI');
+    if (item?.dataset.notesCheck !== 'true' || item.dataset.checked !== 'true') return;
+
+    requestAnimationFrame(() => {
+      const editor = editorRef.current;
+      const next = findAncestorFromCaret((node) => node.tagName === 'LI');
+      if (!editor || !next || next.dataset.checked !== 'true') return;
+      next.removeAttribute('data-checked');
+      historyRef.current.current = editor.innerHTML;
+      onChange(historyRef.current.current);
+    });
+  }, [findAncestorFromCaret, onChange]);
 
   const handleEditorKeyDown = useCallback((event) => {
     if (tryAutoList(event)) return;
+    dropInheritedCheck(event);
     if (!event.ctrlKey && !event.metaKey) return;
 
     const key = event.key.toLowerCase();
@@ -2167,7 +2332,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
       event.preventDefault();
       redo();
     }
-  }, [redo, undo, tryAutoList]);
+  }, [dropInheritedCheck, redo, undo, tryAutoList]);
 
   return (
     <div className="notesRichEditor" ref={editorRootRef}>
@@ -2344,7 +2509,7 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
                 type="button"
                 className="notesListMenuItem"
                 onClick={() => {
-                  runCommand('insertUnorderedList');
+                  applyListKind('bullet');
                   setListMenuOpen(false);
                 }}
               >
@@ -2359,6 +2524,16 @@ function RichTextEditor({ file, onChange, onUploadImage }) {
                 }}
               >
                 1. Numbered list
+              </button>
+              <button
+                type="button"
+                className="notesListMenuItem"
+                onClick={() => {
+                  applyListKind('checklist');
+                  setListMenuOpen(false);
+                }}
+              >
+                ☑ Checklist
               </button>
             </div>
           ) : null}

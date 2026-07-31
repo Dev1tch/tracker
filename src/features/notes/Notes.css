@@ -851,6 +851,80 @@
   list-style: inherit;
 }
 
+/* Checklist item: an <li data-notes-check="true">, carrying data-checked="true"
+   once ticked. The box is drawn with ::before / ::after instead of a real
+   <input> so it never becomes a caret stop inside the contentEditable body,
+   and the item's own list marker is dropped — leaving bullet items in the same
+   list untouched.
+
+   All of the box geometry is in em so it tracks the item's font size, and
+   `top: 0.4em` + `height: 1em` centres it on the first line at the body's
+   line-height of 1.8 (line centre = 0.9em). Both pseudo-elements must resolve
+   em against the same base, so neither may set its own font-size. The JS click
+   hit-test derives the same 1.7em × 1.8em region from the computed font size
+   (see toggleChecklistItem in Notes.js) — keep the two in sync. */
+.notesBodyInput li[data-notes-check="true"] {
+  position: relative;
+  padding-left: 1.7em;
+  list-style: none;
+}
+
+.notesBodyInput li[data-notes-check="true"]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.4em;
+  box-sizing: border-box;
+  width: 1em;
+  height: 1em;
+  border: 1px solid var(--border-color);
+  background: var(--surface-02);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.notesBodyInput li[data-notes-check="true"]:hover::before {
+  border-color: var(--text-secondary);
+  background: var(--surface-05);
+}
+
+.notesBodyInput li[data-notes-check="true"][data-checked="true"]::before {
+  background: var(--surface-10);
+  border-color: var(--text-primary);
+  box-shadow: 0 0 8px var(--glow-color);
+}
+
+/* The tick. Absolutely positioned like the box, which also keeps it out of the
+   item's line-through (decorations don't propagate to out-of-flow boxes). */
+.notesBodyInput li[data-notes-check="true"][data-checked="true"]::after {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  top: 0.4em;
+  width: 1em;
+  height: 1em;
+  line-height: 1em;
+  text-align: center;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* Ticked item: dim the text and strike it through. line-through propagates to
+   descendants on its own; the colour override is what pulls text the user gave
+   an explicit colour (including the editor's default white) down to the dimmed
+   tone as well. Ticking an item that has an indented sub-list dims that
+   sub-list too — CSS can't stop a propagated decoration mid-tree, and reading
+   a whole done branch as done is the sane reading of it. */
+.notesBodyInput li[data-notes-check="true"][data-checked="true"] {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.notesBodyInput li[data-notes-check="true"][data-checked="true"] * {
+  color: inherit !important;
+}
+
 .notesEmptyEditor {
   flex: 1;
   display: flex;
