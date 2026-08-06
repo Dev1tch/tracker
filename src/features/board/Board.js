@@ -100,6 +100,10 @@ const GRID_WORLD_STEP = 48;
 const MIN_GRID_SCREEN_STEP = 8;
 const MIN_NODE_SIZE = 30;
 const MIN_FRAME_SIZE = 60;
+/* Ceiling on a frame's name tag: its font may not exceed this share of the
+   frame's on-screen width, so the tag stays proportionate as a frame gets
+   small instead of overhanging it. */
+const LABEL_MAX_FRAME_SHARE = 0.05;
 const FRAME_COLORS = [
   '#f87171', // red
   '#60a5fa', // blue
@@ -3024,15 +3028,25 @@ function FrameNode({
   const screenFrameWidth = frame.w * zoom;
   /* Smaller coefficient + a tighter cap so even huge frames at max zoom
      show a compact tag instead of a banner. */
-  const baseFontSize = Math.round(
-    Math.max(9, Math.min(13, screenFrameWidth * 0.011))
+  const labelSizeCap = Math.max(9, Math.min(13, screenFrameWidth * 0.011));
+  /* ...and the tag is never taller than a twentieth of the frame's on-screen
+     width, so it shrinks along with the frame instead of sitting on a speck as
+     a banner. Rounding down keeps it from creeping back over that share. The
+     5% rule binds below ~180 screen px of frame; wider frames stay on the cap
+     (which is already well under 5%). While the name is being edited the cap
+     applies regardless — typing into a 2px box is unusable. */
+  const baseFontSize = Math.floor(
+    editing
+      ? labelSizeCap
+      : Math.min(labelSizeCap, screenFrameWidth * LABEL_MAX_FRAME_SHARE)
   );
   const labelFontSize = baseFontSize / zoom;
-  const labelPaddingY = Math.max(2, Math.round(baseFontSize * 0.2)) / zoom;
-  const labelPaddingX = Math.max(6, Math.round(baseFontSize * 0.55)) / zoom;
-  /* Max width in CSS px = the larger of (frame width in CSS px) or 120
-     screen px. Both stay readable at any zoom. */
-  const labelMaxWidth = Math.max(120 / zoom, frame.w);
+  const labelPaddingY = Math.round(baseFontSize * 0.2) / zoom;
+  const labelPaddingX = Math.round(baseFontSize * 0.55) / zoom;
+  /* The tag never reaches past the frame's own width (a longer name gets
+     ellipsised by the CSS) — except while editing, where it keeps the roomier
+     120 screen px so the caret has somewhere to go. */
+  const labelMaxWidth = editing ? Math.max(120 / zoom, frame.w) : frame.w;
   const labelBorderWidth = 1 / zoom;
   const frameBorderWidth = labelBorderWidth;
   const paper = isPaperFrame(frame);
@@ -3061,8 +3075,10 @@ function FrameNode({
       onMouseDown={onMouseDown}
       onClick={onClick}
     >
-      {/* A sheet carries no label — it is a page, not a named group. */}
-      {paper ? null : (
+      {/* A sheet carries no label — it is a page, not a named group. And once
+          the 5% share leaves no room for a glyph, the tag is dropped rather
+          than drawn as an empty speck of border. */}
+      {paper || baseFontSize < 1 ? null : (
         <div
           ref={labelRef}
           className={`boardFrameLabel ${editing ? 'editing' : ''}`}
