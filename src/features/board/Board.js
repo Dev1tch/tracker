@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Eraser,
   ExternalLink,
+  File as PaperIcon,
   FileText,
   Frame as FrameIcon,
   Image as ImageIcon,
@@ -97,6 +98,29 @@ const FRAME_COLORS = [
   '#2dd4bf', // teal
   '#fb923c', // orange
 ];
+/* ---------- Paper ----------
+   A paper is a frame with kind: 'paper' — an opaque white sheet you can write
+   and drop things onto. Being a frame is the point: dragging, group-moving its
+   contents, nesting, arrows, locking and undo all come from the frame code
+   unchanged. Only the look and the sizing controls differ.
+
+   Sizes are authored in millimetres (that is how paper is specified) and
+   stored as world px at the CSS 96dpi ratio, so an A4 sheet is 794 x 1123
+   board units and the A-series keeps its real proportions against each other. */
+const PAPER_MM_TO_PX = 96 / 25.4;
+const PAPER_PRESETS = [
+  { id: 'a1', label: 'A1', mmW: 594, mmH: 841 },
+  { id: 'a2', label: 'A2', mmW: 420, mmH: 594 },
+  { id: 'a3', label: 'A3', mmW: 297, mmH: 420 },
+  { id: 'a4', label: 'A4', mmW: 210, mmH: 297 },
+];
+const DEFAULT_PAPER_PRESET = PAPER_PRESETS.find((preset) => preset.id === 'a4');
+const PAPER_COLOR = '#ffffff';
+/* Neutral accent for a paper's label and selection outline — the frame palette
+   is for grouping colours, and a sheet reads cleaner without one. */
+const PAPER_ACCENT = '#94a3b8';
+const MIN_PAPER_MM = 10;
+const MAX_PAPER_MM = 2000;
 const BOARD_HISTORY_LIMIT = 80;
 const URL_PATTERN = /^(https?:\/\/[^\s]+|www\.[^\s]+)$/i;
 const DEFAULT_BOARD_ID = 'board-1';
@@ -519,6 +543,50 @@ function loadState() {
   return loadLegacyLocalState() || emptyBoardDocument();
 }
 
+function isPaperFrame(frame) {
+  return frame?.kind === 'paper';
+}
+
+/* Perceived lightness of a #rgb / #rrggbb colour. Used to decide whether the
+   board's default white text would be invisible on a sheet — the sheet colour
+   is user-editable, so a navy-tinted one keeps light text. Anything we can't
+   parse counts as light, since paper defaults to white. */
+function isLightSurface(value) {
+  const hex = String(value || '').trim().replace('#', '');
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  if (!/^[0-9a-f]{6}$/i.test(full)) return true;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
+}
+
+function usesPaperInk(frame) {
+  return isPaperFrame(frame) && isLightSurface(frame.color || PAPER_COLOR);
+}
+
+function mmToPx(mm) {
+  return mm * PAPER_MM_TO_PX;
+}
+
+function pxToMm(px) {
+  return px / PAPER_MM_TO_PX;
+}
+
+function clampPaperMm(value, fallback) {
+  const mm = Number.parseFloat(value);
+  if (!Number.isFinite(mm)) return fallback;
+  return Math.max(MIN_PAPER_MM, Math.min(MAX_PAPER_MM, mm));
+}
+
+/* Which preset a sheet currently matches, so the popout can highlight it.
+   Rounded to whole millimetres because free resizing leaves fractions. */
+function paperPresetIdFor(frame) {
+  const mmW = Math.round(pxToMm(frame.w));
+  const mmH = Math.round(pxToMm(frame.h));
+  return PAPER_PRESETS.find((preset) => preset.mmW === mmW && preset.mmH === mmH)?.id || null;
+}
+
 /* A node's center point — used to decide whether it sits inside a frame. */
 function nodeCenterCoords(node, bounds) {
   const w = bounds[node.id]?.w ?? node.w ?? 100;
@@ -842,6 +910,7 @@ function TextNode({
   onMouseDown,
   onClick,
   clipPath,
+  onPaper,
 }) {
   const ref = useRef(null);
 
@@ -872,7 +941,7 @@ function TextNode({
 
   return (
     <div
-      className={`boardNode boardTextNode ${selected ? 'selected' : ''} ${connected ? 'connected' : ''} ${editing ? 'editing' : ''} ${tool === 'arrow' ? 'arrowTarget' : ''} ${hasExplicitSize ? 'sized' : ''}`}
+      className={`boardNode boardTextNode ${selected ? 'selected' : ''} ${connected ? 'connected' : ''} ${editing ? 'editing' : ''} ${tool === 'arrow' ? 'arrowTarget' : ''} ${hasExplicitSize ? 'sized' : ''} ${onPaper ? 'onPaper' : ''}`}
       style={{
         left: node.x,
         top: node.y,
@@ -2907,82 +2976,89 @@ function FrameNode({
   const labelMaxWidth = Math.max(120 / zoom, frame.w);
   const labelBorderWidth = 1 / zoom;
   const frameBorderWidth = labelBorderWidth;
-  const fillMode = frame.fillMode || 'translucent';
+  const paper = isPaperFrame(frame);
+  const fillMode = paper ? 'solid' : frame.fillMode || 'translucent';
   const frameBackground =
     fillMode === 'solid'
       ? frame.color
       : `color-mix(in srgb, ${frame.color} 12%, transparent)`;
+  /* A sheet keeps its own hairline edge instead of the grouping colour, and
+     drives its label / selection outline from the neutral paper accent. */
+  const accentColor = paper ? PAPER_ACCENT : frame.color;
 
   return (
     <div
-      className={`boardFrame ${selected ? 'selected' : ''} ${frame.locked ? 'locked' : ''}`}
+      className={`boardFrame ${paper ? 'paper' : ''} ${selected ? 'selected' : ''} ${frame.locked ? 'locked' : ''}`}
       style={{
         left: frame.x,
         top: frame.y,
         width: frame.w,
         height: frame.h,
-        borderColor: frame.color,
+        borderColor: paper ? undefined : frame.color,
         borderWidth: frameBorderWidth,
         background: frameBackground,
-        '--frame-color': frame.color,
+        '--frame-color': accentColor,
       }}
       onMouseDown={onMouseDown}
       onClick={onClick}
     >
-      <div
-        ref={labelRef}
-        className={`boardFrameLabel ${editing ? 'editing' : ''}`}
-        style={{
-          fontSize: `${labelFontSize}px`,
-          padding: `${labelPaddingY}px ${labelPaddingX}px`,
-          maxWidth: labelMaxWidth,
-          borderWidth: labelBorderWidth,
-        }}
-        contentEditable={editing}
-        suppressContentEditableWarning
-        role="textbox"
-        aria-label="Frame name"
-        onClick={(e) => {
-          if (editing) {
+      {/* A sheet carries no label — it is a page, not a named group. */}
+      {paper ? null : (
+        <div
+          ref={labelRef}
+          className={`boardFrameLabel ${editing ? 'editing' : ''}`}
+          style={{
+            fontSize: `${labelFontSize}px`,
+            padding: `${labelPaddingY}px ${labelPaddingX}px`,
+            maxWidth: labelMaxWidth,
+            borderWidth: labelBorderWidth,
+          }}
+          contentEditable={editing}
+          suppressContentEditableWarning
+          role="textbox"
+          aria-label="Frame name"
+          onClick={(e) => {
+            if (editing) {
+              e.stopPropagation();
+              return;
+            }
             e.stopPropagation();
-            return;
-          }
-          e.stopPropagation();
-          onClick(e);
-        }}
-        onDoubleClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onLabelDoubleClick();
-        }}
-        onMouseDown={(e) => {
-          if (e.detail > 1) {
-            e.stopPropagation();
-            return;
-          }
-          // The label also works as a grab handle, while editing keeps text
-          // selection isolated from board dragging.
-          if (editing) {
-            e.stopPropagation();
-            return;
-          }
-          e.stopPropagation();
-          onMouseDown(e);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
+            onClick(e);
+          }}
+          onDoubleClick={(e) => {
             e.preventDefault();
-            e.currentTarget.blur();
-          }
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            e.currentTarget.blur();
-          }
-        }}
-        onBlur={(e) => onLabelCommit(e.currentTarget.textContent || '')}
-      >
-        {frame.name || 'Frame'}
-      </div>
+            e.stopPropagation();
+            onLabelDoubleClick();
+          }}
+          onMouseDown={(e) => {
+            if (e.detail > 1) {
+              e.stopPropagation();
+              return;
+            }
+            // The label also works as a grab handle, while editing keeps text
+            // selection isolated from board dragging.
+            if (editing) {
+              e.stopPropagation();
+              return;
+            }
+            e.stopPropagation();
+            onMouseDown(e);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
+          onBlur={(e) => onLabelCommit(e.currentTarget.textContent || '')}
+        >
+          {frame.name || 'Frame'}
+        </div>
+      )}
       {tool === 'arrow' ? (
         <AnchorHandles
           active
@@ -4128,12 +4204,18 @@ export default function Board() {
     else delete nodeElRefs.current[id];
   }, []);
 
-  /* Switching tools cancels any in-progress arrow / frame draft. */
+  /* Switching tools cancels any in-progress arrow / frame draft, and closes
+     every toolbar panel — only one panel is ever open, whichever belongs to
+     the tool just picked. The drawing palette survives when the new tool is
+     one of its own (pen / pencil / brush / eraser). Panel buttons that toggle
+     themselves must call this FIRST and set their own state after. */
   const selectTool = useCallback((next) => {
     setTool(next);
     if (!MARKUP_TOOLS.includes(next)) {
       setIsDrawingPaletteOpen(false);
     }
+    setIsTaskImportOpen(false);
+    setIsNoteImportOpen(false);
     setArrowSource(null);
     setArrowPointSource(null);
     setFrameDraft(null);
@@ -4161,6 +4243,38 @@ export default function Board() {
     setFrames((prev) =>
       prev.map((f) => (f.id === id ? { ...f, locked } : f))
     );
+  }
+
+  /* Resize a sheet from millimetres, anchored at its top-left so the corner
+     the user placed stays put. Everything inside keeps its own position —
+     shrinking a sheet doesn't drag its contents along, same as any frame. */
+  function setPaperSizeMm(id, mmW, mmH) {
+    setFrames((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        return { ...f, w: mmToPx(mmW), h: mmToPx(mmH) };
+      })
+    );
+  }
+
+  function addPaper(worldX, worldY) {
+    const id = generateId();
+    const w = mmToPx(DEFAULT_PAPER_PRESET.mmW);
+    const h = mmToPx(DEFAULT_PAPER_PRESET.mmH);
+    setFrames((prev) => [
+      ...prev,
+      {
+        id,
+        kind: 'paper',
+        x: worldX - w / 2,
+        y: worldY - h / 2,
+        w,
+        h,
+        color: PAPER_COLOR,
+        fillMode: 'solid',
+      },
+    ]);
+    selectFrame(id);
   }
 
   /* ---------- mutations ---------- */
@@ -4206,8 +4320,8 @@ export default function Board() {
     ]);
     collapseExpandedTaskNode();
     selectNode(id);
+    // selectTool closes the import panel along with every other one.
     selectTool('select');
-    setIsTaskImportOpen(false);
   }
 
   /* Place a note from the notes filesystem onto the board. The default size
@@ -4240,8 +4354,8 @@ export default function Board() {
       },
     ]);
     selectNode(id);
+    // selectTool closes the import panel along with every other one.
     selectTool('select');
-    setIsNoteImportOpen(false);
   }
 
   /* Edits made inside the embedded note editor flow back to the notes tree
@@ -4879,6 +4993,7 @@ export default function Board() {
     if (
       !MARKUP_TOOLS.includes(tool) &&
       tool !== 'frame' &&
+      tool !== 'paper' &&
       e.target !== e.currentTarget &&
       !(tool === 'text' && clickedOnFrame)
     ) return;
@@ -5083,6 +5198,15 @@ export default function Board() {
         // click so it doesn't select the frame and steal focus from the new
         // text node we just opened for editing.
         if (clickedOnFrame) suppressNextFrameClickRef.current = true;
+      } else if (tool === 'paper') {
+        /* Placing a sheet is a click, like text — so dragging with the paper
+           tool still pans the board instead of dropping a sheet. */
+        const w = screenToWorld(ev.clientX, ev.clientY);
+        addPaper(w.x, w.y);
+        // Same trailing-click swallow as text: a sheet dropped onto an
+        // existing frame must not hand the selection back to that frame.
+        if (clickedOnFrame) suppressNextFrameClickRef.current = true;
+        selectTool('select');
       } else if (tool === 'arrow') {
         const w = screenToWorld(ev.clientX, ev.clientY);
         if (arrowSource) {
@@ -5767,14 +5891,14 @@ export default function Board() {
 
   function toggleDrawingPalette() {
     const nextOpen = !isDrawingPaletteOpen;
-    setIsDrawingPaletteOpen(nextOpen);
+    /* selectTool first (it closes the other panels), then set our own flag —
+       opening the palette keeps whichever markup tool is already active. */
     if (nextOpen) {
-      if (!MARKUP_TOOLS.includes(tool)) {
-        selectTool('pen');
-      }
+      selectTool(MARKUP_TOOLS.includes(tool) ? tool : 'pen');
     } else if (MARKUP_TOOLS.includes(tool)) {
       selectTool('select');
     }
+    setIsDrawingPaletteOpen(nextOpen);
   }
 
   /* Anchor zoom-button changes at the viewport center for predictability. */
@@ -5986,6 +6110,15 @@ export default function Board() {
           </button>
           <button
             type="button"
+            className={`boardToolBtn ${tool === 'paper' ? 'active' : ''}`}
+            onClick={() => selectTool('paper')}
+            title="Paper - click to place a sheet (A4 by default)"
+            aria-label="Paper"
+          >
+            <PaperIcon size={18} />
+          </button>
+          <button
+            type="button"
             className={`boardToolBtn ${isDrawingPaletteOpen || MARKUP_TOOLS.includes(tool) ? 'active' : ''}`}
             onClick={toggleDrawingPalette}
             title="Drawing tools"
@@ -6015,8 +6148,9 @@ export default function Board() {
             type="button"
             className={`boardToolBtn ${isTaskImportOpen ? 'active' : ''}`}
             onClick={() => {
-              setIsTaskImportOpen((open) => !open);
+              const next = !isTaskImportOpen;
               selectTool('select');
+              setIsTaskImportOpen(next);
             }}
             title="Import task"
             aria-label="Import task"
@@ -6028,9 +6162,9 @@ export default function Board() {
             type="button"
             className={`boardToolBtn ${isNoteImportOpen ? 'active' : ''}`}
             onClick={() => {
-              setIsNoteImportOpen((open) => !open);
-              setIsTaskImportOpen(false);
+              const next = !isNoteImportOpen;
               selectTool('select');
+              setIsNoteImportOpen(next);
             }}
             title="Import note"
             aria-label="Import note"
@@ -6222,51 +6356,137 @@ export default function Board() {
           if (!activeFrameId) return null;
           const frame = frames.find((f) => f.id === activeFrameId);
           if (!frame) return null;
+          const paper = isPaperFrame(frame);
+          const paperMmW = Math.round(pxToMm(frame.w));
+          const paperMmH = Math.round(pxToMm(frame.h));
+          const activePresetId = paper ? paperPresetIdFor(frame) : null;
           return (
-            <div className="boardToolbarPopout boardFramePopout" aria-label="Frame style">
-              <div className="boardFrameRow">
-                <span className="boardFrameRowLabel">Name</span>
-                <input
-                  className="boardFrameNameInput"
-                  value={frame.name || ''}
-                  placeholder="Frame"
-                  size={6}
-                  onChange={(e) => setFrameName(frame.id, e.target.value)}
-                  aria-label="Frame name"
-                />
-              </div>
-              <span className="boardPopoutDivider" aria-hidden="true" />
+            <div
+              className="boardToolbarPopout boardFramePopout"
+              aria-label={paper ? 'Paper settings' : 'Frame style'}
+            >
+              {/* Sheets aren't named — see FrameNode, which draws no label. */}
+              {paper ? null : (
+                <>
+                  <div className="boardFrameRow">
+                    <span className="boardFrameRowLabel">Name</span>
+                    <input
+                      className="boardFrameNameInput"
+                      value={frame.name || ''}
+                      placeholder="Frame"
+                      size={6}
+                      onChange={(e) => setFrameName(frame.id, e.target.value)}
+                      aria-label="Frame name"
+                    />
+                  </div>
+                  <span className="boardPopoutDivider" aria-hidden="true" />
+                </>
+              )}
+              {paper ? (
+                <>
+                  <div className="boardFrameControls">
+                    <div className="boardFrameControl">
+                      <span className="boardFrameRowLabel">Size</span>
+                      <div className="boardPaperPresets" aria-label="Paper size">
+                        {PAPER_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            className={`boardFrameFillBtn ${activePresetId === preset.id ? 'active' : ''}`}
+                            onClick={() => setPaperSizeMm(frame.id, preset.mmW, preset.mmH)}
+                            title={`${preset.label} — ${preset.mmW} × ${preset.mmH} mm`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="boardFrameControl">
+                      <span className="boardFrameRowLabel">Custom (mm)</span>
+                      {/* Commit on blur / Enter rather than per keystroke: a
+                          controlled value would resize the sheet to "2" while
+                          the user is still typing "210". */}
+                      <div className="boardPaperSize">
+                        <input
+                          type="number"
+                          className="boardPopoutSize"
+                          min={MIN_PAPER_MM}
+                          max={MAX_PAPER_MM}
+                          key={`paper-w-${frame.id}-${paperMmW}`}
+                          defaultValue={paperMmW}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur();
+                          }}
+                          onBlur={(e) =>
+                            setPaperSizeMm(
+                              frame.id,
+                              clampPaperMm(e.target.value, paperMmW),
+                              paperMmH
+                            )
+                          }
+                          aria-label="Paper width in millimetres"
+                        />
+                        <span className="boardPaperSizeX" aria-hidden="true">×</span>
+                        <input
+                          type="number"
+                          className="boardPopoutSize"
+                          min={MIN_PAPER_MM}
+                          max={MAX_PAPER_MM}
+                          key={`paper-h-${frame.id}-${paperMmH}`}
+                          defaultValue={paperMmH}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur();
+                          }}
+                          onBlur={(e) =>
+                            setPaperSizeMm(
+                              frame.id,
+                              paperMmW,
+                              clampPaperMm(e.target.value, paperMmH)
+                            )
+                          }
+                          aria-label="Paper height in millimetres"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <span className="boardPopoutDivider" aria-hidden="true" />
+                </>
+              ) : null}
               <div className="boardFrameControls">
                 <div className="boardFrameControl">
-                  <span className="boardFrameRowLabel">Color</span>
+                  <span className="boardFrameRowLabel">{paper ? 'Paper' : 'Color'}</span>
                   <ColorPicker
                     value={frame.color}
                     onChange={(c) => setFrameColor(frame.id, c)}
                   />
                 </div>
-                <div className="boardFrameControl">
-                  <span className="boardFrameRowLabel">Fill</span>
-                  <div className="boardFrameFillToggle" aria-label="Frame fill">
-                    <button
-                      className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'translucent' ? 'active' : ''}`}
-                      onClick={() => setFrameFillMode(frame.id, 'translucent')}
-                      type="button"
-                      title="Transparent fill"
-                      aria-label="Transparent fill"
-                    >
-                      <FrameIcon size={13} />
-                    </button>
-                    <button
-                      className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'solid' ? 'active' : ''}`}
-                      onClick={() => setFrameFillMode(frame.id, 'solid')}
-                      type="button"
-                      title="Solid fill"
-                      aria-label="Solid fill"
-                    >
-                      <Layers size={13} />
-                    </button>
+                {/* A sheet is opaque by definition — the fill toggle only
+                    makes sense for grouping frames. */}
+                {paper ? null : (
+                  <div className="boardFrameControl">
+                    <span className="boardFrameRowLabel">Fill</span>
+                    <div className="boardFrameFillToggle" aria-label="Frame fill">
+                      <button
+                        className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'translucent' ? 'active' : ''}`}
+                        onClick={() => setFrameFillMode(frame.id, 'translucent')}
+                        type="button"
+                        title="Transparent fill"
+                        aria-label="Transparent fill"
+                      >
+                        <FrameIcon size={13} />
+                      </button>
+                      <button
+                        className={`boardFrameFillBtn ${(frame.fillMode || 'translucent') === 'solid' ? 'active' : ''}`}
+                        onClick={() => setFrameFillMode(frame.id, 'solid')}
+                        type="button"
+                        title="Solid fill"
+                        aria-label="Solid fill"
+                      >
+                        <Layers size={13} />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className="boardFrameControl">
                   <span className="boardFrameRowLabel">Lock</span>
                   <div className="boardFrameFillToggle" aria-label="Frame lock">
@@ -6615,6 +6835,10 @@ export default function Board() {
                     {...commonProps}
                     editing={editingId === node.id}
                     connected={edges.some((edge) => edge.from === node.id || edge.to === node.id)}
+                    /* Default text is white for the dark board, which would be
+                       invisible on a sheet — flip it to ink on paper. Text the
+                       user gave an explicit colour keeps it (inline style). */
+                    onPaper={usesPaperInk(containingFrame)}
                     onDoubleClick={handleNodeDoubleClick}
                   />
                 );

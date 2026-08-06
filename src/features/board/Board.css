@@ -630,6 +630,23 @@
   outline-style: solid;
 }
 
+/* ---------- Paper (a frame that looks like a sheet) ----------
+   Same element as a frame — only the surface differs: an opaque sheet with a
+   hairline edge and a drop shadow so it lifts off the dark board. The shadow
+   is divided by the zoom so it stays a constant on-screen depth. */
+.boardFrame.paper {
+  border-color: rgba(15, 23, 42, 0.22);
+  box-shadow: 0 calc(8px / var(--board-zoom, 1)) calc(26px / var(--board-zoom, 1))
+              rgba(0, 0, 0, 0.5);
+}
+
+.boardFrame.paper.selected {
+  box-shadow:
+    0 calc(8px / var(--board-zoom, 1)) calc(26px / var(--board-zoom, 1)) rgba(0, 0, 0, 0.5),
+    0 0 calc(18px / var(--board-zoom, 1))
+      color-mix(in srgb, var(--frame-color, #94a3b8) 45%, transparent);
+}
+
 .boardFrameLabel {
   position: absolute;
   bottom: 100%;
@@ -689,6 +706,14 @@
 
 .boardCursor-frame .boardFrame,
 .boardCursor-frame .boardFrame:active {
+  cursor: crosshair;
+}
+
+/* Paper tool: a single click drops a sheet, so it gets the same placement
+   cursor over the surface and over anything already on the board. */
+.boardCursor-paper,
+.boardCursor-paper .boardFrame,
+.boardCursor-paper .boardFrame:active {
   cursor: crosshair;
 }
 
@@ -880,6 +905,13 @@
   line-height: 1.4;
   letter-spacing: 0.01em;
   cursor: grab;
+}
+
+/* Writing on a sheet: the board's default text colour is white for the dark
+   surface, which would vanish on paper. Text the user gave an explicit colour
+   sets it inline on the node and still wins over this. */
+.boardTextNode.onPaper {
+  color: #0f172a;
 }
 
 .boardTextNode.connected {
@@ -1721,6 +1753,37 @@
 .boardFrameFillBtn.active {
   color: var(--text-primary);
   background: var(--surface-10);
+}
+
+/* Paper size controls in the frame popout: the A-series presets sit in the
+   same segmented strip as the fill/lock toggles, with the custom millimetre
+   pair underneath. */
+.boardPaperPresets {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-color-dim);
+}
+
+.boardPaperPresets .boardFrameFillBtn {
+  width: 28px;
+  font-size: 10px;
+  font-family: inherit;
+  letter-spacing: 0.06em;
+}
+
+.boardPaperSize {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.boardPaperSize .boardPopoutSize {
+  width: 52px;
+}
+
+.boardPaperSizeX {
+  color: var(--text-tertiary);
+  font-size: 11px;
 }
 
 /* ---------- Light theme: darker dots ---------- */
