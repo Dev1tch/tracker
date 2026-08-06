@@ -84,8 +84,20 @@ const BOARD_DB_VERSION = 1;
 const BOARD_PERSIST_DEBOUNCE_MS = 250;
 const BOARD_SYNC_DEBOUNCE_MS = 900;
 const MAX_IMAGE_WIDTH = 320;
+/* Zoom-out floor for a board whose contents all fit comfortably on screen.
+   Bigger boards get a lower floor — see largestItemExtent / minZoomFor. */
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
+/* How small the biggest item on the board is allowed to get: a tenth of the
+   size at which it would exactly fill the viewport. */
+const MIN_ZOOM_ITEM_COVERAGE = 0.1;
+/* Backstop so a nonsense item size (or a viewport measured at 0) can't drive
+   the floor to something unusable. */
+const ABSOLUTE_MIN_ZOOM = 0.005;
+/* Dot-grid spacing in world units, and the tightest it may get on screen
+   before the dots crowd into a grey wash — see gridScreenStep. */
+const GRID_WORLD_STEP = 48;
+const MIN_GRID_SCREEN_STEP = 8;
 const MIN_NODE_SIZE = 30;
 const MIN_FRAME_SIZE = 60;
 const FRAME_COLORS = [
@@ -2066,6 +2078,53 @@ function nodeCenterOf(node, bounds) {
   return { x: node.x + w / 2, y: node.y + h / 2 };
 }
 
+/* Widest and tallest extent across everything on the board — nodes measured
+   from their rendered bounds, frames and papers from their own geometry.
+   The two can come from different items; taking them separately means the
+   zoom floor is driven by whichever dimension is the hardest to fit. */
+function largestItemExtent(nodes, frames, bounds) {
+  let w = 0;
+  let h = 0;
+  const consider = (itemW, itemH) => {
+    if (Number.isFinite(itemW) && itemW > w) w = itemW;
+    if (Number.isFinite(itemH) && itemH > h) h = itemH;
+  };
+  nodes.forEach((node) => {
+    const size = nodeSize(node, bounds);
+    consider(size.w, size.h);
+  });
+  frames.forEach((frame) => consider(frame.w, frame.h));
+  return { w, h };
+}
+
+/* How far out the board may zoom, given the viewport it is drawn into: far
+   enough that the largest item shrinks to MIN_ZOOM_ITEM_COVERAGE of the
+   viewport. Never tighter than MIN_ZOOM, so a board of small items keeps the
+   familiar floor instead of being locked in close. */
+function minZoomFor(extent, viewportW, viewportH) {
+  if (!(viewportW > 0) || !(viewportH > 0)) return MIN_ZOOM;
+  const fitRatios = [];
+  if (extent.w > 0) fitRatios.push(viewportW / extent.w);
+  if (extent.h > 0) fitRatios.push(viewportH / extent.h);
+  if (fitRatios.length === 0) return MIN_ZOOM;
+  const zoomToFit = Math.min(...fitRatios);
+  return Math.max(
+    ABSOLUTE_MIN_ZOOM,
+    Math.min(MIN_ZOOM, zoomToFit * MIN_ZOOM_ITEM_COVERAGE)
+  );
+}
+
+/* On-screen spacing of the background dots. Zooming out shrinks the grid
+   until the dots merge into a flat wash, so past that point the world step
+   doubles instead — the dots that remain stay on the same lattice, so the
+   grid still tracks the board. Above MIN_GRID_SCREEN_STEP nothing changes. */
+function gridScreenStep(zoom) {
+  let step = GRID_WORLD_STEP * zoom;
+  if (!(step > 0)) return GRID_WORLD_STEP;
+  while (step < MIN_GRID_SCREEN_STEP) step *= 2;
+  return step;
+}
+
 function nodeRectAt(node, bounds, x = node.x, y = node.y) {
   const { w, h } = nodeSize(node, bounds);
   return rectFromBox(x, y, w, h);
@@ -3634,6 +3693,23 @@ export default function Board() {
     [viewport]
   );
 
+  /* The zoom-out floor follows the board's contents, so a big item (an A1
+     sheet, a wide drawing) can always be zoomed out far enough to see whole.
+     Held in a ref because the wheel listener below is bound once. */
+  const largestExtentRef = useRef({ w: 0, h: 0 });
+  useEffect(() => {
+    largestExtentRef.current = largestItemExtent(nodes, frames, nodeBounds);
+  }, [nodes, frames, nodeBounds]);
+
+  const clampZoom = useCallback(
+    (zoom, viewportRect) =>
+      Math.max(
+        minZoomFor(largestExtentRef.current, viewportRect.width, viewportRect.height),
+        Math.min(MAX_ZOOM, zoom)
+      ),
+    []
+  );
+
   /* Wheel: zoom in/out, anchored to the cursor. */
   useEffect(() => {
     const wrap = wrapperRef.current;
@@ -3661,10 +3737,7 @@ export default function Board() {
       const cursorY = e.clientY - rect.top;
       const factor = getWheelZoomFactor(e.deltaY);
       setViewport((prev) => {
-        const nextZoom = Math.max(
-          MIN_ZOOM,
-          Math.min(MAX_ZOOM, prev.zoom * factor)
-        );
+        const nextZoom = clampZoom(prev.zoom * factor, rect);
         if (nextZoom === prev.zoom) return prev;
         const worldX = (cursorX - prev.x) / prev.zoom;
         const worldY = (cursorY - prev.y) / prev.zoom;
@@ -3677,7 +3750,7 @@ export default function Board() {
     }
     wrap.addEventListener('wheel', onWheel, { passive: false });
     return () => wrap.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [clampZoom]);
 
   /* Track mouse for the ghost arrow (in world coords). */
   useEffect(() => {
@@ -5909,10 +5982,7 @@ export default function Board() {
     const cursorX = rect.width / 2;
     const cursorY = rect.height / 2;
     setViewport((prev) => {
-      const nextZoom = Math.max(
-        MIN_ZOOM,
-        Math.min(MAX_ZOOM, prev.zoom * factor)
-      );
+      const nextZoom = clampZoom(prev.zoom * factor, rect);
       if (nextZoom === prev.zoom) return prev;
       const worldX = (cursorX - prev.x) / prev.zoom;
       const worldY = (cursorY - prev.y) / prev.zoom;
@@ -6522,7 +6592,7 @@ export default function Board() {
             isPanning ? ' isPanning' : ''
           }${arrowSource || arrowPointSource ? ' boardArrowDrawing' : ''}`}
           style={{
-            backgroundSize: `${48 * viewport.zoom}px ${48 * viewport.zoom}px`,
+            backgroundSize: `${gridScreenStep(viewport.zoom)}px ${gridScreenStep(viewport.zoom)}px`,
             backgroundPosition: `${viewport.x}px ${viewport.y}px`,
           }}
           onMouseDown={handleSurfaceMouseDown}
