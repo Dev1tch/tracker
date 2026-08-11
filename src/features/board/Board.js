@@ -36,6 +36,8 @@ import {
   Pencil as PencilIcon,
   PenTool as PenIcon,
   Plus,
+  RectangleHorizontal,
+  RectangleVertical,
   RefreshCw,
   Search,
   Trash2,
@@ -108,6 +110,13 @@ const LABEL_MAX_FRAME_SHARE = 0.05;
 /* Nudge for a paste that isn't aimed anywhere in particular (Ctrl+V), so the
    copy lands beside the original instead of exactly on top of it. */
 const BOARD_PASTE_OFFSET = 28;
+/* How long Ctrl/Cmd+V waits for the browser to deliver a paste event before
+   pasting the board's own copy itself. Chrome and Safari raise that event on
+   the document; Firefox only raises it inside an editable, so without this
+   fallback the shortcut would do nothing there. The event, when it comes,
+   arrives in the same tick — this window is only ever spent when there is no
+   event coming at all. */
+const BOARD_PASTE_EVENT_GRACE_MS = 100;
 const FRAME_COLORS = [
   '#f87171', // red
   '#60a5fa', // blue
@@ -603,12 +612,14 @@ function clampPaperMm(value, fallback) {
   return Math.max(MIN_PAPER_MM, Math.min(MAX_PAPER_MM, mm));
 }
 
-/* Which preset a sheet currently matches, so the popout can highlight it.
+/* Which preset a sheet currently matches, so the popout can highlight it. An
+   A4 laid on its side is still A4, so the pair is compared either way up.
    Rounded to whole millimetres because free resizing leaves fractions. */
 function paperPresetIdFor(frame) {
-  const mmW = Math.round(pxToMm(frame.w));
-  const mmH = Math.round(pxToMm(frame.h));
-  return PAPER_PRESETS.find((preset) => preset.mmW === mmW && preset.mmH === mmH)?.id || null;
+  const mm = [Math.round(pxToMm(frame.w)), Math.round(pxToMm(frame.h))].sort((a, b) => a - b);
+  return (
+    PAPER_PRESETS.find((preset) => preset.mmW === mm[0] && preset.mmH === mm[1])?.id || null
+  );
 }
 
 /* A node's center point — used to decide whether it sits inside a frame. */
@@ -618,29 +629,15 @@ function nodeCenterCoords(node, bounds) {
   return { x: node.x + w / 2, y: node.y + h / 2 };
 }
 
-/* Is this world point inside the frame? A rotated frame (papers can be turned)
-   is tested by spinning the point back into the frame's own un-rotated space
-   about its centre, so membership follows the sheet as it turns instead of
-   staying stuck to the axis-aligned rectangle. */
+/* Is this world point inside the frame? Frames and sheets stay axis-aligned —
+   a sheet changes orientation by swapping its width and height, not by
+   turning — so this is a plain rectangle test. */
 function pointInFrame(frame, x, y) {
-  let px = x;
-  let py = y;
-  if (frame.rotation) {
-    const cx = frame.x + frame.w / 2;
-    const cy = frame.y + frame.h / 2;
-    const radians = (-frame.rotation * Math.PI) / 180;
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    const dx = x - cx;
-    const dy = y - cy;
-    px = cx + dx * cos - dy * sin;
-    py = cy + dx * sin + dy * cos;
-  }
   return (
-    px >= frame.x &&
-    px <= frame.x + frame.w &&
-    py >= frame.y &&
-    py <= frame.y + frame.h
+    x >= frame.x &&
+    x <= frame.x + frame.w &&
+    y >= frame.y &&
+    y <= frame.y + frame.h
   );
 }
 
@@ -736,9 +733,6 @@ function findContainingFrame(node, frames, bounds) {
 function frameClipFor(node, frame, bounds) {
   if (!frame) return undefined;
   if (node.rotation) return undefined;
-  // An inset() clip is axis-aligned, so it can't describe a turned sheet's
-  // edges. Skip clipping there rather than cutting along the wrong lines.
-  if (frame.rotation) return undefined;
   const w = bounds[node.id]?.w ?? node.w ?? 100;
   const h = bounds[node.id]?.h ?? node.h ?? 40;
   const top = Math.max(0, frame.y - node.y);
@@ -753,18 +747,6 @@ function nodeTransform(node) {
   return node.rotation ? `rotate(${node.rotation}deg)` : undefined;
 }
 
-/* A drag delta expressed in the item's own axes. A turned sheet's width still
-   runs along its own edge, so a resize has to work from the delta spun back by
-   the item's angle — otherwise dragging the visual right edge of a sheet
-   turned 90° would read as vertical movement and barely resize it. At
-   rotation 0 this returns the delta untouched. */
-function localDelta(dx, dy, rotation) {
-  if (!rotation) return { dx, dy };
-  const radians = (-rotation * Math.PI) / 180;
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-  return { dx: dx * cos - dy * sin, dy: dx * sin + dy * cos };
-}
 
 /* History snapshot. Frames belong in it as much as nodes do — without them,
    creating, moving or turning a frame or a paper could not be undone, and an
@@ -787,6 +769,25 @@ function historyActionFor({ changed, restoring, inGesture }) {
   if (!changed) return 'none';
   if (inGesture) return 'track';
   return 'record';
+}
+
+/* Does this key event mean the given letter shortcut?
+
+   `event.key` carries whatever character the active layout produces, so on a
+   Georgian, Cyrillic or Greek keyboard the physical C key reports 'ც' / 'с' /
+   'ψ' and a check against 'c' never matches — Ctrl+C, Ctrl+V, Ctrl+Z and the
+   rest silently stop working while the menus still do. `event.code` names the
+   physical key instead, which is what the OS itself uses to keep those
+   shortcuts on the same keys in every layout.
+
+   Both are accepted: the code covers non-Latin layouts, and the key covers
+   remapped Latin ones like Dvorak, where the user expects the shortcut to
+   follow the letter rather than the position. */
+function isShortcutLetter(event, letter) {
+  return (
+    event.code === `Key${letter.toUpperCase()}` ||
+    event.key?.toLowerCase() === letter
+  );
 }
 
 function isTextInputTarget(target) {
@@ -3232,8 +3233,6 @@ function FrameNode({
         borderColor: paper ? undefined : frame.color,
         borderWidth: frameBorderWidth,
         background: frameBackground,
-        transform: frame.rotation ? `rotate(${frame.rotation}deg)` : undefined,
-        transformOrigin: 'center',
         '--frame-color': accentColor,
       }}
       onMouseDown={onMouseDown}
@@ -3409,6 +3408,9 @@ export default function Board() {
   /* Copied board items, kept in memory — the system clipboard is not involved,
      so what the user had there stays put. */
   const boardClipboardRef = useRef(null);
+  /* Pending Ctrl+V fallback for browsers that don't deliver a paste event to
+     the document (see BOARD_PASTE_EVENT_GRACE_MS). */
+  const pasteFallbackRef = useRef(null);
   /* Held space turns a left-drag back into a pan, since a plain left-drag on
      the surface now draws a selection rectangle. */
   const spacePanRef = useRef(false);
@@ -4090,8 +4092,13 @@ export default function Board() {
     });
     if (!payload) return false;
     boardClipboardRef.current = payload;
+    /* Copying has no visible result until something is pasted, so say so —
+       otherwise a copy that worked and a copy that did nothing look alike. */
+    const count = payload.nodes.length + payload.frames.length + payload.edges.length;
+    addToast(`Copied ${count} item${count === 1 ? '' : 's'}`);
     return true;
   }, [
+    addToast,
     edges,
     frames,
     nodeBounds,
@@ -4380,10 +4387,11 @@ export default function Board() {
      selection. */
   useEffect(() => {
     function handleKey(e) {
-      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey;
+      const isUndo =
+        (e.metaKey || e.ctrlKey) && isShortcutLetter(e, 'z') && !e.shiftKey;
       const isRedo =
         (e.metaKey || e.ctrlKey) &&
-        ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y');
+        ((isShortcutLetter(e, 'z') && e.shiftKey) || isShortcutLetter(e, 'y'));
       if ((isUndo || isRedo) && !isTextInputTarget(e.target)) {
         e.preventDefault();
         if (isRedo) {
@@ -4398,12 +4406,23 @@ export default function Board() {
          selection to copy, so the shortcut is caught here instead. Nothing is
          written to the system clipboard, which leaves whatever the user had
          there intact; the paste side reads our in-memory copy. */
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        e.key.toLowerCase() === 'c' &&
-        !isTextInputTarget(e.target)
-      ) {
+      if ((e.metaKey || e.ctrlKey) && isShortcutLetter(e, 'c') && !isTextInputTarget(e.target)) {
         copySelection();
+        return;
+      }
+
+      /* Paste. When the browser raises a paste event on the document we let
+         that handler do the work, because only it can tell whether the system
+         clipboard holds an image. Firefox raises it only inside an editable,
+         so arm a short fallback: if no event turns up, paste the board's own
+         copy from here. */
+      if ((e.metaKey || e.ctrlKey) && isShortcutLetter(e, 'v') && !isTextInputTarget(e.target)) {
+        if (!boardClipboardRef.current) return;
+        if (pasteFallbackRef.current) clearTimeout(pasteFallbackRef.current);
+        pasteFallbackRef.current = setTimeout(() => {
+          pasteFallbackRef.current = null;
+          pasteClipboard(null);
+        }, BOARD_PASTE_EVENT_GRACE_MS);
         return;
       }
 
@@ -4411,7 +4430,7 @@ export default function Board() {
          one gesture. */
       if (
         (e.metaKey || e.ctrlKey) &&
-        e.key.toLowerCase() === 'a' &&
+        isShortcutLetter(e, 'a') &&
         !isTextInputTarget(e.target) &&
         !editingId
       ) {
@@ -4479,9 +4498,15 @@ export default function Board() {
     undoBoard,
     redoBoard,
     copySelection,
+    pasteClipboard,
     selectAll,
     contextMenu,
   ]);
+
+  /* Never let a queued paste fire into a board that has gone away. */
+  useEffect(() => () => {
+    if (pasteFallbackRef.current) clearTimeout(pasteFallbackRef.current);
+  }, []);
 
   /* Auto-fit the editing text node to its content while it's being edited.
      When a font/size/format change makes the text larger than its current
@@ -4720,12 +4745,62 @@ export default function Board() {
 
   /* Resize a sheet from millimetres, anchored at its top-left so the corner
      the user placed stays put. Everything inside keeps its own position —
-     shrinking a sheet doesn't drag its contents along, same as any frame. */
-  function setPaperSizeMm(id, mmW, mmH) {
+     shrinking a sheet doesn't drag its contents along, same as any frame.
+     A preset arrives portrait-first and is laid the way the sheet already
+     is, so picking A3 on a landscape sheet keeps it landscape. */
+  function setPaperSizeMm(id, mmW, mmH, { keepOrientation = false } = {}) {
     setFrames((prev) =>
       prev.map((f) => {
         if (f.id !== id) return f;
-        return { ...f, w: mmToPx(mmW), h: mmToPx(mmH) };
+        const landscape = keepOrientation && f.w > f.h;
+        const w = mmToPx(landscape ? Math.max(mmW, mmH) : mmW);
+        const h = mmToPx(landscape ? Math.min(mmW, mmH) : mmH);
+        return { ...f, w, h };
+      })
+    );
+  }
+
+  /* Lay the page the other way up. The sheet's width and height swap about
+     its centre, so it stays where it is on the board. A locked sheet takes
+     its contents with it — each one is spun a quarter turn about that same
+     centre — so what ran down the page ends up running across it. An unlocked
+     sheet changes shape underneath whatever is sitting on it. */
+  function setPaperOrientation(id, orientation) {
+    const frame = frames.find((item) => item.id === id);
+    if (!frame) return;
+    const wantsPortrait = orientation === 'portrait';
+    if (wantsPortrait === frame.h >= frame.w) return;
+
+    const cx = frame.x + frame.w / 2;
+    const cy = frame.y + frame.h / 2;
+    // Opposite turns for the two directions, so going there and back leaves
+    // the page exactly as it started.
+    const turn = wantsPortrait ? -1 : 1;
+    const memberIds = new Set(
+      frame.locked
+        ? nodesInsideFrame(frame, nodes, nodeBounds).map((node) => node.id)
+        : []
+    );
+
+    setFrames((prev) =>
+      prev.map((f) =>
+        f.id === id ? { ...f, x: cx - f.h / 2, y: cy - f.w / 2, w: f.h, h: f.w } : f
+      )
+    );
+
+    if (memberIds.size === 0) return;
+    setNodes((prev) =>
+      prev.map((node) => {
+        if (!memberIds.has(node.id)) return node;
+        const size = nodeSize(node, nodeBounds);
+        const dx = node.x + size.w / 2 - cx;
+        const dy = node.y + size.h / 2 - cy;
+        return {
+          ...node,
+          x: cx + (turn === 1 ? -dy : dy) - size.w / 2,
+          y: cy + (turn === 1 ? dx : -dx) - size.h / 2,
+          rotation: ((((node.rotation || 0) + turn * 90) % 360) + 360) % 360,
+        };
       })
     );
   }
@@ -5134,6 +5209,13 @@ export default function Board() {
 
   useEffect(() => {
     function handlePaste(e) {
+      /* The browser did deliver a paste event, so the keyboard fallback is not
+         needed — and this path is the better one, since it can see whether the
+         system clipboard holds an image. */
+      if (pasteFallbackRef.current) {
+        clearTimeout(pasteFallbackRef.current);
+        pasteFallbackRef.current = null;
+      }
       if (isTextInputTarget(e.target)) return;
       const imageItem = Array.from(e.clipboardData?.items || []).find((item) =>
         item.type.startsWith('image/')
@@ -5421,75 +5503,6 @@ export default function Board() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }
-
-  /* Turn a sheet about its own centre. A locked sheet takes its contents with
-     it — each member is spun about that same centre and its own rotation is
-     carried by the same delta, so the layout on the page is preserved. An
-     unlocked sheet turns underneath whatever is sitting on it. */
-  function handleFrameRotateStart(e, frame) {
-    e.stopPropagation();
-    e.preventDefault();
-    const cx = frame.x + frame.w / 2;
-    const cy = frame.y + frame.h / 2;
-    const startRotation = frame.rotation || 0;
-    const startWorld = screenToWorld(e.clientX, e.clientY);
-    const startAngle = (Math.atan2(startWorld.y - cy, startWorld.x - cx) * 180) / Math.PI;
-    // Snapshot members up front so every move rotates from the original
-    // layout instead of compounding frame to frame.
-    const memberStarts = frame.locked
-      ? new Map(
-          nodesInsideFrame(frame, nodes, nodeBounds).map((node) => [
-            node.id,
-            { x: node.x, y: node.y, rotation: node.rotation || 0 },
-          ])
-        )
-      : new Map();
-
-    function onMove(ev) {
-      const world = screenToWorld(ev.clientX, ev.clientY);
-      const angle = (Math.atan2(world.y - cy, world.x - cx) * 180) / Math.PI;
-      let rotation = startRotation + (angle - startAngle);
-      // Shift = snap to 15°, same as the node rotate handle.
-      if (ev.shiftKey) rotation = Math.round(rotation / 15) * 15;
-      // Keep it in 0–360 so the stored value stays readable after many turns.
-      rotation = ((rotation % 360) + 360) % 360;
-
-      setFrames((prev) =>
-        prev.map((f) => (f.id === frame.id ? { ...f, rotation } : f))
-      );
-
-      if (memberStarts.size === 0) return;
-      const delta = ((rotation - startRotation) * Math.PI) / 180;
-      const cos = Math.cos(delta);
-      const sin = Math.sin(delta);
-      const degrees = rotation - startRotation;
-      setNodes((prev) =>
-        prev.map((node) => {
-          const start = memberStarts.get(node.id);
-          if (!start) return node;
-          const size = nodeSize(node, nodeBounds);
-          // Spin the member's centre about the sheet's centre, then convert
-          // back to its top-left corner.
-          const mx = start.x + size.w / 2 - cx;
-          const my = start.y + size.h / 2 - cy;
-          return {
-            ...node,
-            x: cx + mx * cos - my * sin - size.w / 2,
-            y: cy + mx * sin + my * cos - size.h / 2,
-            rotation: (((start.rotation + degrees) % 360) + 360) % 360,
-          };
-        })
-      );
-    }
-
-    function onUp() {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    }
-
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }
@@ -6136,12 +6149,8 @@ export default function Board() {
 
     function onMove(ev) {
       const world = screenToWorld(ev.clientX, ev.clientY);
-      // In the sheet's own axes, so a turned sheet scales along its edges.
-      const { dx, dy } = localDelta(
-        world.x - startWorld.x,
-        world.y - startWorld.y,
-        frame.rotation
-      );
+      const dx = world.x - startWorld.x;
+      const dy = world.y - startWorld.y;
       const propW = dir.sx === 1 ? start.w + dx : dir.sx === -1 ? start.w - dx : start.w;
       const propH = dir.sy === 1 ? start.h + dy : dir.sy === -1 ? start.h - dy : start.h;
       const ratios = [];
@@ -6255,12 +6264,8 @@ export default function Board() {
 
     function onMove(ev) {
       const world = screenToWorld(ev.clientX, ev.clientY);
-      // Work in the sheet's own axes so a turned paper resizes along its edges.
-      const { dx, dy } = localDelta(
-        world.x - startWorld.x,
-        world.y - startWorld.y,
-        frame.rotation
-      );
+      const dx = world.x - startWorld.x;
+      const dy = world.y - startWorld.y;
       let nextX = start.x;
       let nextY = start.y;
       let nextW = start.w;
@@ -6277,19 +6282,15 @@ export default function Board() {
         nextH = Math.max(MIN_FRAME_SIZE, start.h - dy);
         nextY = start.y + (start.h - nextH);
       }
-      /* Snap guides are drawn along the world axes, so they mean nothing for a
-         turned sheet — it resizes freely instead. */
-      const aligned = frame.rotation
-        ? { next: { x: nextX, y: nextY, w: nextW, h: nextH }, vertical: [], horizontal: [] }
-        : getResizeAlignment(
-            frame,
-            { x: nextX, y: nextY, w: nextW, h: nextH },
-            handleId,
-            alignmentTargets,
-            nodeBounds,
-            ALIGN_GUIDE_TOLERANCE_PX / viewport.zoom,
-            MIN_FRAME_SIZE
-          );
+      const aligned = getResizeAlignment(
+        frame,
+        { x: nextX, y: nextY, w: nextW, h: nextH },
+        handleId,
+        alignmentTargets,
+        nodeBounds,
+        ALIGN_GUIDE_TOLERANCE_PX / viewport.zoom,
+        MIN_FRAME_SIZE
+      );
       const finalNext = aligned.next;
       setAlignmentGuides({
         vertical: aligned.vertical,
@@ -7117,6 +7118,7 @@ export default function Board() {
           const paperMmW = Math.round(pxToMm(frame.w));
           const paperMmH = Math.round(pxToMm(frame.h));
           const activePresetId = paper ? paperPresetIdFor(frame) : null;
+          const isPortrait = frame.h >= frame.w;
           return (
             <div
               className="boardToolbarPopout boardFramePopout"
@@ -7150,7 +7152,11 @@ export default function Board() {
                             key={preset.id}
                             type="button"
                             className={`boardFrameFillBtn ${activePresetId === preset.id ? 'active' : ''}`}
-                            onClick={() => setPaperSizeMm(frame.id, preset.mmW, preset.mmH)}
+                            onClick={() =>
+                              setPaperSizeMm(frame.id, preset.mmW, preset.mmH, {
+                                keepOrientation: true,
+                              })
+                            }
                             title={`${preset.label} — ${preset.mmW} × ${preset.mmH} mm`}
                           >
                             {preset.label}
@@ -7217,6 +7223,31 @@ export default function Board() {
                     onChange={(c) => setFrameColor(frame.id, c)}
                   />
                 </div>
+                {paper ? (
+                  <div className="boardFrameControl">
+                    <span className="boardFrameRowLabel">Layout</span>
+                    <div className="boardFrameFillToggle" aria-label="Paper orientation">
+                      <button
+                        type="button"
+                        className={`boardFrameFillBtn ${isPortrait ? 'active' : ''}`}
+                        onClick={() => setPaperOrientation(frame.id, 'portrait')}
+                        title="Portrait — taller than wide"
+                        aria-label="Portrait"
+                      >
+                        <RectangleVertical size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`boardFrameFillBtn ${isPortrait ? '' : 'active'}`}
+                        onClick={() => setPaperOrientation(frame.id, 'landscape')}
+                        title="Landscape — wider than tall; a locked sheet turns its contents with it"
+                        aria-label="Landscape"
+                      >
+                        <RectangleHorizontal size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {/* A sheet is opaque by definition — the fill toggle only
                     makes sense for grouping frames. */}
                 {paper ? null : (
@@ -7530,8 +7561,8 @@ export default function Board() {
 
             {(() => {
               /* Resize handles around a selected frame — same 8 corners/edges
-                 as nodes use. Papers also get the rotate arm; a grouping frame
-                 stays axis-aligned. */
+                 as nodes use, minus the rotate arm: frames and sheets stay
+                 axis-aligned. A sheet changes orientation from its popout. */
               if (selectedIds.size + selectedFrameIds.size > 1) return null;
               if (!selectedFrameId) return null;
               const frame = frames.find((f) => f.id === selectedFrameId);
@@ -7545,33 +7576,8 @@ export default function Board() {
                     top: frame.y,
                     width: frame.w,
                     height: frame.h,
-                    transform: frame.rotation ? `rotate(${frame.rotation}deg)` : undefined,
-                    transformOrigin: 'center',
                   }}
                 >
-                  {isPaperFrame(frame) ? (
-                    <>
-                      <div
-                        className="boardRotateLink"
-                        style={{
-                          left: '50%',
-                          top: 0,
-                          height: 18 / viewport.zoom,
-                          width: `${1 / viewport.zoom}px`,
-                          transform: 'translate(-50%, -100%)',
-                        }}
-                      />
-                      <div
-                        className="boardRotateHandle"
-                        style={{
-                          left: '50%',
-                          top: 0,
-                          transform: `translate(-50%, calc(-100% - ${18 / viewport.zoom}px)) scale(${handleScale})`,
-                        }}
-                        onMouseDown={(e) => handleFrameRotateStart(e, frame)}
-                      />
-                    </>
-                  ) : null}
                   {HANDLE_IDS.map((id) => {
                     const dir = HANDLE_DIRS[id];
                     const left =
