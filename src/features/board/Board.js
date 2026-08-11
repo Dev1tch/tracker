@@ -104,6 +104,9 @@ const MIN_FRAME_SIZE = 60;
    frame's on-screen width, so the tag stays proportionate as a frame gets
    small instead of overhanging it. */
 const LABEL_MAX_FRAME_SHARE = 0.05;
+/* Nudge for a paste that isn't aimed anywhere in particular (Ctrl+V), so the
+   copy lands beside the original instead of exactly on top of it. */
+const BOARD_PASTE_OFFSET = 28;
 const FRAME_COLORS = [
   '#f87171', // red
   '#60a5fa', // blue
@@ -610,14 +613,35 @@ function nodeCenterCoords(node, bounds) {
   return { x: node.x + w / 2, y: node.y + h / 2 };
 }
 
+/* Is this world point inside the frame? A rotated frame (papers can be turned)
+   is tested by spinning the point back into the frame's own un-rotated space
+   about its centre, so membership follows the sheet as it turns instead of
+   staying stuck to the axis-aligned rectangle. */
+function pointInFrame(frame, x, y) {
+  let px = x;
+  let py = y;
+  if (frame.rotation) {
+    const cx = frame.x + frame.w / 2;
+    const cy = frame.y + frame.h / 2;
+    const radians = (-frame.rotation * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const dx = x - cx;
+    const dy = y - cy;
+    px = cx + dx * cos - dy * sin;
+    py = cy + dx * sin + dy * cos;
+  }
+  return (
+    px >= frame.x &&
+    px <= frame.x + frame.w &&
+    py >= frame.y &&
+    py <= frame.y + frame.h
+  );
+}
+
 function frameContains(frame, node, bounds) {
   const c = nodeCenterCoords(node, bounds);
-  return (
-    c.x >= frame.x &&
-    c.x <= frame.x + frame.w &&
-    c.y >= frame.y &&
-    c.y <= frame.y + frame.h
-  );
+  return pointInFrame(frame, c.x, c.y);
 }
 
 function nodesInsideFrame(frame, nodes, bounds) {
@@ -685,8 +709,7 @@ function findContainingFrame(node, frames, bounds) {
   let best = null;
   let bestArea = Infinity;
   for (const f of frames) {
-    const nodeCenterIn =
-      cx >= f.x && cx <= f.x + f.w && cy >= f.y && cy <= f.y + f.h;
+    const nodeCenterIn = pointInFrame(f, cx, cy);
     const fcx = f.x + f.w / 2;
     const fcy = f.y + f.h / 2;
     const frameCenterIn =
@@ -708,6 +731,9 @@ function findContainingFrame(node, frames, bounds) {
 function frameClipFor(node, frame, bounds) {
   if (!frame) return undefined;
   if (node.rotation) return undefined;
+  // An inset() clip is axis-aligned, so it can't describe a turned sheet's
+  // edges. Skip clipping there rather than cutting along the wrong lines.
+  if (frame.rotation) return undefined;
   const w = bounds[node.id]?.w ?? node.w ?? 100;
   const h = bounds[node.id]?.h ?? node.h ?? 40;
   const top = Math.max(0, frame.y - node.y);
@@ -720,6 +746,19 @@ function frameClipFor(node, frame, bounds) {
 
 function nodeTransform(node) {
   return node.rotation ? `rotate(${node.rotation}deg)` : undefined;
+}
+
+/* A drag delta expressed in the item's own axes. A turned sheet's width still
+   runs along its own edge, so a resize has to work from the delta spun back by
+   the item's angle — otherwise dragging the visual right edge of a sheet
+   turned 90° would read as vertical movement and barely resize it. At
+   rotation 0 this returns the delta untouched. */
+function localDelta(dx, dy, rotation) {
+  if (!rotation) return { dx, dy };
+  const radians = (-rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return { dx: dx * cos - dy * sin, dy: dx * sin + dy * cos };
 }
 
 function serializeBoardState(nodes, edges) {
@@ -2145,6 +2184,38 @@ function rectFromBox(x, y, w, h) {
   };
 }
 
+/* Do two left/top/right/bottom rects overlap at all? Marquee selection takes
+   anything the rubber band touches, the way a desktop selection does. */
+function rectsOverlap(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function marqueeRect(marquee) {
+  return {
+    left: Math.min(marquee.x1, marquee.x2),
+    top: Math.min(marquee.y1, marquee.y2),
+    right: Math.max(marquee.x1, marquee.x2),
+    bottom: Math.max(marquee.y1, marquee.y2),
+  };
+}
+
+/* Bounding box of a clipboard payload, so a paste can be dropped centred on
+   the cursor rather than at the coordinates it was copied from. */
+function payloadCenter(items) {
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  items.forEach(({ x, y, w, h }) => {
+    left = Math.min(left, x);
+    top = Math.min(top, y);
+    right = Math.max(right, x + (w || 0));
+    bottom = Math.max(bottom, y + (h || 0));
+  });
+  if (!Number.isFinite(left)) return { x: 0, y: 0 };
+  return { x: (left + right) / 2, y: (top + bottom) / 2 };
+}
+
 function verticalGuide(x, moving, target) {
   return {
     x,
@@ -3070,6 +3141,8 @@ function FrameNode({
         borderColor: paper ? undefined : frame.color,
         borderWidth: frameBorderWidth,
         background: frameBackground,
+        transform: frame.rotation ? `rotate(${frame.rotation}deg)` : undefined,
+        transformOrigin: 'center',
         '--frame-color': accentColor,
       }}
       onMouseDown={onMouseDown}
@@ -3170,6 +3243,10 @@ export default function Board() {
   const [editingId, setEditingId] = useState(null);
   const [editingFrameId, setEditingFrameId] = useState(null);
   const [frameDraft, setFrameDraft] = useState(null);
+  /* Rubber-band rectangle in world coords while the user drags out a
+     selection, and the right-click menu's screen position + world anchor. */
+  const [marquee, setMarquee] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
   // arrowSource is either null or { id, side } where side is 'auto' | 'top' |
   // 'right' | 'bottom' | 'left'. 'auto' means the user clicked the body of the
   // item (so the routing should pick a side geometrically).
@@ -3228,6 +3305,12 @@ export default function Board() {
   const nodeDragMovedRef = useRef(false);
   const suppressNextFrameClickRef = useRef(false);
   const lastNodeClickRef = useRef({ id: null, time: 0 });
+  /* Copied board items, kept in memory — the system clipboard only holds a
+     marker pointing at this (see BOARD_CLIPBOARD_MARKER). */
+  const boardClipboardRef = useRef(null);
+  /* Held space turns a left-drag back into a pan, since a plain left-drag on
+     the surface now draws a selection rectangle. */
+  const spacePanRef = useRef(false);
   /* IndexedDB hydration must finish before we start writing, otherwise an
      empty initial state could overwrite the user's saved board. */
   const persistHydratedRef = useRef(false);
@@ -3768,6 +3851,31 @@ export default function Board() {
     return () => wrap.removeEventListener('wheel', onWheel);
   }, [clampZoom]);
 
+  /* Space is the pan modifier while a left-drag rubber-bands. Tracked on the
+     window so it keeps working wherever focus sits on the board. */
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.code !== 'Space' || isTextInputTarget(e.target)) return;
+      spacePanRef.current = true;
+      // Stop the page from scrolling under the board while space is held.
+      e.preventDefault();
+    }
+    function onKeyUp(e) {
+      if (e.code === 'Space') spacePanRef.current = false;
+    }
+    function onBlur() {
+      spacePanRef.current = false;
+    }
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
+
   /* Track mouse for the ghost arrow (in world coords). */
   useEffect(() => {
     if (!arrowSource && !arrowPointSource) return undefined;
@@ -3818,6 +3926,125 @@ export default function Board() {
     setSelectedFrameId(null);
     setSelectedFrameIds(new Set());
   }, []);
+
+  /* Gather what a copy should carry: the selected nodes, the selected frames,
+     everything sitting on those frames (a sheet copies with its contents), any
+     frames nested inside them, and the arrows whose both ends are in the set.
+     Cloned through JSON so a later edit to the originals can't reach into the
+     copy. */
+  const collectSelectionForClipboard = useCallback(() => {
+    const frameIds = collectNestedFrameIds(
+      new Set([...selectedFrameIds, ...(selectedFrameId ? [selectedFrameId] : [])]),
+      frames
+    );
+    const nodeIds = new Set(selectedIds);
+    if (selectedId) nodeIds.add(selectedId);
+    frames
+      .filter((frame) => frameIds.has(frame.id))
+      .forEach((frame) => {
+        nodesInsideFrame(frame, nodes, nodeBounds).forEach((node) => nodeIds.add(node.id));
+      });
+    if (nodeIds.size === 0 && frameIds.size === 0) return null;
+
+    const copiedNodes = nodes.filter((node) => nodeIds.has(node.id));
+    const copiedFrames = frames.filter((frame) => frameIds.has(frame.id));
+    const isCopied = (id) => id && (nodeIds.has(id) || frameIds.has(id));
+    const copiedEdges = edges.filter(
+      (edge) => (!edge.from || isCopied(edge.from)) && (!edge.to || isCopied(edge.to))
+                && (edge.from || edge.to)
+    );
+
+    return {
+      nodes: JSON.parse(JSON.stringify(copiedNodes)),
+      frames: JSON.parse(JSON.stringify(copiedFrames)),
+      edges: JSON.parse(JSON.stringify(copiedEdges)),
+      center: payloadCenter([
+        ...copiedFrames,
+        ...copiedNodes.map((node) => ({ ...node, ...nodeSize(node, nodeBounds) })),
+      ]),
+    };
+  }, [edges, frames, nodeBounds, nodes, selectedFrameId, selectedFrameIds, selectedId, selectedIds]);
+
+  const copySelection = useCallback(() => {
+    const payload = collectSelectionForClipboard();
+    if (!payload) return null;
+    const nonce = generateId();
+    boardClipboardRef.current = { ...payload, nonce };
+    return nonce;
+  }, [collectSelectionForClipboard]);
+
+  /* Drop the copy on the board. `worldPoint` centres it on the cursor (the
+     right-click paste); without one it lands a nudge away from the original.
+     Every id is regenerated, and arrows are re-pointed at the new copies so
+     the pasted group is wired up like the one it came from. */
+  const pasteClipboard = useCallback((worldPoint) => {
+    const payload = boardClipboardRef.current;
+    if (!payload) return;
+
+    // The blind-paste nudge is a screen distance, so the copy is visibly
+    // beside the original whether the board is zoomed right in or far out.
+    const nudge = BOARD_PASTE_OFFSET / Math.max(viewport.zoom, 0.01);
+    const dx = worldPoint ? worldPoint.x - payload.center.x : nudge;
+    const dy = worldPoint ? worldPoint.y - payload.center.y : nudge;
+    const idMap = new Map();
+    const remap = (item) => {
+      const id = generateId();
+      idMap.set(item.id, id);
+      return { ...item, id, x: item.x + dx, y: item.y + dy };
+    };
+
+    const newFrames = payload.frames.map(remap);
+    const newNodes = payload.nodes.map(remap);
+    const newEdges = payload.edges.map((edge) => {
+      const next = { ...edge, id: generateId() };
+      if (edge.from) next.from = idMap.get(edge.from) || edge.from;
+      if (edge.to) next.to = idMap.get(edge.to) || edge.to;
+      if (edge.start) next.start = { x: edge.start.x + dx, y: edge.start.y + dy };
+      if (edge.end) next.end = { x: edge.end.x + dx, y: edge.end.y + dy };
+      return next;
+    });
+
+    if (newFrames.length) setFrames((prev) => [...prev, ...newFrames]);
+    if (newNodes.length) setNodes((prev) => [...prev, ...newNodes]);
+    if (newEdges.length) setEdges((prev) => [...prev, ...newEdges]);
+
+    // Leave the fresh copy selected so it can be dragged straight away.
+    setSelectedIds(new Set(newNodes.map((node) => node.id)));
+    setSelectedFrameIds(new Set(newFrames.map((frame) => frame.id)));
+    setSelectedId(newNodes[0]?.id || null);
+    setSelectedFrameId(newFrames[0]?.id || null);
+    setSelectedEdgeId(null);
+  }, [viewport.zoom]);
+
+  /* Topmost item under a world point, used so a right-click can select what it
+     landed on before opening the menu. Nodes win over frames (they paint on
+     top), and the smallest frame wins among frames, matching the containment
+     rules elsewhere. */
+  const itemAtWorldPoint = useCallback((point) => {
+    for (let i = nodes.length - 1; i >= 0; i -= 1) {
+      const node = nodes[i];
+      const size = nodeSize(node, nodeBounds);
+      if (
+        point.x >= node.x &&
+        point.x <= node.x + size.w &&
+        point.y >= node.y &&
+        point.y <= node.y + size.h
+      ) {
+        return { kind: 'node', id: node.id };
+      }
+    }
+    let best = null;
+    let bestArea = Infinity;
+    frames.forEach((frame) => {
+      if (!pointInFrame(frame, point.x, point.y)) return;
+      const area = frame.w * frame.h;
+      if (area < bestArea) {
+        best = frame;
+        bestArea = area;
+      }
+    });
+    return best ? { kind: 'frame', id: best.id } : null;
+  }, [frames, nodeBounds, nodes]);
 
   const removeNode = useCallback((id) => {
     setNodes((prev) => prev.filter((n) => n.id !== id));
@@ -4047,7 +4274,24 @@ export default function Board() {
         return;
       }
 
+      /* Copy. The browser only raises a copy event when there is a text
+         selection to copy, so the shortcut is caught here instead. Nothing is
+         written to the system clipboard, which leaves whatever the user had
+         there intact; the paste side reads our in-memory copy. */
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === 'c' &&
+        !isTextInputTarget(e.target)
+      ) {
+        copySelection();
+        return;
+      }
+
       if (e.key === 'Escape') {
+        if (contextMenu) {
+          setContextMenu(null);
+          return;
+        }
         if (editingId) {
           commitText(editingId, readEditingText(), readEditingHtml());
           return;
@@ -4061,6 +4305,7 @@ export default function Board() {
         setArrowPointSource(null);
         clearSelection();
         setFrameDraft(null);
+        setMarquee(null);
       } else if (
         (e.key === 'Delete' || e.key === 'Backspace') &&
         !editingId &&
@@ -4100,6 +4345,8 @@ export default function Board() {
     readEditingFrameName,
     undoBoard,
     redoBoard,
+    copySelection,
+    contextMenu,
   ]);
 
   /* Auto-fit the editing text node to its content while it's being edited.
@@ -4771,6 +5018,16 @@ export default function Board() {
         return;
       }
 
+      /* Board items copied with Ctrl+C live in memory, not on the system
+         clipboard — an image node's src can be a data URL, far too heavy to
+         park there. An image on the clipboard still wins (handled above), so
+         this only takes over the plain-text case. */
+      if (boardClipboardRef.current) {
+        e.preventDefault();
+        pasteClipboard(null);
+        return;
+      }
+
       const text = e.clipboardData?.getData('text/plain')?.trim();
       if (!text) return;
 
@@ -4786,7 +5043,7 @@ export default function Board() {
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [addPastedTextNode, importBoardImage, screenToWorld, viewport.zoom]);
+  }, [addPastedTextNode, importBoardImage, pasteClipboard, screenToWorld, viewport.zoom]);
 
   function commitText(id, text, html = '') {
     const trimmed = (text || '').trim();
@@ -5031,6 +5288,75 @@ export default function Board() {
     window.addEventListener('mouseup', onUp);
   }
 
+  /* Turn a sheet about its own centre. A locked sheet takes its contents with
+     it — each member is spun about that same centre and its own rotation is
+     carried by the same delta, so the layout on the page is preserved. An
+     unlocked sheet turns underneath whatever is sitting on it. */
+  function handleFrameRotateStart(e, frame) {
+    e.stopPropagation();
+    e.preventDefault();
+    const cx = frame.x + frame.w / 2;
+    const cy = frame.y + frame.h / 2;
+    const startRotation = frame.rotation || 0;
+    const startWorld = screenToWorld(e.clientX, e.clientY);
+    const startAngle = (Math.atan2(startWorld.y - cy, startWorld.x - cx) * 180) / Math.PI;
+    // Snapshot members up front so every move rotates from the original
+    // layout instead of compounding frame to frame.
+    const memberStarts = frame.locked
+      ? new Map(
+          nodesInsideFrame(frame, nodes, nodeBounds).map((node) => [
+            node.id,
+            { x: node.x, y: node.y, rotation: node.rotation || 0 },
+          ])
+        )
+      : new Map();
+
+    function onMove(ev) {
+      const world = screenToWorld(ev.clientX, ev.clientY);
+      const angle = (Math.atan2(world.y - cy, world.x - cx) * 180) / Math.PI;
+      let rotation = startRotation + (angle - startAngle);
+      // Shift = snap to 15°, same as the node rotate handle.
+      if (ev.shiftKey) rotation = Math.round(rotation / 15) * 15;
+      // Keep it in 0–360 so the stored value stays readable after many turns.
+      rotation = ((rotation % 360) + 360) % 360;
+
+      setFrames((prev) =>
+        prev.map((f) => (f.id === frame.id ? { ...f, rotation } : f))
+      );
+
+      if (memberStarts.size === 0) return;
+      const delta = ((rotation - startRotation) * Math.PI) / 180;
+      const cos = Math.cos(delta);
+      const sin = Math.sin(delta);
+      const degrees = rotation - startRotation;
+      setNodes((prev) =>
+        prev.map((node) => {
+          const start = memberStarts.get(node.id);
+          if (!start) return node;
+          const size = nodeSize(node, nodeBounds);
+          // Spin the member's centre about the sheet's centre, then convert
+          // back to its top-left corner.
+          const mx = start.x + size.w / 2 - cx;
+          const my = start.y + size.h / 2 - cy;
+          return {
+            ...node,
+            x: cx + mx * cos - my * sin - size.w / 2,
+            y: cy + mx * sin + my * cos - size.h / 2,
+            rotation: (((start.rotation + degrees) % 360) + 360) % 360,
+          };
+        })
+      );
+    }
+
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
   /* ---------- surface interactions (pan / click) ---------- */
 
   function startViewportPan(e, { suppressFrameClick = false } = {}) {
@@ -5067,7 +5393,76 @@ export default function Board() {
     return () => moved;
   }
 
+  /* Rubber-band selection: drag on empty surface with the select tool and
+     everything the rectangle touches is selected, like a desktop. Holding
+     shift / ctrl adds to what is already selected instead of replacing it. */
+  function startMarquee(e) {
+    const start = screenToWorld(e.clientX, e.clientY);
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    const baseNodeIds = additive ? new Set(selectedIds) : new Set();
+    const baseFrameIds = additive ? new Set(selectedFrameIds) : new Set();
+    const startScreenX = e.clientX;
+    const startScreenY = e.clientY;
+    let moved = false;
+
+    function onMove(ev) {
+      if (!moved && Math.hypot(ev.clientX - startScreenX, ev.clientY - startScreenY) < 3) {
+        return;
+      }
+      moved = true;
+      const current = screenToWorld(ev.clientX, ev.clientY);
+      setMarquee({ x1: start.x, y1: start.y, x2: current.x, y2: current.y });
+    }
+
+    function onUp(ev) {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setMarquee(null);
+
+      if (!moved) {
+        // A click, not a drag — same as clicking empty surface always did.
+        if (!additive) {
+          clearSelection();
+          collapseExpandedTaskNode();
+        }
+        return;
+      }
+
+      const end = screenToWorld(ev.clientX, ev.clientY);
+      const area = marqueeRect({ x1: start.x, y1: start.y, x2: end.x, y2: end.y });
+      const nodeIds = new Set(baseNodeIds);
+      const frameIds = new Set(baseFrameIds);
+      nodes.forEach((node) => {
+        if (rectsOverlap(nodeRectAt(node, nodeBounds), area)) nodeIds.add(node.id);
+      });
+      frames.forEach((frame) => {
+        if (rectsOverlap(rectFromBox(frame.x, frame.y, frame.w, frame.h), area)) {
+          frameIds.add(frame.id);
+        }
+      });
+
+      setSelectedIds(nodeIds);
+      setSelectedFrameIds(frameIds);
+      setSelectedId(nodeIds.values().next().value || null);
+      setSelectedFrameId(frameIds.values().next().value || null);
+      setSelectedEdgeId(null);
+    }
+
+    setMarquee({ x1: start.x, y1: start.y, x2: start.x, y2: start.y });
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
   function handleSurfaceMouseDown(e) {
+    /* Middle-drag and space+drag always pan, whatever the tool — they are the
+       way to move the board now that a plain left-drag rubber-bands. */
+    if (e.button === 1 || spacePanRef.current) {
+      e.preventDefault();
+      startViewportPan(e);
+      return;
+    }
+    if (e.button !== 0) return;
+
     // Drawing tools should always capture the mousedown, even when it lands
     // on an existing node, so the user can draw over anything.
     //
@@ -5273,6 +5668,14 @@ export default function Board() {
       return;
     }
 
+    /* Select tool on empty surface: rubber-band a selection. The other tools
+       keep the pan-or-click gesture below, since their click places something
+       and dragging should still move the board. */
+    if (tool === 'select') {
+      startMarquee(e);
+      return;
+    }
+
     const didMove = startViewportPan(e);
     function onUp(ev) {
       window.removeEventListener('mouseup', onUp);
@@ -5444,6 +5847,13 @@ export default function Board() {
   function handleFrameMouseDown(e, frame) {
     if (tool !== 'select') return;
     if (editingFrameId === frame.id) return;
+    // Space is the pan modifier — it works over anything on the board.
+    if (spacePanRef.current) {
+      e.stopPropagation();
+      e.preventDefault();
+      startViewportPan(e);
+      return;
+    }
     e.stopPropagation();
     if (frameCoversViewport(frame)) {
       startViewportPan(e, { suppressFrameClick: true });
@@ -5589,8 +5999,12 @@ export default function Board() {
 
     function onMove(ev) {
       const world = screenToWorld(ev.clientX, ev.clientY);
-      const dx = world.x - startWorld.x;
-      const dy = world.y - startWorld.y;
+      // In the sheet's own axes, so a turned sheet scales along its edges.
+      const { dx, dy } = localDelta(
+        world.x - startWorld.x,
+        world.y - startWorld.y,
+        frame.rotation
+      );
       const propW = dir.sx === 1 ? start.w + dx : dir.sx === -1 ? start.w - dx : start.w;
       const propH = dir.sy === 1 ? start.h + dy : dir.sy === -1 ? start.h - dy : start.h;
       const ratios = [];
@@ -5704,8 +6118,12 @@ export default function Board() {
 
     function onMove(ev) {
       const world = screenToWorld(ev.clientX, ev.clientY);
-      const dx = world.x - startWorld.x;
-      const dy = world.y - startWorld.y;
+      // Work in the sheet's own axes so a turned paper resizes along its edges.
+      const { dx, dy } = localDelta(
+        world.x - startWorld.x,
+        world.y - startWorld.y,
+        frame.rotation
+      );
       let nextX = start.x;
       let nextY = start.y;
       let nextW = start.w;
@@ -5722,15 +6140,19 @@ export default function Board() {
         nextH = Math.max(MIN_FRAME_SIZE, start.h - dy);
         nextY = start.y + (start.h - nextH);
       }
-      const aligned = getResizeAlignment(
-        frame,
-        { x: nextX, y: nextY, w: nextW, h: nextH },
-        handleId,
-        alignmentTargets,
-        nodeBounds,
-        ALIGN_GUIDE_TOLERANCE_PX / viewport.zoom,
-        MIN_FRAME_SIZE
-      );
+      /* Snap guides are drawn along the world axes, so they mean nothing for a
+         turned sheet — it resizes freely instead. */
+      const aligned = frame.rotation
+        ? { next: { x: nextX, y: nextY, w: nextW, h: nextH }, vertical: [], horizontal: [] }
+        : getResizeAlignment(
+            frame,
+            { x: nextX, y: nextY, w: nextW, h: nextH },
+            handleId,
+            alignmentTargets,
+            nodeBounds,
+            ALIGN_GUIDE_TOLERANCE_PX / viewport.zoom,
+            MIN_FRAME_SIZE
+          );
       const finalNext = aligned.next;
       setAlignmentGuides({
         vertical: aligned.vertical,
@@ -5771,6 +6193,51 @@ export default function Board() {
     window.addEventListener('mouseup', onUp);
   }
 
+  /* Right-click: select whatever is under the cursor (unless it is already
+     part of the selection, so a right-click inside a multi-selection keeps it)
+     and open the copy/paste menu anchored at that spot. */
+  const hasSelection =
+    selectedIds.size > 0 || selectedFrameIds.size > 0 || Boolean(selectedId) || Boolean(selectedFrameId);
+
+  function handleSurfaceContextMenu(e) {
+    e.preventDefault();
+    const world = screenToWorld(e.clientX, e.clientY);
+    let hit = itemAtWorldPoint(world);
+    if (hit?.kind === 'node') {
+      // Anything on a locked sheet belongs to the sheet, same as for a click.
+      const node = nodes.find((item) => item.id === hit.id);
+      const lockedHost = node ? lockedPaperFor(node) : null;
+      if (lockedHost) hit = { kind: 'frame', id: lockedHost.id };
+    }
+    if (hit?.kind === 'node' && !selectedIds.has(hit.id) && selectedId !== hit.id) {
+      selectNode(hit.id);
+    } else if (hit?.kind === 'frame' && !selectedFrameIds.has(hit.id) && selectedFrameId !== hit.id) {
+      selectFrame(hit.id);
+    } else if (!hit) {
+      clearSelection();
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY, world });
+  }
+
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    function closeOnOutsideClick(e) {
+      if (e.target?.closest?.('.boardContextMenu')) return;
+      setContextMenu(null);
+    }
+    function close() {
+      setContextMenu(null);
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    window.addEventListener('resize', close);
+    window.addEventListener('wheel', close, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('wheel', close);
+    };
+  }, [contextMenu]);
+
   function handleDragOver(e) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -5786,7 +6253,20 @@ export default function Board() {
 
   /* ---------- node interactions ---------- */
 
+  /* The sheet a node is pinned to: a locked paper it sits on. Clicks and drags
+     on the node belong to that sheet — it is what locking means, and it is the
+     only way to grab a sheet whose own contents cover it completely. */
+  function lockedPaperFor(node) {
+    const host = findContainingFrame(node, frames, nodeBounds);
+    return host && isPaperFrame(host) && host.locked ? host : null;
+  }
+
   function handleNodeClick(e, node) {
+    const lockedHost = lockedPaperFor(node);
+    if (lockedHost) {
+      handleFrameClick(e, lockedHost);
+      return;
+    }
     e.stopPropagation();
     if (nodeDragMovedRef.current) {
       nodeDragMovedRef.current = false;
@@ -5834,6 +6314,17 @@ export default function Board() {
 
   function handleNodeMouseDown(e, node) {
     if (tool !== 'select' || editingId === node.id) return;
+    if (spacePanRef.current) {
+      e.stopPropagation();
+      e.preventDefault();
+      startViewportPan(e);
+      return;
+    }
+    const lockedHost = lockedPaperFor(node);
+    if (lockedHost) {
+      handleFrameMouseDown(e, lockedHost);
+      return;
+    }
     e.stopPropagation();
     nodeDragMovedRef.current = false;
     const isMultiSelectGesture = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -6612,6 +7103,7 @@ export default function Board() {
             backgroundPosition: `${viewport.x}px ${viewport.y}px`,
           }}
           onMouseDown={handleSurfaceMouseDown}
+          onContextMenu={handleSurfaceContextMenu}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
@@ -6651,6 +7143,21 @@ export default function Board() {
                 />
               );
             })}
+
+            {/* Rubber-band selection rectangle. Drawn in world coords so it
+                stays anchored to the board, with a hairline edge at any zoom. */}
+            {marquee && (
+              <div
+                className="boardMarquee"
+                style={{
+                  left: Math.min(marquee.x1, marquee.x2),
+                  top: Math.min(marquee.y1, marquee.y2),
+                  width: Math.abs(marquee.x2 - marquee.x1),
+                  height: Math.abs(marquee.y2 - marquee.y1),
+                  borderWidth: 1 / viewport.zoom,
+                }}
+              />
+            )}
 
             {/* Draft rectangle while the user drags out a new frame. */}
             {frameDraft && (
@@ -6843,7 +7350,8 @@ export default function Board() {
 
             {(() => {
               /* Resize handles around a selected frame — same 8 corners/edges
-                 as nodes use, minus the rotate arm. */
+                 as nodes use. Papers also get the rotate arm; a grouping frame
+                 stays axis-aligned. */
               if (selectedIds.size + selectedFrameIds.size > 1) return null;
               if (!selectedFrameId) return null;
               const frame = frames.find((f) => f.id === selectedFrameId);
@@ -6857,8 +7365,33 @@ export default function Board() {
                     top: frame.y,
                     width: frame.w,
                     height: frame.h,
+                    transform: frame.rotation ? `rotate(${frame.rotation}deg)` : undefined,
+                    transformOrigin: 'center',
                   }}
                 >
+                  {isPaperFrame(frame) ? (
+                    <>
+                      <div
+                        className="boardRotateLink"
+                        style={{
+                          left: '50%',
+                          top: 0,
+                          height: 18 / viewport.zoom,
+                          width: `${1 / viewport.zoom}px`,
+                          transform: 'translate(-50%, -100%)',
+                        }}
+                      />
+                      <div
+                        className="boardRotateHandle"
+                        style={{
+                          left: '50%',
+                          top: 0,
+                          transform: `translate(-50%, calc(-100% - ${18 / viewport.zoom}px)) scale(${handleScale})`,
+                        }}
+                        onMouseDown={(e) => handleFrameRotateStart(e, frame)}
+                      />
+                    </>
+                  ) : null}
                   {HANDLE_IDS.map((id) => {
                     const dir = HANDLE_DIRS[id];
                     const left =
@@ -7086,6 +7619,42 @@ export default function Board() {
               <Maximize size={14} />
             </button>
           </div>
+
+          {/* Right-click menu. Fixed to the viewport, so it is placed from the
+              screen coords of the click; its paste lands where the click was. */}
+          {contextMenu ? (
+            <div
+              className="boardContextMenu"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              role="menu"
+              aria-label="Board actions"
+            >
+              <button
+                type="button"
+                className="boardContextMenuItem"
+                role="menuitem"
+                disabled={!hasSelection}
+                onClick={() => {
+                  copySelection();
+                  setContextMenu(null);
+                }}
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                className="boardContextMenuItem"
+                role="menuitem"
+                disabled={!boardClipboardRef.current}
+                onClick={() => {
+                  pasteClipboard(contextMenu.world);
+                  setContextMenu(null);
+                }}
+              >
+                Paste
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
       <ConfirmModal

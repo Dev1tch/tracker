@@ -690,6 +690,76 @@
   z-index: 2;
 }
 
+/* Rubber-band selection rectangle — the desktop gesture: a translucent fill in
+   the secondary colour behind a solid hairline edge. It fades up as the drag
+   starts so it doesn't blink into existence at full strength. */
+.boardMarquee {
+  position: absolute;
+  border-style: solid;
+  border-color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-secondary) 14%, transparent);
+  pointer-events: none;
+  z-index: 6;
+  animation: boardMarqueeIn 140ms ease-out;
+}
+
+@keyframes boardMarqueeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Right-click menu. Fixed to the viewport (it is placed from screen coords),
+   so it stays put while the board pans underneath it. */
+.boardContextMenu {
+  position: fixed;
+  z-index: 40;
+  min-width: 132px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-color-dim);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  animation: boardContextMenuIn 110ms ease-out;
+}
+
+@keyframes boardContextMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.boardContextMenuItem {
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.boardContextMenuItem:hover:not(:disabled) {
+  background: var(--surface-08);
+  color: var(--text-primary);
+}
+
+.boardContextMenuItem:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
 /* Resize handles wrapper for a selected frame (mirrors .boardSelectionFrame
    but with no rotate arm). */
 .boardFrameSelectionFrame {
