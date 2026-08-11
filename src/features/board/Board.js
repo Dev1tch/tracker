@@ -2199,6 +2199,73 @@ function marqueeRect(marquee) {
   };
 }
 
+/* Everything a copy carries. Nodes of every kind (photo, text, link, drawing,
+   task, note), frames and papers — with whatever sits on them and any frames
+   nested inside — and arrows: an explicitly selected one, plus any whose ends
+   are all in the copied set so a copied group keeps its wiring. Cloned through
+   JSON, so editing the originals afterwards can't reach into the copy. */
+function collectClipboardPayload({ nodes, frames, edges, bounds, nodeIds, frameIds, edgeIds }) {
+  const allFrameIds = collectNestedFrameIds(frameIds, frames);
+  const allNodeIds = new Set(nodeIds);
+  frames
+    .filter((frame) => allFrameIds.has(frame.id))
+    .forEach((frame) => {
+      nodesInsideFrame(frame, nodes, bounds).forEach((node) => allNodeIds.add(node.id));
+    });
+
+  const isCopied = (id) => Boolean(id) && (allNodeIds.has(id) || allFrameIds.has(id));
+  const copiedNodes = nodes.filter((node) => allNodeIds.has(node.id));
+  const copiedFrames = frames.filter((frame) => allFrameIds.has(frame.id));
+  const copiedEdges = edges.filter(
+    (edge) =>
+      edgeIds.has(edge.id) ||
+      ((edge.from || edge.to) &&
+        (!edge.from || isCopied(edge.from)) &&
+        (!edge.to || isCopied(edge.to)))
+  );
+
+  if (copiedNodes.length === 0 && copiedFrames.length === 0 && copiedEdges.length === 0) {
+    return null;
+  }
+
+  return {
+    nodes: JSON.parse(JSON.stringify(copiedNodes)),
+    frames: JSON.parse(JSON.stringify(copiedFrames)),
+    edges: JSON.parse(JSON.stringify(copiedEdges)),
+    center: payloadCenter([
+      ...copiedFrames,
+      ...copiedNodes.map((node) => ({ ...node, ...nodeSize(node, bounds) })),
+      // Free arrow ends carry the geometry when an arrow is all that's copied.
+      ...copiedEdges.flatMap((edge) => [edge.start, edge.end].filter(Boolean)),
+    ]),
+  };
+}
+
+/* The copy, shifted and given fresh ids. Arrows are re-pointed at the new
+   copies where both ends came along, and keep pointing at the original item
+   where they didn't. `nextId` is injected so this stays a pure function. */
+function clonePayload(payload, dx, dy, nextId) {
+  const idMap = new Map();
+  const move = (item) => {
+    const id = nextId();
+    idMap.set(item.id, id);
+    return { ...item, id, x: item.x + dx, y: item.y + dy };
+  };
+
+  const frames = payload.frames.map(move);
+  const nodes = payload.nodes.map(move);
+  const edges = payload.edges.map((edge) => {
+    const next = { ...edge, id: nextId() };
+    if (edge.from) next.from = idMap.get(edge.from) || edge.from;
+    if (edge.to) next.to = idMap.get(edge.to) || edge.to;
+    if (edge.start) next.start = { x: edge.start.x + dx, y: edge.start.y + dy };
+    if (edge.end) next.end = { x: edge.end.x + dx, y: edge.end.y + dy };
+    return next;
+  });
+
+  return { frames, nodes, edges };
+}
+
 /* Bounding box of a clipboard payload, so a paste can be dropped centred on
    the cursor rather than at the coordinates it was copied from. */
 function payloadCenter(items) {
@@ -3927,51 +3994,42 @@ export default function Board() {
     setSelectedFrameIds(new Set());
   }, []);
 
-  /* Gather what a copy should carry: the selected nodes, the selected frames,
-     everything sitting on those frames (a sheet copies with its contents), any
-     frames nested inside them, and the arrows whose both ends are in the set.
-     Cloned through JSON so a later edit to the originals can't reach into the
-     copy. */
-  const collectSelectionForClipboard = useCallback(() => {
-    const frameIds = collectNestedFrameIds(
-      new Set([...selectedFrameIds, ...(selectedFrameId ? [selectedFrameId] : [])]),
-      frames
-    );
-    const nodeIds = new Set(selectedIds);
-    if (selectedId) nodeIds.add(selectedId);
-    frames
-      .filter((frame) => frameIds.has(frame.id))
-      .forEach((frame) => {
-        nodesInsideFrame(frame, nodes, nodeBounds).forEach((node) => nodeIds.add(node.id));
-      });
-    if (nodeIds.size === 0 && frameIds.size === 0) return null;
+  const selectAll = useCallback(() => {
+    if (nodes.length === 0 && frames.length === 0) return;
+    setSelectedIds(new Set(nodes.map((node) => node.id)));
+    setSelectedFrameIds(new Set(frames.map((frame) => frame.id)));
+    setSelectedId(nodes[0]?.id || null);
+    setSelectedFrameId(frames[0]?.id || null);
+    setSelectedEdgeId(null);
+  }, [frames, nodes]);
 
-    const copiedNodes = nodes.filter((node) => nodeIds.has(node.id));
-    const copiedFrames = frames.filter((frame) => frameIds.has(frame.id));
-    const isCopied = (id) => id && (nodeIds.has(id) || frameIds.has(id));
-    const copiedEdges = edges.filter(
-      (edge) => (!edge.from || isCopied(edge.from)) && (!edge.to || isCopied(edge.to))
-                && (edge.from || edge.to)
-    );
-
-    return {
-      nodes: JSON.parse(JSON.stringify(copiedNodes)),
-      frames: JSON.parse(JSON.stringify(copiedFrames)),
-      edges: JSON.parse(JSON.stringify(copiedEdges)),
-      center: payloadCenter([
-        ...copiedFrames,
-        ...copiedNodes.map((node) => ({ ...node, ...nodeSize(node, nodeBounds) })),
-      ]),
-    };
-  }, [edges, frames, nodeBounds, nodes, selectedFrameId, selectedFrameIds, selectedId, selectedIds]);
-
+  /* Copy whatever is selected — any node type, frames and papers with their
+     contents, or a lone arrow. Returns false when there is nothing selected,
+     which is what greys out the menu item. */
   const copySelection = useCallback(() => {
-    const payload = collectSelectionForClipboard();
-    if (!payload) return null;
-    const nonce = generateId();
-    boardClipboardRef.current = { ...payload, nonce };
-    return nonce;
-  }, [collectSelectionForClipboard]);
+    const payload = collectClipboardPayload({
+      nodes,
+      frames,
+      edges,
+      bounds: nodeBounds,
+      nodeIds: new Set([...selectedIds, ...(selectedId ? [selectedId] : [])]),
+      frameIds: new Set([...selectedFrameIds, ...(selectedFrameId ? [selectedFrameId] : [])]),
+      edgeIds: new Set(selectedEdgeId ? [selectedEdgeId] : []),
+    });
+    if (!payload) return false;
+    boardClipboardRef.current = payload;
+    return true;
+  }, [
+    edges,
+    frames,
+    nodeBounds,
+    nodes,
+    selectedEdgeId,
+    selectedFrameId,
+    selectedFrameIds,
+    selectedId,
+    selectedIds,
+  ]);
 
   /* Drop the copy on the board. `worldPoint` centres it on the cursor (the
      right-click paste); without one it lands a nudge away from the original.
@@ -3986,23 +4044,12 @@ export default function Board() {
     const nudge = BOARD_PASTE_OFFSET / Math.max(viewport.zoom, 0.01);
     const dx = worldPoint ? worldPoint.x - payload.center.x : nudge;
     const dy = worldPoint ? worldPoint.y - payload.center.y : nudge;
-    const idMap = new Map();
-    const remap = (item) => {
-      const id = generateId();
-      idMap.set(item.id, id);
-      return { ...item, id, x: item.x + dx, y: item.y + dy };
-    };
-
-    const newFrames = payload.frames.map(remap);
-    const newNodes = payload.nodes.map(remap);
-    const newEdges = payload.edges.map((edge) => {
-      const next = { ...edge, id: generateId() };
-      if (edge.from) next.from = idMap.get(edge.from) || edge.from;
-      if (edge.to) next.to = idMap.get(edge.to) || edge.to;
-      if (edge.start) next.start = { x: edge.start.x + dx, y: edge.start.y + dy };
-      if (edge.end) next.end = { x: edge.end.x + dx, y: edge.end.y + dy };
-      return next;
-    });
+    const { frames: newFrames, nodes: newNodes, edges: newEdges } = clonePayload(
+      payload,
+      dx,
+      dy,
+      generateId
+    );
 
     if (newFrames.length) setFrames((prev) => [...prev, ...newFrames]);
     if (newNodes.length) setNodes((prev) => [...prev, ...newNodes]);
@@ -4013,7 +4060,7 @@ export default function Board() {
     setSelectedFrameIds(new Set(newFrames.map((frame) => frame.id)));
     setSelectedId(newNodes[0]?.id || null);
     setSelectedFrameId(newFrames[0]?.id || null);
-    setSelectedEdgeId(null);
+    setSelectedEdgeId(newNodes.length || newFrames.length ? null : newEdges[0]?.id || null);
   }, [viewport.zoom]);
 
   /* Topmost item under a world point, used so a right-click can select what it
@@ -4287,6 +4334,19 @@ export default function Board() {
         return;
       }
 
+      /* Select all — every node and frame on this board, so copying the lot is
+         one gesture. */
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === 'a' &&
+        !isTextInputTarget(e.target) &&
+        !editingId
+      ) {
+        e.preventDefault();
+        selectAll();
+        return;
+      }
+
       if (e.key === 'Escape') {
         if (contextMenu) {
           setContextMenu(null);
@@ -4346,6 +4406,7 @@ export default function Board() {
     undoBoard,
     redoBoard,
     copySelection,
+    selectAll,
     contextMenu,
   ]);
 
