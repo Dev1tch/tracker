@@ -14,6 +14,7 @@ import {
   AlignRight,
   ArrowRight,
   Bold,
+  BoxSelect,
   Brush as BrushIcon,
   Calendar,
   ChevronLeft,
@@ -244,6 +245,10 @@ const DEFAULT_ARROW_STROKE_WIDTH = 1.6;
 const DRAWING_TOOLS = ['pen', 'pencil', 'brush'];
 const ERASER_TOOL = 'eraser';
 const MARKUP_TOOLS = [...DRAWING_TOOLS, ERASER_TOOL];
+/* The pointer button covers two ways of using the left button: moving things
+   (and the board) or dragging out a selection box. They share a palette the
+   way the drawing tools do. */
+const SELECT_TOOLS = ['select', 'marquee'];
 const DRAWING_COLOR_PRESETS = [
   '#ffffff',
   '#0f172a',
@@ -761,8 +766,27 @@ function localDelta(dx, dy, rotation) {
   return { dx: dx * cos - dy * sin, dy: dx * sin + dy * cos };
 }
 
-function serializeBoardState(nodes, edges) {
-  return JSON.stringify({ nodes, edges });
+/* History snapshot. Frames belong in it as much as nodes do — without them,
+   creating, moving or turning a frame or a paper could not be undone, and an
+   undo of something else would leave them behind out of step. */
+function serializeBoardState(nodes, edges, frames) {
+  return JSON.stringify({ nodes, edges, frames: frames || [] });
+}
+
+/* What a content change means for the undo stack:
+     adopt  — we just restored this state ourselves; take it as the baseline
+              and record nothing, or an undo would become undoable
+     none   — nothing actually changed
+     track  — a gesture is in flight: follow the state, record it at the end,
+              so a drag is one entry rather than one per mouse move
+     record — a discrete change: push the state that came before it
+   `restoring` is answered first so a restore that lands on an identical state
+   still clears the flag, instead of swallowing the next real change. */
+function historyActionFor({ changed, restoring, inGesture }) {
+  if (restoring) return 'adopt';
+  if (!changed) return 'none';
+  if (inGesture) return 'track';
+  return 'record';
 }
 
 function isTextInputTarget(target) {
@@ -3338,6 +3362,7 @@ export default function Board() {
   const [drawingDraft, setDrawingDraft] = useState(null);
   const [eraserPoint, setEraserPoint] = useState(null);
   const [isDrawingPaletteOpen, setIsDrawingPaletteOpen] = useState(false);
+  const [isSelectPaletteOpen, setIsSelectPaletteOpen] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -3368,12 +3393,21 @@ export default function Board() {
   const redoStackRef = useRef([]);
   const restoringHistoryRef = useRef(false);
   const loadingLocalFontsRef = useRef(false);
-  const lastBoardStateRef = useRef(serializeBoardState(initialActiveBoard.nodes, initialActiveBoard.edges));
+  const lastBoardStateRef = useRef(
+    serializeBoardState(
+      initialActiveBoard.nodes,
+      initialActiveBoard.edges,
+      initialActiveBoard.frames
+    )
+  );
+  /* The pointer gesture in flight, holding the state from before it began so
+     the whole drag can be recorded as one undo step. */
+  const gestureRef = useRef(null);
   const nodeDragMovedRef = useRef(false);
   const suppressNextFrameClickRef = useRef(false);
   const lastNodeClickRef = useRef({ id: null, time: 0 });
-  /* Copied board items, kept in memory — the system clipboard only holds a
-     marker pointing at this (see BOARD_CLIPBOARD_MARKER). */
+  /* Copied board items, kept in memory — the system clipboard is not involved,
+     so what the user had there stays put. */
   const boardClipboardRef = useRef(null);
   /* Held space turns a left-drag back into a pan, since a plain left-drag on
      the surface now draws a selection rectangle. */
@@ -3561,7 +3595,12 @@ export default function Board() {
     setMousePos(null);
     undoStackRef.current = [];
     redoStackRef.current = [];
-    lastBoardStateRef.current = serializeBoardState(normalized.nodes, normalized.edges);
+    gestureRef.current = null;
+    lastBoardStateRef.current = serializeBoardState(
+      normalized.nodes,
+      normalized.edges,
+      normalized.frames
+    );
   }, []);
 
   /* Hydrate from IndexedDB on mount. */
@@ -3812,24 +3851,57 @@ export default function Board() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* Board history: content only. Viewport changes are intentionally excluded. */
-  useEffect(() => {
-    const current = serializeBoardState(nodes, edges);
-    if (current === lastBoardStateRef.current) return;
-
-    if (restoringHistoryRef.current) {
-      restoringHistoryRef.current = false;
-      lastBoardStateRef.current = current;
-      return;
-    }
-
-    undoStackRef.current.push(JSON.parse(lastBoardStateRef.current));
+  const pushHistoryEntry = useCallback((snapshot) => {
+    undoStackRef.current.push(snapshot);
     if (undoStackRef.current.length > BOARD_HISTORY_LIMIT) {
       undoStackRef.current.shift();
     }
     redoStackRef.current = [];
+  }, []);
+
+  /* A drag is one history entry, not one per frame of the drag. While the
+     mouse is down we keep following the live state but record nothing; the
+     state from before the gesture goes on the stack when the button comes up.
+     So undoing a move puts the item back where it started in one step instead
+     of retracing the path it was dragged along. */
+  useEffect(() => {
+    function onPointerDown() {
+      gestureRef.current = { before: lastBoardStateRef.current, changed: false };
+    }
+    function onPointerUp() {
+      const gesture = gestureRef.current;
+      gestureRef.current = null;
+      if (gesture?.changed) pushHistoryEntry(JSON.parse(gesture.before));
+    }
+    // Capture phase, so the "before" is taken ahead of any handler that acts
+    // on the same mousedown.
+    window.addEventListener('mousedown', onPointerDown, true);
+    window.addEventListener('mouseup', onPointerUp);
+    // A button released off-window (or focus lost mid-drag) still closes the
+    // gesture, rather than swallowing everything that follows into it.
+    window.addEventListener('blur', onPointerUp);
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown, true);
+      window.removeEventListener('mouseup', onPointerUp);
+      window.removeEventListener('blur', onPointerUp);
+    };
+  }, [pushHistoryEntry]);
+
+  /* Board history: content only. Viewport changes are intentionally excluded. */
+  useEffect(() => {
+    const current = serializeBoardState(nodes, edges, frames);
+    const action = historyActionFor({
+      changed: current !== lastBoardStateRef.current,
+      restoring: restoringHistoryRef.current,
+      inGesture: Boolean(gestureRef.current),
+    });
+
+    if (action === 'none') return;
+    if (action === 'record') pushHistoryEntry(JSON.parse(lastBoardStateRef.current));
+    if (action === 'adopt') restoringHistoryRef.current = false;
+    if (action === 'track') gestureRef.current.changed = true;
     lastBoardStateRef.current = current;
-  }, [nodes, edges]);
+  }, [nodes, edges, frames, pushHistoryEntry]);
 
   /* Measure rendered node sizes for arrow geometry */
   useLayoutEffect(() => {
@@ -4277,6 +4349,7 @@ export default function Board() {
     restoringHistoryRef.current = true;
     setNodes(Array.isArray(state.nodes) ? state.nodes : []);
     setEdges(Array.isArray(state.edges) ? state.edges : []);
+    setFrames(Array.isArray(state.frames) ? state.frames : []);
     setSelectedId(null);
     setSelectedIds(new Set());
     setSelectedEdgeId(null);
@@ -4610,6 +4683,9 @@ export default function Board() {
     setTool(next);
     if (!MARKUP_TOOLS.includes(next)) {
       setIsDrawingPaletteOpen(false);
+    }
+    if (!SELECT_TOOLS.includes(next)) {
+      setIsSelectPaletteOpen(false);
     }
     setIsTaskImportOpen(false);
     setIsNoteImportOpen(false);
@@ -5454,9 +5530,9 @@ export default function Board() {
     return () => moved;
   }
 
-  /* Rubber-band selection: drag on empty surface with the select tool and
-     everything the rectangle touches is selected, like a desktop. Holding
-     shift / ctrl adds to what is already selected instead of replacing it. */
+  /* Rubber-band selection, on its own tool so that a plain drag keeps moving
+     the board. Everything the rectangle touches is selected, like a desktop;
+     holding shift / ctrl adds to the selection instead of replacing it. */
   function startMarquee(e) {
     const start = screenToWorld(e.clientX, e.clientY);
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -5539,6 +5615,7 @@ export default function Board() {
       !MARKUP_TOOLS.includes(tool) &&
       tool !== 'frame' &&
       tool !== 'paper' &&
+      tool !== 'marquee' &&
       e.target !== e.currentTarget &&
       !(tool === 'text' && clickedOnFrame)
     ) return;
@@ -5729,10 +5806,9 @@ export default function Board() {
       return;
     }
 
-    /* Select tool on empty surface: rubber-band a selection. The other tools
-       keep the pan-or-click gesture below, since their click places something
-       and dragging should still move the board. */
-    if (tool === 'select') {
+    /* Rubber-band selection is its own tool, so a drag with the select tool
+       goes on moving the board the way it always has. */
+    if (tool === 'marquee') {
       startMarquee(e);
       return;
     }
@@ -6530,6 +6606,20 @@ export default function Board() {
     }
   }
 
+  /* The pointer button opens its palette rather than being a mode of its own.
+     Opening it keeps whichever of the two is already active; closing it hands
+     the board back to plain moving, so the pointer never stays armed for
+     rubber-banding with nothing on screen to say so. */
+  function toggleSelectPalette() {
+    const nextOpen = !isSelectPaletteOpen;
+    if (nextOpen) {
+      selectTool(SELECT_TOOLS.includes(tool) ? tool : 'select');
+    } else if (tool === 'marquee') {
+      selectTool('select');
+    }
+    setIsSelectPaletteOpen(nextOpen);
+  }
+
   function toggleDrawingPalette() {
     const nextOpen = !isDrawingPaletteOpen;
     /* selectTool first (it closes the other panels), then set our own flag —
@@ -6712,9 +6802,9 @@ export default function Board() {
         <aside className="boardToolbar" aria-label="Board tools">
           <button
             type="button"
-            className={`boardToolBtn ${tool === 'select' ? 'active' : ''}`}
-            onClick={() => selectTool('select')}
-            title="Select & move"
+            className={`boardToolBtn ${isSelectPaletteOpen || SELECT_TOOLS.includes(tool) ? 'active' : ''}`}
+            onClick={toggleSelectPalette}
+            title="Select & move — drag the board to pan"
             aria-label="Select"
           >
             <MousePointer2 size={18} />
@@ -6827,6 +6917,35 @@ export default function Board() {
             <Trash2 size={18} />
           </button>
         </aside>
+
+        {isSelectPaletteOpen ? (
+          <div className="boardDrawingPalette" aria-label="Pointer actions">
+            <button
+              type="button"
+              className={`boardToolBtn ${tool === 'select' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('select');
+                setIsSelectPaletteOpen(true);
+              }}
+              title="Move — drag items, drag the board to pan"
+              aria-label="Move"
+            >
+              <MousePointer2 size={18} />
+            </button>
+            <button
+              type="button"
+              className={`boardToolBtn ${tool === 'marquee' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('marquee');
+                setIsSelectPaletteOpen(true);
+              }}
+              title="Select area — drag a box to select everything it touches"
+              aria-label="Select area"
+            >
+              <BoxSelect size={18} />
+            </button>
+          </div>
+        ) : null}
 
         {isDrawingPaletteOpen ? (
           <div className="boardDrawingPalette" aria-label="Drawing actions">

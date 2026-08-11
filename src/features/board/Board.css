@@ -787,6 +787,15 @@
   cursor: crosshair;
 }
 
+/* Area-select tool: the band can be started over anything, so the crosshair
+   holds across the whole board. */
+.boardCursor-marquee,
+.boardCursor-marquee .boardFrame,
+.boardCursor-marquee .boardFrame:active,
+.boardCursor-marquee .boardNode {
+  cursor: crosshair;
+}
+
 /* Popout label used in the frame-style popout next to the toolbar. */
 .boardPopoutLabel {
   font-size: 10px;
